@@ -41,20 +41,45 @@ ssh:
 
 # AI Provider Configuration
 ai:
-  # Primary AI provider: anthropic, openai, or local
+  # Enable AI-powered analysis (set to false to disable)
+  enabled: true
+
+  # Primary AI provider: anthropic, openai, or ollama
   provider: anthropic
 
-  # Model names for each provider
+  # API key for cloud providers (REQUIRED for anthropic/openai)
+  # DO NOT commit this to version control!
+  # Best practice: Set via environment variable LUMO_AI_API_KEY
+  api_key: ""
+
+  # Model to use (leave empty to use provider defaults)
+  # This overrides the provider-specific model from the models map
+  model: ""
+
+  # Model names for each provider (used when 'model' is empty)
   models:
     anthropic: claude-sonnet-4-5-20250929
-    openai: gpt-4
-    # local: llama-3-70b  # For self-hosted models
+    openai: gpt-4-turbo-preview
+    ollama: llama3.1:8b
+
+  # Custom API endpoint (optional, leave empty for defaults)
+  # Examples:
+  #   - Ollama: http://localhost:11434/api/chat
+  #   - Custom OpenAI: https://your-proxy.com/v1/chat/completions
+  endpoint: ""
 
   # Timeout for AI API calls
-  timeout: 60s
+  timeout: 120s
 
   # Maximum retry attempts for failed AI API calls
   max_retries: 3
+
+  # Temperature controls randomness (0.0 = deterministic, 1.0 = creative)
+  # Range: 0.0 to 1.0
+  temperature: 1.0
+
+  # Maximum tokens in AI response
+  max_tokens: 4096
 
 # Logging Configuration
 logging:
@@ -94,8 +119,18 @@ api:
   max_connections: 100
 
 # Environment variables can override these settings:
-# LUMO_SSH_PORT=2222
-# LUMO_SSH_STRICT_HOST_KEY_CHECKING=true
-# LUMO_SSH_DEFAULT_KEY_PATH=~/.ssh/id_ed25519
-# LUMO_AI_PROVIDER=openai
-# LUMO_LOGGING_LEVEL=debug
+# SSH:
+#   LUMO_SSH_PORT=2222
+#   LUMO_SSH_STRICT_HOST_KEY_CHECKING=true
+#   LUMO_SSH_DEFAULT_KEY_PATH=~/.ssh/id_ed25519
+# AI:
+#   LUMO_AI_ENABLED=true
+#   LUMO_AI_PROVIDER=openai
+#   LUMO_AI_API_KEY=sk-...
+#   LUMO_AI_MODEL=gpt-4
+#   LUMO_AI_ENDPOINT=http://localhost:11434/api/chat
+#   LUMO_AI_TEMPERATURE=0.7
+#   LUMO_AI_MAX_TOKENS=2048
+# Logging:
+#   LUMO_LOGGING_LEVEL=debug
+#   LUMO_LOGGING_FORMAT=json

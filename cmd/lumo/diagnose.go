@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/user"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ignacio/lumo/internal/ai"
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/ignacio/lumo/internal/diagnostics/checkers"
@@ -59,6 +61,10 @@ func init() {
 	diagnoseCmd.Flags().BoolP("all", "a", true, "Run all available diagnostic checks")
 	diagnoseCmd.Flags().StringP("format", "f", "text", "Output format (text, json)")
 	diagnoseCmd.Flags().BoolP("no-color", "n", false, "Disable colored output")
+
+	// AI analysis flags
+	diagnoseCmd.Flags().BoolP("analyze", "A", false, "Enable AI-powered analysis (requires AI provider configuration)")
+	diagnoseCmd.Flags().StringSlice("focus", []string{}, "Focus AI analysis on specific areas (cpu, memory, disk, etc.)")
 }
 
 func runDiagnostics(cmd *cobra.Command, args []string) error {
@@ -81,6 +87,8 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 	checksFilter, _ := cmd.Flags().GetStringSlice("checks")
 	format, _ := cmd.Flags().GetString("format")
 	noColor, _ := cmd.Flags().GetBool("no-color")
+	enableAI, _ := cmd.Flags().GetBool("analyze")
+	focusAreas, _ := cmd.Flags().GetStringSlice("focus")
 
 	// Default to current user if not specified
 	if username == "" {
@@ -165,6 +173,21 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("diagnostic run failed: %w", err)
 	}
 
+	// Run AI analysis if requested
+	var analysis *ai.AnalysisResponse
+	if enableAI || (cfg.AI.Enabled && cfg.AI.Provider != "") {
+		log.Info("Running AI-powered analysis...")
+
+		analysis, err = runAIAnalysis(cfg, report, hostname, focusAreas)
+		if err != nil {
+			log.Warnf("AI analysis failed: %v", err)
+			// Continue without AI analysis rather than failing completely
+		} else {
+			log.Infof("AI analysis complete (provider: %s, model: %s, duration: %v)",
+				analysis.Provider, analysis.Model, analysis.Duration)
+		}
+	}
+
 	// Format and display results
 	if format == "json" {
 		jsonOutput, err := report.ToJSON()
@@ -172,11 +195,27 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to format JSON: %w", err)
 		}
 		fmt.Println(jsonOutput)
+
+		// Display AI analysis separately for JSON format
+		if analysis != nil {
+			fmt.Println("\n--- AI ANALYSIS ---")
+			analysisJSON, err := formatAIAnalysisJSON(analysis)
+			if err != nil {
+				log.Warnf("Failed to format AI analysis: %v", err)
+			} else {
+				fmt.Println(analysisJSON)
+			}
+		}
 	} else {
 		// Text format
 		formatter := formatters.NewTextFormatter(!noColor, verbose)
 		output := formatter.FormatReport(report)
 		fmt.Println(output)
+
+		// Display AI analysis
+		if analysis != nil {
+			fmt.Println("\n" + formatAIAnalysisText(analysis, !noColor))
+		}
 	}
 
 	// Exit with error code if critical issues found
@@ -187,4 +226,206 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 
 	log.Info("Diagnostics completed successfully")
 	return nil
+}
+
+// runAIAnalysis performs AI-powered analysis of diagnostic results.
+func runAIAnalysis(cfg *config.Config, report *diagnostics.Report, hostname string, focusAreas []string) (*ai.AnalysisResponse, error) {
+	// Parse provider type
+	providerType, err := ai.ParseProviderType(cfg.AI.Provider)
+	if err != nil {
+		return nil, fmt.Errorf("invalid AI provider: %w", err)
+	}
+
+	// Build provider config
+	providerConfig := &ai.ProviderConfig{
+		Name:        string(providerType),
+		APIKey:      cfg.AI.APIKey,
+		Model:       cfg.AI.GetModelForProvider(cfg.AI.Provider),
+		Endpoint:    cfg.AI.Endpoint,
+		Timeout:     cfg.AI.Timeout,
+		MaxRetries:  cfg.AI.MaxRetries,
+		Temperature: cfg.AI.Temperature,
+		MaxTokens:   cfg.AI.MaxTokens,
+	}
+
+	// Create provider
+	provider, err := ai.NewProvider(providerType, providerConfig, log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AI provider: %w", err)
+	}
+
+	// Check provider health
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := provider.Health(ctx); err != nil {
+		return nil, fmt.Errorf("AI provider health check failed: %w", err)
+	}
+
+	// Build analysis request
+	req := &ai.AnalysisRequest{
+		Report: report,
+		SystemInfo: ai.SystemInfo{
+			Hostname: hostname,
+		},
+		Focus: focusAreas,
+	}
+
+	// Run analysis
+	analysisCtx, analysisCancel := context.WithTimeout(context.Background(), cfg.AI.Timeout)
+	defer analysisCancel()
+
+	return provider.Analyze(analysisCtx, req)
+}
+
+// formatAIAnalysisText formats AI analysis for human-readable text output.
+func formatAIAnalysisText(analysis *ai.AnalysisResponse, color bool) string {
+	var sb strings.Builder
+
+	// Header
+	sb.WriteString("╔════════════════════════════════════════════════════════════════════════════════╗\n")
+	sb.WriteString("║                           AI-POWERED ANALYSIS                                  ║\n")
+	sb.WriteString("╚════════════════════════════════════════════════════════════════════════════════╝\n\n")
+
+	// Summary
+	sb.WriteString(fmt.Sprintf("📊 Overall Health: %s\n", formatHealthStatus(analysis.OverallHealth, color)))
+	sb.WriteString(fmt.Sprintf("🎯 Confidence: %.0f%%\n", analysis.Confidence*100))
+	sb.WriteString(fmt.Sprintf("🤖 Provider: %s (%s)\n", analysis.Provider, analysis.Model))
+	sb.WriteString(fmt.Sprintf("⏱️  Duration: %v\n", analysis.Duration))
+	if analysis.TokensUsed != nil {
+		sb.WriteString(fmt.Sprintf("💬 Tokens: %d\n", analysis.TokensUsed.TotalTokens))
+	}
+	sb.WriteString("\n")
+
+	// Summary text
+	sb.WriteString("📝 SUMMARY\n")
+	sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n")
+	sb.WriteString(analysis.Summary)
+	sb.WriteString("\n\n")
+
+	// Findings
+	if len(analysis.Findings) > 0 {
+		sb.WriteString(fmt.Sprintf("🔍 FINDINGS (%d)\n", len(analysis.Findings)))
+		sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n")
+		for i, finding := range analysis.Findings {
+			sb.WriteString(fmt.Sprintf("\n%d. [%s] %s\n", i+1, formatSeverity(finding.Severity, color), finding.Title))
+			sb.WriteString(fmt.Sprintf("   Category: %s\n", finding.Category))
+			sb.WriteString(fmt.Sprintf("   %s\n", finding.Description))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Recommendations
+	if len(analysis.Recommendations) > 0 {
+		sb.WriteString(fmt.Sprintf("💡 RECOMMENDATIONS (%d)\n", len(analysis.Recommendations)))
+		sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n")
+		for i, rec := range analysis.Recommendations {
+			sb.WriteString(fmt.Sprintf("\n%d. [%s] %s\n", i+1, formatPriority(rec.Priority, color), rec.Title))
+			sb.WriteString(fmt.Sprintf("   Risk: %s\n", formatRisk(rec.Risk, color)))
+			sb.WriteString(fmt.Sprintf("   %s\n", rec.Description))
+
+			if len(rec.Commands) > 0 {
+				sb.WriteString("   Commands:\n")
+				for _, cmd := range rec.Commands {
+					sb.WriteString(fmt.Sprintf("     $ %s\n", cmd))
+				}
+			}
+
+			if rec.EstimatedImpact != "" {
+				sb.WriteString(fmt.Sprintf("   Impact: %s\n", rec.EstimatedImpact))
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n")
+
+	return sb.String()
+}
+
+// formatAIAnalysisJSON formats AI analysis as JSON.
+func formatAIAnalysisJSON(analysis *ai.AnalysisResponse) (string, error) {
+	data, err := json.MarshalIndent(analysis, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// Helper formatting functions
+
+func formatHealthStatus(status ai.HealthStatus, color bool) string {
+	if !color {
+		return string(status)
+	}
+
+	switch status {
+	case ai.HealthHealthy:
+		return "\033[32m✓ HEALTHY\033[0m"
+	case ai.HealthDegraded:
+		return "\033[33m⚠ DEGRADED\033[0m"
+	case ai.HealthCritical:
+		return "\033[31m✗ CRITICAL\033[0m"
+	default:
+		return "\033[90m? UNKNOWN\033[0m"
+	}
+}
+
+func formatSeverity(severity diagnostics.Severity, color bool) string {
+	if !color {
+		return string(severity)
+	}
+
+	switch severity {
+	case diagnostics.SeverityInfo:
+		return "\033[36mINFO\033[0m"
+	case diagnostics.SeverityWarning:
+		return "\033[33mWARN\033[0m"
+	case diagnostics.SeverityError:
+		return "\033[31mERROR\033[0m"
+	case diagnostics.SeverityCritical:
+		return "\033[1;31mCRITICAL\033[0m"
+	default:
+		return string(severity)
+	}
+}
+
+func formatPriority(priority ai.Priority, color bool) string {
+	if !color {
+		return string(priority)
+	}
+
+	switch priority {
+	case ai.PriorityCritical:
+		return "\033[1;31mCRITICAL\033[0m"
+	case ai.PriorityHigh:
+		return "\033[31mHIGH\033[0m"
+	case ai.PriorityMedium:
+		return "\033[33mMEDIUM\033[0m"
+	case ai.PriorityLow:
+		return "\033[32mLOW\033[0m"
+	default:
+		return string(priority)
+	}
+}
+
+func formatRisk(risk ai.RiskLevel, color bool) string {
+	if !color {
+		return string(risk)
+	}
+
+	switch risk {
+	case ai.RiskSafe:
+		return "\033[32mSAFE\033[0m"
+	case ai.RiskLow:
+		return "\033[36mLOW\033[0m"
+	case ai.RiskModerate:
+		return "\033[33mMODERATE\033[0m"
+	case ai.RiskHigh:
+		return "\033[31mHIGH\033[0m"
+	case ai.RiskCritical:
+		return "\033[1;31mCRITICAL\033[0m"
+	default:
+		return string(risk)
+	}
 }
