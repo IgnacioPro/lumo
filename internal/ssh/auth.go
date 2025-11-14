@@ -189,10 +189,11 @@ func tryInteractive(user, host string) ssh.AuthMethod {
 
 // promptForPassword securely prompts the user for a password
 func promptForPassword(user, host string) (string, error) {
-	fmt.Printf("Password for %s@%s: ", user, host)
+	// Write to stderr to ensure prompt is displayed immediately (stderr is unbuffered)
+	fmt.Fprintf(os.Stderr, "Password for %s@%s: ", user, host)
 
 	passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Println() // Add newline after password input
+	fmt.Fprintln(os.Stderr) // Add newline after password input
 
 	if err != nil {
 		return "", fmt.Errorf("failed to read password: %w", err)
@@ -208,10 +209,11 @@ func promptForPassword(user, host string) (string, error) {
 
 // promptForPassphrase securely prompts the user for a key passphrase
 func promptForPassphrase(keyPath, user, host string) (string, error) {
-	fmt.Printf("Passphrase for key %s (%s@%s): ", keyPath, user, host)
+	// Write to stderr to ensure prompt is displayed immediately (stderr is unbuffered)
+	fmt.Fprintf(os.Stderr, "Passphrase for key %s (%s@%s): ", keyPath, user, host)
 
 	passphraseBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Println() // Add newline after passphrase input
+	fmt.Fprintln(os.Stderr) // Add newline after passphrase input
 
 	if err != nil {
 		return "", fmt.Errorf("failed to read passphrase: %w", err)
