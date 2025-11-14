@@ -24,7 +24,7 @@ var diagnoseCmd = &cobra.Command{
   - CPU usage and load average
   - Memory and swap usage
   - Disk space and inode usage
-  - Process status (coming soon)
+  - Process counts, zombies, and resource consumers
   - Log analysis (coming soon)
   - Network connectivity (coming soon)
 
@@ -34,7 +34,7 @@ and displays the results in a formatted report.
 Examples:
   lumo diagnose user@example.com
   lumo diagnose root@192.168.1.10 --port 2222
-  lumo diagnose admin@server --checks cpu,memory,disk
+  lumo diagnose admin@server --checks cpu,memory,disk,process
   lumo diagnose user@host --format json`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -55,7 +55,7 @@ func init() {
 	diagnoseCmd.Flags().DurationP("timeout", "t", 30*time.Second, "Connection timeout")
 
 	// Diagnostic flags
-	diagnoseCmd.Flags().StringSliceP("checks", "c", []string{}, "Specific checks to run (cpu, memory, disk)")
+	diagnoseCmd.Flags().StringSliceP("checks", "c", []string{}, "Specific checks to run (cpu, memory, disk, process)")
 	diagnoseCmd.Flags().BoolP("all", "a", true, "Run all available diagnostic checks")
 	diagnoseCmd.Flags().StringP("format", "f", "text", "Output format (text, json)")
 	diagnoseCmd.Flags().BoolP("no-color", "n", false, "Disable colored output")
@@ -144,12 +144,13 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 	thresholds := diagnostics.DefaultThresholds()
 	runner := diagnostics.NewRunner(diagConfig, thresholds, executor, log)
 
-	// Register checkers (Phase 3.3: CPU, Memory, Disk)
+	// Register checkers (Phase 3.3: CPU, Memory, Disk, Process)
 	log.Debug("Registering diagnostic checkers")
 	runner.RegisterCheckers(
 		checkers.NewCPUChecker(thresholds.CPU),
 		checkers.NewMemoryChecker(thresholds.Memory),
 		checkers.NewDiskChecker(thresholds.Disk),
+		checkers.NewProcessChecker(thresholds.Process),
 	)
 
 	// Run diagnostics
