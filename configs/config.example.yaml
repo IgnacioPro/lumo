@@ -1,0 +1,78 @@
+# Lumo Configuration File
+# Copy this file to ~/.lumo/config.yaml or ./config.yaml and customize as needed
+
+# SSH Configuration
+ssh:
+  # Connection timeout for SSH operations
+  timeout: 30s
+
+  # Default SSH port
+  port: 22
+
+  # Keep-alive interval to prevent connection drops
+  keepalive: 30s
+
+  # Maximum number of retry attempts for failed connections
+  max_retries: 3
+
+  # Interval between retry attempts
+  retry_interval: 5s
+
+# AI Provider Configuration
+ai:
+  # Primary AI provider: anthropic, openai, or local
+  provider: anthropic
+
+  # Model names for each provider
+  models:
+    anthropic: claude-sonnet-4-5-20250929
+    openai: gpt-4
+    # local: llama-3-70b  # For self-hosted models
+
+  # Timeout for AI API calls
+  timeout: 60s
+
+  # Maximum retry attempts for failed AI API calls
+  max_retries: 3
+
+# Logging Configuration
+logging:
+  # Log level: debug, info, warn, error
+  level: info
+
+  # Log format: text or json
+  format: text
+
+  # Log output: stdout, stderr, or file path
+  output: stdout
+
+# API Server Configuration
+api:
+  # Port for the API server
+  port: 8080
+
+  # Host to bind the API server to
+  host: 0.0.0.0
+
+  # Enable TLS/HTTPS
+  tls: false
+
+  # Path to TLS certificate file (required if tls is true)
+  cert_file: ""
+
+  # Path to TLS private key file (required if tls is true)
+  key_file: ""
+
+  # Read timeout for API requests
+  read_timeout: 15s
+
+  # Write timeout for API responses
+  write_timeout: 15s
+
+  # Maximum number of concurrent connections
+  max_connections: 100
+
+# Environment variables can override these settings:
+# LUMO_SSH_PORT=2222
+# LUMO_AI_PROVIDER=openai
+# LUMO_LOGGING_LEVEL=debug
