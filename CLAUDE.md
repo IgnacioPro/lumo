@@ -1,8 +1,8 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
 > **Last Updated:** 2025-11-14
-> **Project Version:** 0.1.0
-> **Current Phase:** Phase 1 (Foundation Complete)
+> **Project Version:** 0.2.0
+> **Current Phase:** Phase 3.1 (Diagnostic Foundation In Progress)
 
 This document provides comprehensive guidance for AI assistants (like Claude) working on the Lumo codebase. It covers architecture, conventions, workflows, and best practices to ensure consistent, high-quality contributions.
 
@@ -45,7 +45,7 @@ This document provides comprehensive guidance for AI assistants (like Claude) wo
 - **Language:** Go 1.25.4
 - **Module Path:** `github.com/ignacio/lumo`
 - **Architecture:** Modular CLI with pluggable backends
-- **Current Status:** Phase 1 complete (CLI skeleton + configuration system)
+- **Current Status:** Phase 2 complete (SSH), Phase 3.1 in progress (Diagnostic foundation)
 - **License:** MIT
 
 ---
@@ -1174,29 +1174,39 @@ cp configs/config.example.yaml ~/.lumo/config.yaml
 - All 5 subcommands registered (stubs)
 - Global flags implemented
 
-### Phase 2: SSH & Connection Management 🔜 NEXT
+### Phase 2: SSH & Connection Management ✅ COMPLETE
 
-**Status:** Planned
+**Status:** Done (2025-11-14)
 **Target Package:** `internal/ssh/`
-**Dependencies:** `golang.org/x/crypto/ssh`
-**Tasks:**
-- SSH connection pooling
-- Key-based and password authentication
-- Connection retry logic with exponential backoff
-- Command execution over SSH
-- SFTP file transfer support
-- Update `connect.go` command
+**Dependencies:** `golang.org/x/crypto/ssh`, `github.com/cenkalti/backoff/v4`
+**Features Implemented:**
+- ✅ All 4 authentication methods (SSH agent, key files, password, keyboard-interactive)
+- ✅ Connection retry logic with exponential backoff
+- ✅ Command execution with timeout and output capture
+- ✅ Health monitoring with keep-alive
+- ✅ Auto-reconnection on connection loss
+- ✅ Full integration in `connect.go` command
+- ✅ Comprehensive error handling with custom error types
+**Total:** 8 new files, 2,410 lines of code
 
-### Phase 3: Diagnostic System
+### Phase 3: Diagnostic System 🚧 IN PROGRESS
 
-**Status:** Planned
+**Status:** Phase 3.1 Foundation Complete (2025-11-14)
 **Target Package:** `internal/diagnostics/`
-**Tasks:**
-- Define `Checker` interface
-- Implement checks: CPU, memory, disk, processes, logs, network
-- Parallel check execution
-- Result aggregation and formatting
-- Update `diagnose.go` command
+**Phase 3.1 Foundation ✅ Complete:**
+- ✅ Core `Checker` interface and `DiagnosticRunner` architecture
+- ✅ `CheckResult` types with JSON structures
+- ✅ Severity classification system with configurable thresholds
+- ✅ `ThresholdConfig` for all diagnostic categories
+- ✅ Parallel and sequential check execution support
+**Files:** `diagnostics.go`, `result.go`, `severity.go` (858 lines)
+
+**Phase 3.2 Remaining:**
+- ⏳ Implement 8 diagnostic checkers (CPU, memory, disk, process, logs, network, service, security)
+- ⏳ Command output parsers for each check
+- ⏳ Platform detection (Linux, macOS, BSD)
+- ⏳ Output formatters (text, JSON, YAML)
+- ⏳ Update `diagnose.go` command with full integration
 
 ### Phase 4: AI Integration Layer
 
