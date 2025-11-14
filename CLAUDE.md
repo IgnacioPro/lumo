@@ -1,8 +1,8 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
 > **Last Updated:** 2025-11-14
-> **Project Version:** 0.3.0
-> **Current Phase:** Phase 3.2 Complete (Minimal Diagnostic System Working)
+> **Project Version:** 0.3.1
+> **Current Phase:** Phase 3.3 Complete (Four Core Diagnostic Checkers Working)
 
 This document provides comprehensive guidance for AI assistants (like Claude) working on the Lumo codebase. It covers architecture, conventions, workflows, and best practices to ensure consistent, high-quality contributions.
 
@@ -45,7 +45,7 @@ This document provides comprehensive guidance for AI assistants (like Claude) wo
 - **Language:** Go 1.25.4
 - **Module Path:** `github.com/ignacio/lumo`
 - **Architecture:** Modular CLI with pluggable backends
-- **Current Status:** Phase 3.2 complete (SSH + Minimal Diagnostics working)
+- **Current Status:** Phase 3.3 complete (SSH + Four Core Diagnostic Checkers working)
 - **License:** MIT
 
 ---
@@ -1295,9 +1295,9 @@ cp configs/config.example.yaml ~/.lumo/config.yaml
 - ✅ Comprehensive error handling with custom error types
 **Total:** 8 new files, 2,410 lines of code
 
-### Phase 3: Diagnostic System ✅ MINIMAL WORKING VERSION COMPLETE
+### Phase 3: Diagnostic System ✅ FOUR CORE CHECKERS COMPLETE
 
-**Status:** Phase 3.2 Complete (2025-11-14)
+**Status:** Phase 3.3 Complete (2025-11-14)
 **Target Package:** `internal/diagnostics/`
 
 **Phase 3.1 Foundation ✅ Complete:**
@@ -1317,10 +1317,19 @@ cp configs/config.example.yaml ~/.lumo/config.yaml
 - ✅ Full `diagnose.go` command integration with SSH connection
 - ✅ Cross-platform support (Linux, macOS)
 **Files:** `executor.go`, `checkers/cpu.go`, `checkers/memory.go`, `formatters/text.go` (867 lines)
-**Total:** 7 files, 1,829 lines of code
 
-**Phase 3.3 Remaining (Future Work):**
-- ⏳ Additional checkers: Disk, Process, Logs, Network, Service, Security
+**Phase 3.3 Core Checkers ✅ Complete:**
+- ✅ Disk space checker with inode monitoring and usage thresholds
+- ✅ Process checker with zombie detection and resource tracking
+- ✅ Top CPU/memory consumers identification (top 5 each)
+- ✅ Cross-platform command execution (Linux & macOS via ps)
+- ✅ Configurable severity thresholds for all metrics
+- ✅ Graceful handling of unavailable platform-specific data
+**Files Added:** `checkers/disk.go`, `checkers/process.go` (604 lines)
+**Total Phase 3:** 9 files, 2,433 lines of code
+
+**Remaining (Future Work):**
+- ⏳ Additional checkers: Logs, Network, Service, Security
 - ⏳ YAML output formatter
 - ⏳ Enhanced platform-specific optimizations
 - ⏳ Checker dependencies and ordering
