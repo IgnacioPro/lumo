@@ -17,11 +17,16 @@ type Config struct {
 
 // SSHConfig contains SSH connection settings
 type SSHConfig struct {
-	Timeout       time.Duration `mapstructure:"timeout"`
-	Port          int           `mapstructure:"port"`
-	KeepAlive     time.Duration `mapstructure:"keepalive"`
-	MaxRetries    int           `mapstructure:"max_retries"`
-	RetryInterval time.Duration `mapstructure:"retry_interval"`
+	Timeout                time.Duration `mapstructure:"timeout"`
+	Port                   int           `mapstructure:"port"`
+	KeepAlive              time.Duration `mapstructure:"keepalive"`
+	MaxRetries             int           `mapstructure:"max_retries"`
+	RetryInterval          time.Duration `mapstructure:"retry_interval"`
+	KnownHostsPath         string        `mapstructure:"known_hosts_path"`
+	StrictHostKeyChecking  bool          `mapstructure:"strict_host_key_checking"`
+	PreferredAuthMethods   []string      `mapstructure:"preferred_auth_methods"`
+	CommandTimeout         time.Duration `mapstructure:"command_timeout"`
+	DefaultKeyPath         string        `mapstructure:"default_key_path"`
 }
 
 // AIConfig contains AI provider settings
@@ -55,11 +60,16 @@ type APIConfig struct {
 func DefaultConfig() *Config {
 	return &Config{
 		SSH: SSHConfig{
-			Timeout:       30 * time.Second,
-			Port:          22,
-			KeepAlive:     30 * time.Second,
-			MaxRetries:    3,
-			RetryInterval: 5 * time.Second,
+			Timeout:               30 * time.Second,
+			Port:                  22,
+			KeepAlive:             30 * time.Second,
+			MaxRetries:            3,
+			RetryInterval:         5 * time.Second,
+			KnownHostsPath:        "", // Will use default ~/.ssh/known_hosts
+			StrictHostKeyChecking: false,
+			PreferredAuthMethods:  []string{"agent", "key", "password", "interactive"},
+			CommandTimeout:        5 * time.Minute,
+			DefaultKeyPath:        "", // Will auto-discover in ~/.ssh/
 		},
 		AI: AIConfig{
 			Provider: "anthropic",

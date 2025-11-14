@@ -70,13 +70,30 @@ Edit the configuration file to set your AI provider credentials and preferences.
 
 ### 2. Connect to a Server
 
+Lumo supports multiple authentication methods with automatic fallback:
+
 ```bash
-# Connect using SSH
+# Connect using SSH agent (recommended)
 lumo connect user@example.com
 
-# Connect with custom port and key
-lumo connect user@example.com --port 2222 --key ~/.ssh/id_rsa
+# Connect with specific key file
+lumo connect user@example.com --key ~/.ssh/id_ed25519
+
+# Connect with custom port
+lumo connect user@example.com --port 2222
+
+# Connect with password (interactive prompt)
+lumo connect user@example.com
+
+# Skip test commands after connecting
+lumo connect user@example.com --test=false
 ```
+
+**Authentication Methods** (tried in order):
+1. **SSH Agent** - Most secure, uses ssh-agent
+2. **Private Keys** - Auto-discovers keys in ~/.ssh/ (id_ed25519, id_rsa, etc.)
+3. **Password** - Interactive prompt (if other methods fail)
+4. **Keyboard-Interactive** - For 2FA/MFA scenarios
 
 ### 3. Run Diagnostics
 
@@ -137,6 +154,16 @@ ssh:
   port: 22
   keepalive: 30s
   max_retries: 3
+  retry_interval: 5s
+  known_hosts_path: ""  # Uses ~/.ssh/known_hosts by default
+  strict_host_key_checking: false
+  preferred_auth_methods:
+    - agent
+    - key
+    - password
+    - interactive
+  command_timeout: 5m
+  default_key_path: ""  # Auto-discovers in ~/.ssh/
 
 ai:
   provider: anthropic
@@ -144,6 +171,7 @@ ai:
     anthropic: claude-sonnet-4-5-20250929
     openai: gpt-4
   timeout: 60s
+  max_retries: 3
 
 logging:
   level: info
@@ -162,8 +190,93 @@ Override configuration with environment variables using the `LUMO_` prefix:
 
 ```bash
 export LUMO_SSH_PORT=2222
+export LUMO_SSH_STRICT_HOST_KEY_CHECKING=true
+export LUMO_SSH_DEFAULT_KEY_PATH=~/.ssh/id_ed25519
 export LUMO_AI_PROVIDER=openai
 export LUMO_LOGGING_LEVEL=debug
+```
+
+## SSH Authentication
+
+Lumo provides comprehensive SSH connection management with multiple authentication methods and robust error handling.
+
+### Supported Authentication Methods
+
+1. **SSH Agent (Recommended)**
+   ```bash
+   # Ensure ssh-agent is running and has keys loaded
+   eval $(ssh-agent)
+   ssh-add ~/.ssh/id_ed25519
+
+   # Connect using agent
+   lumo connect user@example.com
+   ```
+
+2. **Private Key Files**
+   ```bash
+   # Auto-discovery (tries id_ed25519, id_ecdsa, id_rsa, id_dsa)
+   lumo connect user@example.com
+
+   # Specify key explicitly
+   lumo connect user@example.com --key ~/.ssh/custom_key
+
+   # Encrypted keys will prompt for passphrase
+   lumo connect user@example.com --key ~/.ssh/encrypted_key
+   ```
+
+3. **Password Authentication**
+   ```bash
+   # Interactive password prompt
+   lumo connect user@example.com
+   # You'll be prompted: "Password for user@example.com:"
+
+   # Or specify password (NOT RECOMMENDED for security)
+   lumo connect user@example.com --password 'mypassword'
+   ```
+
+4. **Keyboard-Interactive**
+   - Automatically handles multi-factor authentication
+   - Supports challenge-response authentication
+   - Works with systems requiring 2FA/MFA
+
+### Connection Features
+
+- **Automatic Retry**: Retries failed connections with exponential backoff (configurable)
+- **Keep-Alive**: Background health monitoring prevents connection drops
+- **Auto-Reconnect**: Automatically reconnects if connection becomes unhealthy
+- **Connection Health Checks**: Periodic validation ensures connection stability
+- **Timeout Management**: Configurable timeouts for connections and commands
+
+### Troubleshooting
+
+**Connection Refused**
+```bash
+# Use verbose mode to see detailed logs
+lumo --verbose connect user@example.com
+```
+
+**SSH Agent Issues**
+```bash
+# Check if agent is running
+ssh-add -l
+
+# Start agent if needed
+eval $(ssh-agent)
+ssh-add ~/.ssh/id_ed25519
+```
+
+**Key Permission Issues**
+```bash
+# Fix key permissions (must be 600 or 400)
+chmod 600 ~/.ssh/id_ed25519
+```
+
+**Known Hosts Verification**
+```yaml
+# Enable strict host key checking in config.yaml
+ssh:
+  strict_host_key_checking: true
+  known_hosts_path: ~/.ssh/known_hosts
 ```
 
 ## Usage Examples
@@ -208,7 +321,7 @@ When running in server mode (`lumo serve`), the following endpoints are availabl
 ## Development Roadmap
 
 - [x] **Phase 1**: Foundation & Project Setup
-- [ ] **Phase 2**: SSH & Connection Management
+- [x] **Phase 2**: SSH & Connection Management
 - [ ] **Phase 3**: Diagnostic System
 - [ ] **Phase 4**: AI Integration Layer
 - [ ] **Phase 5**: Auto-Remediation & Approval

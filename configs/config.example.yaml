@@ -18,6 +18,27 @@ ssh:
   # Interval between retry attempts
   retry_interval: 5s
 
+  # Path to SSH known_hosts file (leave empty for default ~/.ssh/known_hosts)
+  known_hosts_path: ""
+
+  # Enable strict host key checking (verify server fingerprints)
+  strict_host_key_checking: false
+
+  # Preferred authentication methods in order of priority
+  # Options: agent, key, password, interactive
+  preferred_auth_methods:
+    - agent        # Try SSH agent first
+    - key          # Then SSH key files
+    - password     # Then password auth
+    - interactive  # Finally keyboard-interactive
+
+  # Default timeout for command execution
+  command_timeout: 5m
+
+  # Default SSH private key path (leave empty to auto-discover in ~/.ssh/)
+  # Will try id_ed25519, id_ecdsa, id_rsa, id_dsa in order
+  default_key_path: ""
+
 # AI Provider Configuration
 ai:
   # Primary AI provider: anthropic, openai, or local
@@ -74,5 +95,7 @@ api:
 
 # Environment variables can override these settings:
 # LUMO_SSH_PORT=2222
+# LUMO_SSH_STRICT_HOST_KEY_CHECKING=true
+# LUMO_SSH_DEFAULT_KEY_PATH=~/.ssh/id_ed25519
 # LUMO_AI_PROVIDER=openai
 # LUMO_LOGGING_LEVEL=debug
