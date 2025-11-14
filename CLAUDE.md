@@ -1,8 +1,8 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
 > **Last Updated:** 2025-11-14
-> **Project Version:** 0.3.1
-> **Current Phase:** Phase 3.3 Complete (Four Core Diagnostic Checkers Working)
+> **Project Version:** 0.4.0
+> **Current Phase:** Phase 3 Complete (All Six Core Diagnostic Checkers Complete)
 
 This document provides comprehensive guidance for AI assistants (like Claude) working on the Lumo codebase. It covers architecture, conventions, workflows, and best practices to ensure consistent, high-quality contributions.
 
@@ -45,7 +45,7 @@ This document provides comprehensive guidance for AI assistants (like Claude) wo
 - **Language:** Go 1.25.4
 - **Module Path:** `github.com/ignacio/lumo`
 - **Architecture:** Modular CLI with pluggable backends
-- **Current Status:** Phase 3.3 complete (SSH + Four Core Diagnostic Checkers working)
+- **Current Status:** Phase 3 complete (SSH + All Six Core Diagnostic Checkers)
 - **License:** MIT
 
 ---
@@ -1295,9 +1295,9 @@ cp configs/config.example.yaml ~/.lumo/config.yaml
 - ✅ Comprehensive error handling with custom error types
 **Total:** 8 new files, 2,410 lines of code
 
-### Phase 3: Diagnostic System ✅ FOUR CORE CHECKERS COMPLETE
+### Phase 3: Diagnostic System ✅ COMPLETE - ALL SIX CORE CHECKERS
 
-**Status:** Phase 3.3 Complete (2025-11-14)
+**Status:** Phase 3 Complete (2025-11-14) - Ready for Phase 4
 **Target Package:** `internal/diagnostics/`
 
 **Phase 3.1 Foundation ✅ Complete:**
@@ -1308,7 +1308,7 @@ cp configs/config.example.yaml ~/.lumo/config.yaml
 - ✅ Parallel and sequential check execution support
 **Files:** `diagnostics.go`, `result.go`, `severity.go` (962 lines)
 
-**Phase 3.2 Minimal Implementation ✅ Complete:**
+**Phase 3.2 First Checkers ✅ Complete:**
 - ✅ CPU diagnostic checker with load average and usage monitoring
 - ✅ Memory diagnostic checker with swap tracking (Linux + macOS)
 - ✅ SSH command executor adapter
@@ -1318,21 +1318,30 @@ cp configs/config.example.yaml ~/.lumo/config.yaml
 - ✅ Cross-platform support (Linux, macOS)
 **Files:** `executor.go`, `checkers/cpu.go`, `checkers/memory.go`, `formatters/text.go` (867 lines)
 
-**Phase 3.3 Core Checkers ✅ Complete:**
+**Phase 3.3 Remaining Checkers ✅ Complete:**
 - ✅ Disk space checker with inode monitoring and usage thresholds
 - ✅ Process checker with zombie detection and resource tracking
+- ✅ Service checker with systemd, init, and launchd support
+- ✅ Network checker with interface, connectivity, and DNS monitoring
 - ✅ Top CPU/memory consumers identification (top 5 each)
-- ✅ Cross-platform command execution (Linux & macOS via ps)
+- ✅ Cross-platform command execution (Linux, macOS, BSD)
 - ✅ Configurable severity thresholds for all metrics
 - ✅ Graceful handling of unavailable platform-specific data
-**Files Added:** `checkers/disk.go`, `checkers/process.go` (604 lines)
-**Total Phase 3:** 9 files, 2,433 lines of code
+**Files Added:** `checkers/disk.go`, `checkers/process.go`, `checkers/service.go`, `checkers/network.go` (1,606 lines)
+**Total Phase 3:** 12 files, 3,835 lines of code
 
-**Remaining (Future Work):**
-- ⏳ Additional checkers: Logs, Network, Service, Security
+**ALL SIX CORE CHECKERS:**
+1. ✅ CPU Checker - CPU load, usage, core count
+2. ✅ Memory Checker - RAM, swap utilization
+3. ✅ Disk Checker - Space, inodes, usage by path
+4. ✅ Process Checker - Count, zombies, top consumers
+5. ✅ Service Checker - Service status (systemd, init, launchd)
+6. ✅ Network Checker - Interfaces, connectivity, DNS, statistics
+
+**Future Enhancement (Phase 8+):**
+- ⏳ Additional checkers: Logs, Security scanning
 - ⏳ YAML output formatter
 - ⏳ Enhanced platform-specific optimizations
-- ⏳ Checker dependencies and ordering
 
 ### Phase 4: AI Integration Layer
 
