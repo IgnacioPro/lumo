@@ -1,8 +1,8 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
 > **Last Updated:** 2025-11-14
-> **Project Version:** 0.2.0
-> **Current Phase:** Phase 3.1 (Diagnostic Foundation In Progress)
+> **Project Version:** 0.3.0
+> **Current Phase:** Phase 3.2 Complete (Minimal Diagnostic System Working)
 
 This document provides comprehensive guidance for AI assistants (like Claude) working on the Lumo codebase. It covers architecture, conventions, workflows, and best practices to ensure consistent, high-quality contributions.
 
@@ -45,7 +45,7 @@ This document provides comprehensive guidance for AI assistants (like Claude) wo
 - **Language:** Go 1.25.4
 - **Module Path:** `github.com/ignacio/lumo`
 - **Architecture:** Modular CLI with pluggable backends
-- **Current Status:** Phase 2 complete (SSH), Phase 3.1 in progress (Diagnostic foundation)
+- **Current Status:** Phase 3.2 complete (SSH + Minimal Diagnostics working)
 - **License:** MIT
 
 ---
@@ -58,15 +58,36 @@ lumo/
 │   └── lumo/                      # Main application (package main)
 │       ├── main.go               # Entry point (5 lines)
 │       ├── root.go               # Root command + global setup (89 lines)
-│       ├── connect.go            # SSH connection command (stub)
-│       ├── diagnose.go           # System diagnostics command (stub)
+│       ├── connect.go            # SSH connection command (173 lines) ✅
+│       ├── diagnose.go           # System diagnostics command (167 lines) ✅
 │       ├── fix.go                # Auto-remediation command (stub)
 │       ├── report.go             # Report generation command (stub)
 │       └── serve.go              # API server command (stub)
 │
 ├── internal/                      # Private application packages
-│   └── config/                    # Configuration management
-│       └── config.go             # Config types, loading, validation (152 lines)
+│   ├── config/                    # Configuration management
+│   │   └── config.go             # Config types, loading, validation (152 lines)
+│   │
+│   ├── ssh/                       # SSH client implementation ✅ Phase 2
+│   │   ├── types.go              # Core types and interfaces (177 lines)
+│   │   ├── errors.go             # Custom error types (89 lines)
+│   │   ├── config.go             # SSH client configuration (219 lines)
+│   │   ├── retry.go              # Retry logic with backoff (145 lines)
+│   │   ├── auth.go               # Authentication methods (346 lines)
+│   │   ├── health.go             # Health monitoring (187 lines)
+│   │   ├── client.go             # Main SSH client (368 lines)
+│   │   └── session.go            # Session & command execution (879 lines)
+│   │
+│   └── diagnostics/               # Diagnostic system ✅ Phase 3.1 & 3.2
+│       ├── diagnostics.go        # Core runner & interfaces (285 lines)
+│       ├── result.go             # Result types & reporting (323 lines)
+│       ├── severity.go           # Severity & thresholds (354 lines)
+│       ├── executor.go           # SSH command executor (49 lines)
+│       ├── checkers/             # Diagnostic checkers
+│       │   ├── cpu.go            # CPU diagnostics (200 lines) ✅
+│       │   └── memory.go         # Memory diagnostics (338 lines) ✅
+│       └── formatters/           # Output formatters
+│           └── text.go           # Text formatter (280 lines) ✅
 │
 ├── configs/                       # Configuration templates
 │   └── config.example.yaml        # Example configuration file
@@ -74,9 +95,12 @@ lumo/
 ├── .gitignore                     # Git ignore patterns (binaries, secrets, configs)
 ├── go.mod                         # Go module definition
 ├── go.sum                         # Dependency checksums
+├── CLAUDE.md                      # AI assistant guide (this file)
 └── README.md                      # User-facing documentation
 
-Total: 8 Go files, ~430 lines of code
+Total: 23 Go files, ~5,300 lines of code
+Phase 2 (SSH): 8 files, 2,410 lines
+Phase 3 (Diagnostics): 7 files, 1,829 lines
 ```
 
 ### Directory Purposes
@@ -86,6 +110,10 @@ Total: 8 Go files, ~430 lines of code
 | `cmd/lumo/` | CLI command definitions, flags, user-facing logic | Public (compiled to binary) |
 | `internal/` | Reusable business logic, NOT importable by external projects | Private |
 | `internal/config/` | Configuration loading, validation, defaults | Private |
+| `internal/ssh/` | SSH client with authentication, health monitoring, command execution | Private |
+| `internal/diagnostics/` | Diagnostic system core (runner, results, severity) | Private |
+| `internal/diagnostics/checkers/` | Individual diagnostic check implementations | Private |
+| `internal/diagnostics/formatters/` | Output formatters (text, JSON, etc.) | Private |
 | `configs/` | Example/template configuration files | Public (documentation) |
 
 ---
@@ -1138,6 +1166,84 @@ func validateHost(host string) error {
 2. `./config.yaml`
 3. `~/.lumo/config.yaml`
 
+### internal/diagnostics/diagnostics.go (285 lines)
+
+**Purpose:** Core diagnostic system orchestration and runner
+
+**Key Interfaces:**
+- `Checker` - Interface for all diagnostic checks
+- `CommandExecutor` - Interface for executing commands (SSH, local, etc.)
+
+**Key Types:**
+- `DiagnosticRunner` - Orchestrates check execution (parallel/sequential)
+- `RunConfig` - Configuration for diagnostic runs
+
+**Key Functions:**
+- `NewRunner(config, thresholds, executor, logger)` - Creates runner
+- `RegisterCheckers(checkers...)` - Registers diagnostic checks
+- `RunAll(ctx)` - Executes all registered checks and returns report
+
+### internal/diagnostics/checkers/cpu.go (200 lines)
+
+**Purpose:** CPU diagnostic checker implementation
+
+**Features:**
+- CPU core count detection (Linux: `nproc`, macOS: `sysctl`)
+- Load average monitoring (1/5/15 minute intervals)
+- CPU usage percentage via `top` command
+- Cross-platform command parsing
+
+**Metrics Generated:**
+- `cpu_count` - Number of CPU cores
+- `load_average_1m`, `load_average_5m`, `load_average_15m`
+- `cpu_usage_percent` - Current CPU utilization
+
+### internal/diagnostics/checkers/memory.go (338 lines)
+
+**Purpose:** Memory and swap diagnostic checker
+
+**Features:**
+- Memory usage tracking (total, used, free, available)
+- Swap usage monitoring
+- Multi-platform support (Linux `/proc/meminfo`, macOS `vm_stat`)
+- Automatic platform detection
+
+**Metrics Generated:**
+- `memory_used_percent` - RAM utilization percentage
+- `swap_used_percent` - Swap utilization percentage
+
+### internal/diagnostics/formatters/text.go (280 lines)
+
+**Purpose:** Human-readable text output formatter
+
+**Features:**
+- Color-coded severity indicators (✓ OK, ⚠ Warning, ✗ Critical/Error)
+- Grouped results by category (CPU, Memory, Disk, etc.)
+- Detailed metrics display in verbose mode
+- Summary section with overall health status
+- Configurable color output (can be disabled)
+
+**Key Functions:**
+- `FormatReport(report)` - Formats complete diagnostic report
+- `FormatResult(result)` - Formats single check result
+
+### cmd/lumo/diagnose.go (167 lines)
+
+**Purpose:** Diagnostic command implementation
+
+**Features:**
+- SSH connection with authentication
+- Registers and runs diagnostic checkers
+- Supports text and JSON output formats
+- Configurable thresholds and check selection
+
+**Usage Examples:**
+```bash
+lumo diagnose user@example.com
+lumo diagnose user@host --checks cpu,memory
+lumo diagnose user@host --format json
+```
+
 ### cmd/lumo/main.go (5 lines)
 
 **Purpose:** Binary entry point
@@ -1189,24 +1295,35 @@ cp configs/config.example.yaml ~/.lumo/config.yaml
 - ✅ Comprehensive error handling with custom error types
 **Total:** 8 new files, 2,410 lines of code
 
-### Phase 3: Diagnostic System 🚧 IN PROGRESS
+### Phase 3: Diagnostic System ✅ MINIMAL WORKING VERSION COMPLETE
 
-**Status:** Phase 3.1 Foundation Complete (2025-11-14)
+**Status:** Phase 3.2 Complete (2025-11-14)
 **Target Package:** `internal/diagnostics/`
+
 **Phase 3.1 Foundation ✅ Complete:**
 - ✅ Core `Checker` interface and `DiagnosticRunner` architecture
 - ✅ `CheckResult` types with JSON structures
 - ✅ Severity classification system with configurable thresholds
 - ✅ `ThresholdConfig` for all diagnostic categories
 - ✅ Parallel and sequential check execution support
-**Files:** `diagnostics.go`, `result.go`, `severity.go` (858 lines)
+**Files:** `diagnostics.go`, `result.go`, `severity.go` (962 lines)
 
-**Phase 3.2 Remaining:**
-- ⏳ Implement 8 diagnostic checkers (CPU, memory, disk, process, logs, network, service, security)
-- ⏳ Command output parsers for each check
-- ⏳ Platform detection (Linux, macOS, BSD)
-- ⏳ Output formatters (text, JSON, YAML)
-- ⏳ Update `diagnose.go` command with full integration
+**Phase 3.2 Minimal Implementation ✅ Complete:**
+- ✅ CPU diagnostic checker with load average and usage monitoring
+- ✅ Memory diagnostic checker with swap tracking (Linux + macOS)
+- ✅ SSH command executor adapter
+- ✅ Text formatter with color-coded output
+- ✅ JSON output support
+- ✅ Full `diagnose.go` command integration with SSH connection
+- ✅ Cross-platform support (Linux, macOS)
+**Files:** `executor.go`, `checkers/cpu.go`, `checkers/memory.go`, `formatters/text.go` (867 lines)
+**Total:** 7 files, 1,829 lines of code
+
+**Phase 3.3 Remaining (Future Work):**
+- ⏳ Additional checkers: Disk, Process, Logs, Network, Service, Security
+- ⏳ YAML output formatter
+- ⏳ Enhanced platform-specific optimizations
+- ⏳ Checker dependencies and ordering
 
 ### Phase 4: AI Integration Layer
 
