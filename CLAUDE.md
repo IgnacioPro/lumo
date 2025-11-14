@@ -59,7 +59,7 @@ lumo/
 │       ├── main.go               # Entry point (5 lines)
 │       ├── root.go               # Root command + global setup (89 lines)
 │       ├── connect.go            # SSH connection command (173 lines) ✅
-│       ├── diagnose.go           # System diagnostics command (167 lines) ✅
+│       ├── diagnose.go           # System diagnostics command (190 lines) ✅
 │       ├── fix.go                # Auto-remediation command (stub)
 │       ├── report.go             # Report generation command (stub)
 │       └── serve.go              # API server command (stub)
@@ -78,16 +78,20 @@ lumo/
 │   │   ├── client.go             # Main SSH client (368 lines)
 │   │   └── session.go            # Session & command execution (879 lines)
 │   │
-│   └── diagnostics/               # Diagnostic system ✅ Phase 3.1 & 3.2
-│       ├── diagnostics.go        # Core runner & interfaces (285 lines)
-│       ├── result.go             # Result types & reporting (323 lines)
+│   └── diagnostics/               # Diagnostic system ✅ Phase 3.1, 3.2, & 3.3
+│       ├── diagnostics.go        # Core runner & interfaces (353 lines)
+│       ├── result.go             # Result types & reporting (320 lines)
 │       ├── severity.go           # Severity & thresholds (354 lines)
-│       ├── executor.go           # SSH command executor (49 lines)
+│       ├── executor.go           # SSH command executor (51 lines)
 │       ├── checkers/             # Diagnostic checkers
 │       │   ├── cpu.go            # CPU diagnostics (200 lines) ✅
-│       │   └── memory.go         # Memory diagnostics (338 lines) ✅
+│       │   ├── memory.go         # Memory diagnostics (338 lines) ✅
+│       │   ├── disk.go           # Disk diagnostics (366 lines) ✅
+│       │   ├── process.go        # Process diagnostics (298 lines) ✅
+│       │   ├── service.go        # Service diagnostics (344 lines) ✅
+│       │   └── network.go        # Network diagnostics (474 lines) ✅
 │       └── formatters/           # Output formatters
-│           └── text.go           # Text formatter (280 lines) ✅
+│           └── text.go           # Text formatter (265 lines) ✅
 │
 ├── configs/                       # Configuration templates
 │   └── config.example.yaml        # Example configuration file
@@ -98,9 +102,9 @@ lumo/
 ├── CLAUDE.md                      # AI assistant guide (this file)
 └── README.md                      # User-facing documentation
 
-Total: 23 Go files, ~5,300 lines of code
+Total: 30 Go files, ~8,500 lines of code
 Phase 2 (SSH): 8 files, 2,410 lines
-Phase 3 (Diagnostics): 7 files, 1,829 lines
+Phase 3 (Diagnostics): 12 files, 3,835 lines
 ```
 
 ### Directory Purposes
@@ -134,10 +138,11 @@ Phase 3 (Diagnostics): 7 files, 1,829 lines
 - `github.com/spf13/afero` - Filesystem abstraction (used by Viper)
 - `github.com/spf13/pflag` - POSIX-style flags (used by Cobra)
 - `github.com/fsnotify/fsnotify` - Config file watching (used by Viper)
+- `golang.org/x/crypto/ssh` (Phase 2) - SSH client implementation
+- `github.com/cenkalti/backoff/v4` (Phase 2) - Exponential backoff retry logic
 
 ### Planned Dependencies (Future Phases)
 
-- **Phase 2 (SSH):** `golang.org/x/crypto/ssh`
 - **Phase 4 (AI):** Anthropic/OpenAI SDKs or custom HTTP clients
 - **Phase 7 (API):** `gin-gonic/gin` or `labstack/echo` for REST API
 
@@ -425,11 +430,11 @@ rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "simulate without c
 
 | Command | File | Status | Purpose | Key Flags |
 |---------|------|--------|---------|-----------|
-| `connect` | `connect.go` | Phase 2 stub | SSH connection | `--port`, `--user`, `--key` |
-| `diagnose` | `diagnose.go` | Phase 3 stub | System health checks | `--checks`, `--all` |
-| `fix` | `fix.go` | Phase 5 stub | Auto-remediation | `--auto-approve`, `--skip` |
-| `report` | `report.go` | Phase 6 stub | Report generation | `--format`, `--output`, `--summary` |
-| `serve` | `serve.go` | Phase 7 stub | API server | `--port`, `--host`, `--tls` |
+| `connect` | `connect.go` | Phase 2 Complete | SSH connection with auth | `--port`, `--user`, `--key`, `--password` |
+| `diagnose` | `diagnose.go` | Phase 3 Complete | System health checks (all 6 checkers) | `--checks`, `--format`, `--port` |
+| `fix` | `fix.go` | Phase 5 Planned | Auto-remediation | `--auto-approve`, `--skip`, `--dry-run` |
+| `report` | `report.go` | Phase 6 Planned | Report generation | `--format`, `--output`, `--summary` |
+| `serve` | `serve.go` | Phase 7 Planned | API server | `--port`, `--host`, `--tls` |
 
 ### Command Registration Pattern
 
@@ -1212,7 +1217,83 @@ func validateHost(host string) error {
 - `memory_used_percent` - RAM utilization percentage
 - `swap_used_percent` - Swap utilization percentage
 
-### internal/diagnostics/formatters/text.go (280 lines)
+### internal/diagnostics/checkers/disk.go (366 lines)
+
+**Purpose:** Disk space and inode diagnostic checker
+
+**Features:**
+- Disk space monitoring (`df` command output parsing)
+- Inode usage tracking
+- Multi-filesystem support (ext4, XFS, btrfs, APFS, etc.)
+- Smart filesystem filtering (excludes pseudo-filesystems)
+- Cross-platform support (Linux & macOS)
+- Capacity and usage percentage calculations
+
+**Metrics Generated:**
+- `disk_used_percent` - Disk space utilization by path
+- `inode_used_percent` - Inode utilization by filesystem
+- `disk_available_percent` - Available disk space percentage
+
+### internal/diagnostics/checkers/process.go (298 lines)
+
+**Purpose:** Process and resource diagnostic checker
+
+**Features:**
+- Process count monitoring
+- Zombie process detection
+- Top 5 CPU consumers identification
+- Top 5 memory consumers identification
+- Process state distribution analysis
+- Cross-platform command execution (ps, top)
+- Graceful handling of missing `top` command
+
+**Metrics Generated:**
+- `process_count` - Total running processes
+- `zombie_process_count` - Count of zombie processes
+- `top_cpu_consumers` - Top 5 by CPU usage
+- `top_memory_consumers` - Top 5 by memory usage
+- `process_states` - Distribution by state (R, S, D, Z, etc.)
+
+### internal/diagnostics/checkers/service.go (344 lines)
+
+**Purpose:** Service status diagnostic checker
+
+**Features:**
+- Multi-platform service manager detection (systemd, sysvinit, launchd)
+- Failed service identification
+- Service status monitoring
+- Automatic platform detection
+- Graceful degradation on unavailable service managers
+
+**Metrics Generated:**
+- `enabled_services_count` - Number of enabled services
+- `failed_services` - List of failed services
+- `critical_services_status` - Status of critical services
+- `service_manager_type` - Detected service manager (systemd/sysvinit/launchd)
+
+### internal/diagnostics/checkers/network.go (474 lines)
+
+**Purpose:** Network and connectivity diagnostic checker
+
+**Features:**
+- Network interface monitoring (status, IP addresses, statistics)
+- Active connection tracking (listening ports, established connections)
+- DNS resolution testing
+- Internet connectivity verification (ping test)
+- Interface statistics (bytes in/out, errors, drops)
+- Cross-platform support (Linux, macOS, BSD)
+- Fallback mechanisms for unavailable tools
+
+**Metrics Generated:**
+- `network_interfaces_up` - Count of active interfaces
+- `network_interfaces_down` - Count of inactive interfaces
+- `established_connections` - Count of established TCP connections
+- `listening_ports` - Count of listening sockets
+- `dns_resolution_ok` - Whether DNS is working
+- `internet_connectivity_ok` - Whether internet is reachable
+- `interface_statistics` - Detailed per-interface metrics
+
+### internal/diagnostics/formatters/text.go (265 lines)
 
 **Purpose:** Human-readable text output formatter
 
@@ -1227,22 +1308,34 @@ func validateHost(host string) error {
 - `FormatReport(report)` - Formats complete diagnostic report
 - `FormatResult(result)` - Formats single check result
 
-### cmd/lumo/diagnose.go (167 lines)
+### cmd/lumo/diagnose.go (190 lines)
 
-**Purpose:** Diagnostic command implementation
+**Purpose:** Diagnostic command implementation with full SSH integration
 
 **Features:**
-- SSH connection with authentication
-- Registers and runs diagnostic checkers
+- SSH connection with authentication (all 4 methods supported)
+- Registers and runs all 6 diagnostic checkers
 - Supports text and JSON output formats
-- Configurable thresholds and check selection
+- Configurable check selection via `--checks` flag
+- Configurable SSH port via `--port` flag
+- Full integration with severity thresholds
+- Parallel and sequential check execution
 
 **Usage Examples:**
 ```bash
 lumo diagnose user@example.com
-lumo diagnose user@host --checks cpu,memory
-lumo diagnose user@host --format json
+lumo diagnose user@host --checks cpu,memory,disk
+lumo diagnose user@host --port 2222 --format json
+lumo diagnose user@host --checks all
 ```
+
+**Supported Checks:**
+- `cpu` - CPU load and usage
+- `memory` - RAM and swap utilization
+- `disk` - Disk space and inode usage
+- `process` - Process count, zombies, top consumers
+- `service` - Service status by manager
+- `network` - Connectivity, interfaces, DNS
 
 ### cmd/lumo/main.go (5 lines)
 
@@ -1306,7 +1399,7 @@ cp configs/config.example.yaml ~/.lumo/config.yaml
 - ✅ Severity classification system with configurable thresholds
 - ✅ `ThresholdConfig` for all diagnostic categories
 - ✅ Parallel and sequential check execution support
-**Files:** `diagnostics.go`, `result.go`, `severity.go` (962 lines)
+**Files:** `diagnostics.go`, `result.go`, `severity.go` (1,027 lines)
 
 **Phase 3.2 First Checkers ✅ Complete:**
 - ✅ CPU diagnostic checker with load average and usage monitoring
@@ -1316,7 +1409,7 @@ cp configs/config.example.yaml ~/.lumo/config.yaml
 - ✅ JSON output support
 - ✅ Full `diagnose.go` command integration with SSH connection
 - ✅ Cross-platform support (Linux, macOS)
-**Files:** `executor.go`, `checkers/cpu.go`, `checkers/memory.go`, `formatters/text.go` (867 lines)
+**Files:** `executor.go`, `checkers/cpu.go`, `checkers/memory.go`, `formatters/text.go` (916 lines)
 
 **Phase 3.3 Remaining Checkers ✅ Complete:**
 - ✅ Disk space checker with inode monitoring and usage thresholds
@@ -1327,7 +1420,7 @@ cp configs/config.example.yaml ~/.lumo/config.yaml
 - ✅ Cross-platform command execution (Linux, macOS, BSD)
 - ✅ Configurable severity thresholds for all metrics
 - ✅ Graceful handling of unavailable platform-specific data
-**Files Added:** `checkers/disk.go`, `checkers/process.go`, `checkers/service.go`, `checkers/network.go` (1,606 lines)
+**Files Added:** `checkers/disk.go`, `checkers/process.go`, `checkers/service.go`, `checkers/network.go`, `diagnose.go` (1,482 lines)
 **Total Phase 3:** 12 files, 3,835 lines of code
 
 **ALL SIX CORE CHECKERS:**
