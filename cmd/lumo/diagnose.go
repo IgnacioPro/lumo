@@ -23,7 +23,7 @@ var diagnoseCmd = &cobra.Command{
 	Long: `Run diagnostic commands to check system health including:
   - CPU usage and load average
   - Memory and swap usage
-  - Disk space (coming soon)
+  - Disk space and inode usage
   - Process status (coming soon)
   - Log analysis (coming soon)
   - Network connectivity (coming soon)
@@ -34,7 +34,7 @@ and displays the results in a formatted report.
 Examples:
   lumo diagnose user@example.com
   lumo diagnose root@192.168.1.10 --port 2222
-  lumo diagnose admin@server --checks cpu,memory
+  lumo diagnose admin@server --checks cpu,memory,disk
   lumo diagnose user@host --format json`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -55,7 +55,7 @@ func init() {
 	diagnoseCmd.Flags().DurationP("timeout", "t", 30*time.Second, "Connection timeout")
 
 	// Diagnostic flags
-	diagnoseCmd.Flags().StringSliceP("checks", "c", []string{}, "Specific checks to run (cpu, memory)")
+	diagnoseCmd.Flags().StringSliceP("checks", "c", []string{}, "Specific checks to run (cpu, memory, disk)")
 	diagnoseCmd.Flags().BoolP("all", "a", true, "Run all available diagnostic checks")
 	diagnoseCmd.Flags().StringP("format", "f", "text", "Output format (text, json)")
 	diagnoseCmd.Flags().BoolP("no-color", "n", false, "Disable colored output")
@@ -79,7 +79,6 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 	identityFile, _ := cmd.Flags().GetString("identity")
 	password, _ := cmd.Flags().GetString("password")
 	checksFilter, _ := cmd.Flags().GetStringSlice("checks")
-	runAll, _ := cmd.Flags().GetBool("all")
 	format, _ := cmd.Flags().GetString("format")
 	noColor, _ := cmd.Flags().GetBool("no-color")
 
@@ -137,18 +136,20 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 
 	// Create diagnostic runner
 	diagConfig := diagnostics.DefaultConfig()
-	if len(checksFilter) > 0 && !runAll {
+	// If specific checks are requested, use only those (overrides --all)
+	if len(checksFilter) > 0 {
 		diagConfig.EnabledChecks = checksFilter
 	}
 
 	thresholds := diagnostics.DefaultThresholds()
 	runner := diagnostics.NewRunner(diagConfig, thresholds, executor, log)
 
-	// Register checkers (minimal set for Phase 3.2)
+	// Register checkers (Phase 3.3: CPU, Memory, Disk)
 	log.Debug("Registering diagnostic checkers")
 	runner.RegisterCheckers(
 		checkers.NewCPUChecker(thresholds.CPU),
 		checkers.NewMemoryChecker(thresholds.Memory),
+		checkers.NewDiskChecker(thresholds.Disk),
 	)
 
 	// Run diagnostics
