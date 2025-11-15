@@ -144,12 +144,13 @@ type Config struct {
 - **Fallback:** Generic `LUMO_AI_API_KEY` (requires changing when switching providers)
 
 **Diagnostics Configuration:**
-- `network.targets`: List of network endpoints to test connectivity
+- `network.targets`: List of network endpoints to test connectivity from diagnosed server
   - Each target specifies: `host`, `port`, `protocol` (tcp/icmp)
   - Port 0 = ICMP-only (ping test)
-  - TCP targets test port connectivity with latency measurement
+  - TCP targets test port connectivity with latency & error classification
   - Defaults: 8.8.8.8 and google.com via ICMP if no targets configured
-  - Example use cases: Test database connectivity, API availability, DNS resolution
+  - Example use cases: Test database connectivity, API availability, DNS resolution, cache connectivity
+  - Error types: `connection_refused`, `dns_failed`, `timeout`, `unreachable`
 
 ### Loading Configuration
 
@@ -376,7 +377,7 @@ chmod 600 /etc/lumo/key.pem
 | `disk.go` | Space usage %, inode usage %, multi-filesystem |
 | `process.go` | Process count, zombies, top consumers |
 | `service.go` | Failed services, systemd/init/launchd support |
-| `network.go` | Interfaces, connectivity (ICMP/TCP), configurable targets, latency, error classification |
+| `network.go` | Interfaces (Linux `ip`, macOS/BSD `ifconfig`), connectivity (ICMP/TCP), configurable targets, latency, error classification, status tracking |
 
 ### AI Providers (All 4 Complete)
 
