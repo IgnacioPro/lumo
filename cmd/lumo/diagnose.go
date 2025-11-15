@@ -21,7 +21,7 @@ import (
 
 var diagnoseCmd = &cobra.Command{
 	Use:   "diagnose [user@]host",
-	Short: "Run diagnostic commands on remote servers",
+	Short: "Run diagnostic commands on remote or local systems",
 	Long: `Run diagnostic commands to check system health including:
   - CPU usage and load average
   - Memory and swap usage
@@ -30,14 +30,15 @@ var diagnoseCmd = &cobra.Command{
   - Service status (systemd, init, launchd)
   - Network interfaces, connectivity, and DNS
 
-The command connects to the remote server via SSH, runs diagnostic checks,
-and displays the results in a formatted report.
+For remote hosts, connects via SSH. For localhost, runs commands directly
+without SSH overhead.
 
 Examples:
-  lumo diagnose user@example.com
+  lumo diagnose localhost                    # Run locally without SSH
+  lumo diagnose user@example.com             # Remote server via SSH
   lumo diagnose root@192.168.1.10 --port 2222
-  lumo diagnose admin@server --checks cpu,memory,disk,process,service,network
-  lumo diagnose user@host --format json`,
+  lumo diagnose admin@server --checks cpu,memory,disk
+  lumo diagnose localhost --analyze          # Local with AI analysis`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runDiagnostics(cmd, args); err != nil {
@@ -99,7 +100,14 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 		username = currentUser.Username
 	}
 
-	log.Infof("Starting diagnostics for %s@%s", username, hostname)
+	// Check if this is a localhost execution (no SSH needed)
+	isLocal := isLocalhost(hostname)
+
+	if isLocal {
+		log.Info("Running diagnostics locally (no SSH connection needed)")
+	} else {
+		log.Infof("Starting diagnostics for %s@%s", username, hostname)
+	}
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -108,39 +116,47 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 		cfg = config.DefaultConfig()
 	}
 
-	// Create SSH client configuration
-	sshClientConfig := ssh.NewClientConfig(cfg.SSH)
+	// Create command executor (local or SSH)
+	var executor diagnostics.CommandExecutor
+	if isLocal {
+		// Use local executor - no SSH needed
+		executor = diagnostics.NewLocalExecutor()
+		log.Debug("Using local command executor")
+	} else {
+		// Create SSH client configuration
+		sshClientConfig := ssh.NewClientConfig(cfg.SSH)
 
-	// Override with command-line flags
-	if identityFile != "" {
-		if err := sshClientConfig.SetKeyPath(identityFile); err != nil {
-			return fmt.Errorf("invalid key path: %w", err)
+		// Override with command-line flags
+		if identityFile != "" {
+			if err := sshClientConfig.SetKeyPath(identityFile); err != nil {
+				return fmt.Errorf("invalid key path: %w", err)
+			}
 		}
+
+		if password != "" {
+			log.Warn("Using password from command line is not secure!")
+			sshClientConfig.SetPassword(password)
+		}
+
+		// Create SSH client
+		log.Debug("Creating SSH client")
+		sshClient, err := ssh.NewClient(sshClientConfig, log)
+		if err != nil {
+			return fmt.Errorf("failed to create SSH client: %w", err)
+		}
+
+		// Connect
+		log.Infof("Connecting to %s@%s:%d", username, hostname, port)
+		if err := sshClient.Connect(hostname, port, username); err != nil {
+			return fmt.Errorf("failed to connect: %w", err)
+		}
+		defer sshClient.Disconnect()
+
+		log.Info("Connected successfully")
+
+		// Create SSH executor
+		executor = diagnostics.NewSSHExecutor(sshClient)
 	}
-
-	if password != "" {
-		log.Warn("Using password from command line is not secure!")
-		sshClientConfig.SetPassword(password)
-	}
-
-	// Create SSH client
-	log.Debug("Creating SSH client")
-	sshClient, err := ssh.NewClient(sshClientConfig, log)
-	if err != nil {
-		return fmt.Errorf("failed to create SSH client: %w", err)
-	}
-
-	// Connect
-	log.Infof("Connecting to %s@%s:%d", username, hostname, port)
-	if err := sshClient.Connect(hostname, port, username); err != nil {
-		return fmt.Errorf("failed to connect: %w", err)
-	}
-	defer sshClient.Disconnect()
-
-	log.Info("Connected successfully")
-
-	// Create command executor
-	executor := diagnostics.NewSSHExecutor(sshClient)
 
 	// Create diagnostic runner
 	diagConfig := diagnostics.DefaultConfig()
@@ -428,4 +444,28 @@ func formatRisk(risk ai.RiskLevel, color bool) string {
 	default:
 		return string(risk)
 	}
+}
+
+// isLocalhost checks if the given hostname refers to the local machine.
+func isLocalhost(hostname string) bool {
+	// Normalize hostname to lowercase for comparison
+	hostname = strings.ToLower(strings.TrimSpace(hostname))
+
+	// Common localhost patterns
+	localhostPatterns := []string{
+		"localhost",
+		"127.0.0.1",
+		"::1",           // IPv6 localhost
+		"0.0.0.0",       // All interfaces (treated as local)
+		"",              // Empty hostname (treated as local)
+		"localhost.localdomain",
+	}
+
+	for _, pattern := range localhostPatterns {
+		if hostname == pattern {
+			return true
+		}
+	}
+
+	return false
 }
