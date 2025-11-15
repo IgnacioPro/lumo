@@ -73,6 +73,17 @@ func (m *MemoryChecker) Run(ctx context.Context, executor diagnostics.CommandExe
 	result.SetData("swap_used_bytes", memStats.SwapUsedBytes)
 	result.SetData("swap_used_percent", memStats.SwapUsedPercent)
 
+	// Get top memory consumers
+	topConsumers, err := m.getTopMemoryConsumers(ctx, executor, memStats.TotalBytes)
+	if err != nil {
+		// Log warning but don't fail the check
+		result.SetData("top_consumers_warning", fmt.Sprintf("Failed to get top consumers: %v", err))
+		result.SetData("top_consumers", []MemoryConsumer{})
+	} else {
+		memStats.TopConsumers = topConsumers
+		result.SetData("top_consumers", topConsumers)
+	}
+
 	// Add metrics for threshold evaluation
 	result.AddMetric(diagnostics.Metric{
 		Name:          "memory_used_percent",
@@ -110,6 +121,16 @@ type MemoryStats struct {
 	SwapTotalBytes  uint64
 	SwapUsedBytes   uint64
 	SwapUsedPercent float64
+	TopConsumers    []MemoryConsumer
+}
+
+// MemoryConsumer represents a process consuming memory
+type MemoryConsumer struct {
+	PID         int     `json:"pid"`
+	Command     string  `json:"command"`
+	MemoryBytes uint64  `json:"memory_bytes"`
+	MemoryMB    float64 `json:"memory_mb"`
+	Percent     float64 `json:"percent"`
 }
 
 // getMemoryStats retrieves memory statistics from the system
@@ -324,6 +345,85 @@ func (m *MemoryChecker) getMemoryStatsMacOS(ctx context.Context, executor diagno
 	return stats, nil
 }
 
+// getTopMemoryConsumers retrieves top memory-consuming processes
+func (m *MemoryChecker) getTopMemoryConsumers(ctx context.Context, executor diagnostics.CommandExecutor, totalBytes uint64) ([]MemoryConsumer, error) {
+	// Try ps command (works on both Linux and macOS)
+	// First try Linux format (--sort), if it fails try macOS format (-m)
+	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx,
+		"if ps aux --sort=-%mem >/dev/null 2>&1; then ps aux --sort=-%mem | awk 'NR>1 && NR<=11'; else ps aux -m | awk 'NR>1 && NR<=11'; fi")
+	if exitCode != 0 || strings.TrimSpace(stdout) == "" {
+		return nil, fmt.Errorf("failed to get process list (exit: %d)", exitCode)
+	}
+
+	consumers := []MemoryConsumer{}
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Skip header lines (only if they exist)
+		if strings.Contains(line, "USER") && strings.Contains(line, "%CPU") {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) < 11 {
+			continue
+		}
+
+		// Parse PID (field 1)
+		pid, err := strconv.Atoi(fields[1])
+		if err != nil {
+			continue
+		}
+
+		// Parse %MEM (field 3)
+		percent, err := strconv.ParseFloat(fields[3], 64)
+		if err != nil {
+			continue
+		}
+
+		// Parse RSS (field 5, in KB on most systems, bytes on some)
+		rssValue, err := strconv.ParseUint(fields[5], 10, 64)
+		if err != nil {
+			continue
+		}
+
+		// RSS is in KB on Linux/macOS typically
+		// If the value is very large (>100GB in KB), it's likely in bytes
+		var memoryBytes uint64
+		if rssValue > 100*1024*1024 {
+			// Probably in bytes
+			memoryBytes = rssValue
+		} else {
+			// Probably in KB
+			memoryBytes = rssValue * 1024
+		}
+
+		memoryMB := float64(memoryBytes) / 1024 / 1024
+
+		// Get command (join remaining fields after field 10)
+		command := strings.Join(fields[10:], " ")
+		// Truncate long commands
+		if len(command) > 60 {
+			command = command[:57] + "..."
+		}
+
+		consumers = append(consumers, MemoryConsumer{
+			PID:         pid,
+			Command:     command,
+			MemoryBytes: memoryBytes,
+			MemoryMB:    memoryMB,
+			Percent:     percent,
+		})
+	}
+
+	return consumers, nil
+}
+
 // formatMessage creates a human-readable message from memory stats
 func (m *MemoryChecker) formatMessage(stats *MemoryStats) string {
 	totalGB := float64(stats.TotalBytes) / 1024 / 1024 / 1024
@@ -336,6 +436,12 @@ func (m *MemoryChecker) formatMessage(stats *MemoryStats) string {
 	if stats.SwapTotalBytes > 0 {
 		swapGB := float64(stats.SwapUsedBytes) / 1024 / 1024 / 1024
 		msg += fmt.Sprintf(", Swap: %.1f%% (%.1f GB)", stats.SwapUsedPercent, swapGB)
+	}
+
+	// Add top consumer info
+	if len(stats.TopConsumers) > 0 {
+		top := stats.TopConsumers[0]
+		msg += fmt.Sprintf(", Top: %s (%.0f MB)", top.Command, top.MemoryMB)
 	}
 
 	return msg

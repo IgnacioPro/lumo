@@ -380,7 +380,7 @@ chmod 600 /etc/lumo/key.pem
 | Checker | Key Metrics |
 |---------|-------------|
 | `cpu.go` | Load average, usage %, core count |
-| `memory.go` | RAM/swap usage %, cross-platform |
+| `memory.go` | RAM/swap usage %, top memory consumers, cross-platform |
 | `disk.go` | Space usage %, inode usage %, multi-filesystem |
 | `process.go` | Process count, zombies, top consumers |
 | `service.go` | Failed services, systemd/init/launchd support |
@@ -424,11 +424,11 @@ chmod 600 /etc/lumo/key.pem
 - Local execution support (no SSH for localhost)
 - 7 files, 1,964 lines (includes tests)
 
-### ⏳ Phase 4.1: Enhanced Diagnostics (Planned)
-- **Memory enhancements:** Top memory consumers, page fault tracking
-- Deep-dive metrics for existing checkers
-- Better process-level insights
-- Memory pressure indicators
+### 🔄 Phase 4.1: Enhanced Diagnostics (In Progress)
+- ✅ **Memory enhancements:** Top 10 memory consumers per process
+- ⏳ Page fault tracking and memory pressure indicators
+- ⏳ Deep-dive metrics for existing checkers
+- ⏳ Better process-level insights
 
 ### ⏳ Phase 5: Auto-Remediation (Planned)
 - Remediation action registry
