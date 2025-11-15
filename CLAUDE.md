@@ -152,6 +152,12 @@ type Config struct {
   - Example use cases: Test database connectivity, API availability, DNS resolution, cache connectivity
   - Error types: `connection_refused`, `dns_failed`, `timeout`, `unreachable`
 
+**Network Metrics Collected:**
+- Interface detection with state tracking (up/down/inactive)
+- Active connection counting (Linux: `ss`, macOS/BSD: `netstat`)
+- Per-target latency and reachability
+- Interface statistics: RX/TX bytes, packets, errors
+
 ### Loading Configuration
 
 ```go
@@ -377,7 +383,7 @@ chmod 600 /etc/lumo/key.pem
 | `disk.go` | Space usage %, inode usage %, multi-filesystem |
 | `process.go` | Process count, zombies, top consumers |
 | `service.go` | Failed services, systemd/init/launchd support |
-| `network.go` | Interfaces (Linux `ip`, macOS/BSD `ifconfig`), connectivity (ICMP/TCP), configurable targets, latency, error classification, status tracking |
+| `network.go` | Interfaces (Linux `ip`, macOS/BSD `ifconfig` with proper UP/status parsing), connectivity (ICMP/TCP), configurable targets, latency, error classification, active connection counting |
 
 ### AI Providers (All 4 Complete)
 
