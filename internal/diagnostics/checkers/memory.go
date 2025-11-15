@@ -73,6 +73,17 @@ func (m *MemoryChecker) Run(ctx context.Context, executor diagnostics.CommandExe
 	result.SetData("swap_used_bytes", memStats.SwapUsedBytes)
 	result.SetData("swap_used_percent", memStats.SwapUsedPercent)
 
+	// Get top memory consumers
+	topConsumers, err := m.getTopMemoryConsumers(ctx, executor, memStats.TotalBytes)
+	if err != nil {
+		// Log warning but don't fail the check
+		result.SetData("top_consumers_warning", fmt.Sprintf("Failed to get top consumers: %v", err))
+		result.SetData("top_consumers", []MemoryConsumer{})
+	} else {
+		memStats.TopConsumers = topConsumers
+		result.SetData("top_consumers", topConsumers)
+	}
+
 	// Add metrics for threshold evaluation
 	result.AddMetric(diagnostics.Metric{
 		Name:          "memory_used_percent",
@@ -110,6 +121,16 @@ type MemoryStats struct {
 	SwapTotalBytes  uint64
 	SwapUsedBytes   uint64
 	SwapUsedPercent float64
+	TopConsumers    []MemoryConsumer
+}
+
+// MemoryConsumer represents a process consuming memory
+type MemoryConsumer struct {
+	PID         int     `json:"pid"`
+	Command     string  `json:"command"`
+	MemoryBytes uint64  `json:"memory_bytes"`
+	MemoryMB    float64 `json:"memory_mb"`
+	Percent     float64 `json:"percent"`
 }
 
 // getMemoryStats retrieves memory statistics from the system
@@ -324,6 +345,161 @@ func (m *MemoryChecker) getMemoryStatsMacOS(ctx context.Context, executor diagno
 	return stats, nil
 }
 
+// Constants for ps output parsing
+const (
+	// PS field positions (0-indexed)
+	psFieldPID     = 1  // Process ID
+	psFieldCPU     = 2  // CPU percentage
+	psFieldMem     = 3  // Memory percentage
+	psFieldVSZ     = 4  // Virtual memory size
+	psFieldRSS     = 5  // Resident set size
+	psFieldCommand = 10 // Command line (fields 10+)
+
+	// Parsing constraints
+	psMinFields      = 11                // Minimum fields required for valid ps output
+	maxCommandLength = 60                // Maximum command string length
+	maxConsumers     = 10                // Maximum number of consumers to return
+	rssKBThreshold   = 100 * 1024 * 1024 // 100GB threshold to detect KB vs bytes
+)
+
+// getTopMemoryConsumers retrieves top memory-consuming processes
+func (m *MemoryChecker) getTopMemoryConsumers(ctx context.Context, executor diagnostics.CommandExecutor, totalBytes uint64) ([]MemoryConsumer, error) {
+	// Try Linux-style sorting first, fall back to macOS if needed
+	psOutput, err := m.executeProcessList(ctx, executor)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process list: %w", err)
+	}
+
+	return m.parseProcessList(psOutput), nil
+}
+
+// executeProcessList executes platform-appropriate ps command
+func (m *MemoryChecker) executeProcessList(ctx context.Context, executor diagnostics.CommandExecutor) (string, error) {
+	// First try Linux-style sorting
+	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, "ps aux --sort=-%mem")
+	if exitCode == 0 && strings.TrimSpace(stdout) != "" {
+		return stdout, nil
+	}
+
+	// Fall back to macOS-style sorting
+	stdout, _, exitCode, err := executor.ExecuteWithContext(ctx, "ps aux -m")
+	if err != nil {
+		return "", fmt.Errorf("ps command failed: %w", err)
+	}
+	if exitCode != 0 {
+		return "", fmt.Errorf("ps command failed with exit code: %d", exitCode)
+	}
+	if strings.TrimSpace(stdout) == "" {
+		return "", fmt.Errorf("ps command returned empty output")
+	}
+
+	return stdout, nil
+}
+
+// parseProcessList parses ps command output into MemoryConsumer structs
+func (m *MemoryChecker) parseProcessList(output string) []MemoryConsumer {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	consumers := []MemoryConsumer{}
+	processCount := 0
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Skip header lines
+		if m.isHeaderLine(line) {
+			continue
+		}
+
+		// Stop after collecting enough processes
+		if processCount >= maxConsumers {
+			break
+		}
+
+		consumer, ok := m.parseProcessLine(line)
+		if ok {
+			consumers = append(consumers, consumer)
+			processCount++
+		}
+	}
+
+	return consumers
+}
+
+// isHeaderLine checks if a line is a ps output header
+func (m *MemoryChecker) isHeaderLine(line string) bool {
+	return strings.Contains(line, "USER") && strings.Contains(line, "%CPU")
+}
+
+// parseProcessLine parses a single line of ps output
+func (m *MemoryChecker) parseProcessLine(line string) (MemoryConsumer, bool) {
+	fields := strings.Fields(line)
+	if len(fields) < psMinFields {
+		return MemoryConsumer{}, false
+	}
+
+	// Parse and validate PID
+	pid, err := strconv.Atoi(fields[psFieldPID])
+	if err != nil || pid <= 0 {
+		return MemoryConsumer{}, false
+	}
+
+	// Parse and validate memory percentage
+	percent, err := strconv.ParseFloat(fields[psFieldMem], 64)
+	if err != nil || percent < 0 || percent > 100 {
+		return MemoryConsumer{}, false
+	}
+
+	// Parse and validate RSS
+	rssValue, err := strconv.ParseUint(fields[psFieldRSS], 10, 64)
+	if err != nil {
+		return MemoryConsumer{}, false
+	}
+
+	// Convert RSS to bytes (handle KB vs bytes detection)
+	memoryBytes := m.convertRSSToBytes(rssValue)
+	memoryMB := float64(memoryBytes) / (1024 * 1024)
+
+	// Extract and sanitize command
+	command := m.sanitizeCommand(strings.Join(fields[psFieldCommand:], " "))
+
+	return MemoryConsumer{
+		PID:         pid,
+		Command:     command,
+		MemoryBytes: memoryBytes,
+		MemoryMB:    memoryMB,
+		Percent:     percent,
+	}, true
+}
+
+// convertRSSToBytes converts RSS value to bytes, handling KB vs bytes detection
+func (m *MemoryChecker) convertRSSToBytes(rssValue uint64) uint64 {
+	// If the value is very large (>100GB in KB), it's likely already in bytes
+	if rssValue > rssKBThreshold {
+		return rssValue
+	}
+	// Otherwise assume it's in KB and convert to bytes
+	return rssValue * 1024
+}
+
+// sanitizeCommand sanitizes and truncates process command line
+func (m *MemoryChecker) sanitizeCommand(command string) string {
+	// Remove any potentially dangerous characters (though this is already safe since
+	// we're not executing this string, just displaying it)
+	command = strings.ReplaceAll(command, "\x00", "") // Remove null bytes
+	command = strings.ReplaceAll(command, "\n", " ")  // Replace newlines with spaces
+	command = strings.ReplaceAll(command, "\r", " ")  // Replace carriage returns with spaces
+
+	// Truncate if too long
+	if len(command) > maxCommandLength {
+		return command[:maxCommandLength-3] + "..."
+	}
+
+	return command
+}
+
 // formatMessage creates a human-readable message from memory stats
 func (m *MemoryChecker) formatMessage(stats *MemoryStats) string {
 	totalGB := float64(stats.TotalBytes) / 1024 / 1024 / 1024
@@ -336,6 +512,12 @@ func (m *MemoryChecker) formatMessage(stats *MemoryStats) string {
 	if stats.SwapTotalBytes > 0 {
 		swapGB := float64(stats.SwapUsedBytes) / 1024 / 1024 / 1024
 		msg += fmt.Sprintf(", Swap: %.1f%% (%.1f GB)", stats.SwapUsedPercent, swapGB)
+	}
+
+	// Add top consumer info
+	if len(stats.TopConsumers) > 0 {
+		top := stats.TopConsumers[0]
+		msg += fmt.Sprintf(", Top: %s (%.0f MB)", top.Command, top.MemoryMB)
 	}
 
 	return msg
