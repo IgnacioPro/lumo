@@ -345,8 +345,9 @@ func (n *NetworkChecker) parseIfconfig(output string) ([]NetworkInterface, error
 // getConnectionCount gets active network connections count
 func (n *NetworkChecker) getConnectionCount(ctx context.Context, executor diagnostics.CommandExecutor) (int, error) {
 	// Count established connections
+	// Use command -v to check if ss exists first, otherwise use netstat
 	stdout, _, exitCode, err := executor.ExecuteWithContext(ctx,
-		"ss -tan state established 2>/dev/null | wc -l || netstat -tan | grep ESTABLISHED | wc -l")
+		"if command -v ss >/dev/null 2>&1; then ss -tan state established 2>/dev/null | tail -n +2 | wc -l; else netstat -tan 2>/dev/null | grep -c ESTABLISHED; fi")
 	if err != nil || exitCode != 0 {
 		return 0, fmt.Errorf("failed to count connections: %w", err)
 	}
@@ -354,11 +355,6 @@ func (n *NetworkChecker) getConnectionCount(ctx context.Context, executor diagno
 	count, err := strconv.Atoi(strings.TrimSpace(stdout))
 	if err != nil {
 		return 0, fmt.Errorf("failed to parse connection count: %w", err)
-	}
-
-	// Subtract header line if present
-	if count > 0 {
-		count--
 	}
 
 	return count, nil
