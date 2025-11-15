@@ -2,50 +2,29 @@
 
 > **Last Updated:** 2025-11-15
 > **Project Version:** 0.4.0
-> **Current Phase:** Phase 4 Complete (AI Integration with 3 Providers)
+> **Current Phase:** Phase 4 Complete (AI Integration with 4 Providers)
 
-This document provides comprehensive guidance for AI assistants (like Claude) working on the Lumo codebase. It covers architecture, conventions, workflows, and best practices to ensure consistent, high-quality contributions.
+This document provides comprehensive guidance for AI assistants working on the Lumo codebase.
 
----
-
-## Table of Contents
-
-1. [Project Overview](#project-overview)
-2. [Codebase Structure](#codebase-structure)
-3. [Technology Stack](#technology-stack)
-4. [Development Workflow](#development-workflow)
-5. [Code Organization Principles](#code-organization-principles)
-6. [Configuration System](#configuration-system)
-7. [CLI Command Structure](#cli-command-structure)
-8. [Adding New Features](#adding-new-features)
-9. [Error Handling Patterns](#error-handling-patterns)
-10. [Logging Guidelines](#logging-guidelines)
-11. [Testing Strategy](#testing-strategy)
-12. [Common Tasks & Examples](#common-tasks--examples)
-13. [Security Considerations](#security-considerations)
-14. [Important Files Reference](#important-files-reference)
-15. [Phase Roadmap](#phase-roadmap)
-16. [Troubleshooting](#troubleshooting)
+**For detailed examples and tutorials, see [DEVELOPMENT.md](DEVELOPMENT.md)**
 
 ---
 
 ## Project Overview
 
 **Lumo** is an intelligent SRE/DevOps automation agent written in Go that:
-
 - **Connects** to remote servers via SSH
-- **Diagnoses** system issues (CPU, memory, disk, processes, logs, network)
-- **Analyzes** problems using AI (Anthropic Claude, OpenAI GPT, or local models)
+- **Diagnoses** system issues (CPU, memory, disk, processes, services, network)
+- **Analyzes** problems using AI (Anthropic, OpenAI, Ollama, Gemini)
 - **Remediates** issues automatically with human-in-the-loop approval
-- **Reports** findings in multiple formats (Markdown, JSON, YAML)
+- **Reports** findings in multiple formats (text, JSON)
 - **Serves** as both a CLI tool and REST API server
 
-### Key Characteristics
-
+**Key Characteristics:**
 - **Language:** Go 1.25.4
 - **Module Path:** `github.com/ignacio/lumo`
 - **Architecture:** Modular CLI with pluggable backends
-- **Current Status:** Phase 4 complete (SSH + Diagnostics + AI Analysis with 3 Providers)
+- **Current Status:** Phase 4 complete (SSH + Diagnostics + AI with 4 providers + Local execution)
 - **License:** MIT
 
 ---
@@ -54,82 +33,42 @@ This document provides comprehensive guidance for AI assistants (like Claude) wo
 
 ```
 lumo/
-├── cmd/                           # Command-line interface entry points
-│   └── lumo/                      # Main application (package main)
-│       ├── main.go               # Entry point (5 lines)
-│       ├── root.go               # Root command + global setup (89 lines)
-│       ├── connect.go            # SSH connection command (173 lines) ✅
-│       ├── diagnose.go           # System diagnostics command (190 lines) ✅
-│       ├── fix.go                # Auto-remediation command (stub)
-│       ├── report.go             # Report generation command (stub)
-│       └── serve.go              # API server command (stub)
-│
-├── internal/                      # Private application packages
+├── cmd/lumo/                      # CLI commands (main package)
+│   ├── main.go                   # Entry point
+│   ├── root.go                   # Root command, global flags
+│   ├── connect.go                # SSH connection ✅
+│   ├── diagnose.go               # Diagnostics (localhost + remote) ✅
+│   ├── fix.go                    # Auto-remediation (planned)
+│   ├── report.go                 # Report generation (planned)
+│   └── serve.go                  # API server (planned)
+├── internal/
 │   ├── config/                    # Configuration management
-│   │   └── config.go             # Config types, loading, validation (152 lines)
-│   │
-│   ├── ssh/                       # SSH client implementation ✅ Phase 2
-│   │   ├── types.go              # Core types and interfaces (177 lines)
-│   │   ├── errors.go             # Custom error types (89 lines)
-│   │   ├── config.go             # SSH client configuration (219 lines)
-│   │   ├── retry.go              # Retry logic with backoff (145 lines)
-│   │   ├── auth.go               # Authentication methods (346 lines)
-│   │   ├── health.go             # Health monitoring (187 lines)
-│   │   ├── client.go             # Main SSH client (368 lines)
-│   │   └── session.go            # Session & command execution (879 lines)
-│   │
-│   ├── diagnostics/               # Diagnostic system ✅ Phase 3.1, 3.2, & 3.3
-│   │   ├── diagnostics.go        # Core runner & interfaces (353 lines)
-│   │   ├── result.go             # Result types & reporting (320 lines)
-│   │   ├── severity.go           # Severity & thresholds (354 lines)
-│   │   ├── executor.go           # SSH command executor (51 lines)
-│   │   ├── checkers/             # Diagnostic checkers
-│   │   │   ├── cpu.go            # CPU diagnostics (200 lines) ✅
-│   │   │   ├── memory.go         # Memory diagnostics (338 lines) ✅
-│   │   │   ├── disk.go           # Disk diagnostics (366 lines) ✅
-│   │   │   ├── process.go        # Process diagnostics (298 lines) ✅
-│   │   │   ├── service.go        # Service diagnostics (344 lines) ✅
-│   │   │   └── network.go        # Network diagnostics (474 lines) ✅
-│   │   └── formatters/           # Output formatters
-│   │       └── text.go           # Text formatter (265 lines) ✅
-│   │
-│   └── ai/                        # AI Integration ✅ Phase 4
-│       ├── types.go               # Core types & interfaces (150 lines)
-│       ├── provider.go            # Provider factory (65 lines)
-│       ├── anthropic.go           # Anthropic Claude provider (416 lines)
-│       ├── openai.go              # OpenAI GPT provider (426 lines)
-│       ├── ollama.go              # Ollama local model provider (370 lines)
-│       ├── prompts.go             # Prompt engineering & parsing (323 lines)
-│       └── prompts_test.go        # Unit tests for prompts (214 lines)
-│
-├── configs/                       # Configuration templates
-│   └── config.example.yaml        # Example configuration file
-│
-├── .gitignore                     # Git ignore patterns (binaries, secrets, configs)
-├── go.mod                         # Go module definition
-├── go.sum                         # Dependency checksums
-├── CLAUDE.md                      # AI assistant guide (this file)
-└── README.md                      # User-facing documentation
+│   ├── ssh/                       # SSH client (8 files, 2,410 lines) ✅
+│   ├── diagnostics/               # Diagnostic system (12 files, 3,835 lines) ✅
+│   │   ├── checkers/             # 6 core checkers (CPU, Memory, Disk, Process, Service, Network)
+│   │   └── formatters/           # Output formatters (text, JSON)
+│   └── ai/                        # AI providers (7 files, 1,964 lines) ✅
+│       ├── anthropic.go          # Claude integration
+│       ├── openai.go             # GPT integration
+│       ├── ollama.go             # Local model support
+│       └── gemini.go             # Google Gemini integration
+└── configs/
+    └── config.example.yaml        # Configuration template
 
-Total: 37 Go files, ~10,600 lines of code
-Phase 2 (SSH): 8 files, 2,410 lines
-Phase 3 (Diagnostics): 12 files, 3,835 lines
-Phase 4 (AI Integration): 7 files, 1,964 lines (includes 214 lines of tests)
+Total: 37 Go files, ~10,600 lines
 ```
 
-### Directory Purposes
+**Directory Purposes:**
 
-| Directory | Purpose | Visibility |
-|-----------|---------|-----------|
-| `cmd/lumo/` | CLI command definitions, flags, user-facing logic | Public (compiled to binary) |
-| `internal/` | Reusable business logic, NOT importable by external projects | Private |
-| `internal/config/` | Configuration loading, validation, defaults | Private |
-| `internal/ssh/` | SSH client with authentication, health monitoring, command execution | Private |
-| `internal/diagnostics/` | Diagnostic system core (runner, results, severity) | Private |
-| `internal/diagnostics/checkers/` | Individual diagnostic check implementations | Private |
-| `internal/diagnostics/formatters/` | Output formatters (text, JSON, etc.) | Private |
-| `internal/ai/` | AI provider integrations (Anthropic, OpenAI, Ollama) | Private |
-| `configs/` | Example/template configuration files | Public (documentation) |
+| Directory | Purpose |
+|-----------|---------|
+| `cmd/lumo/` | CLI command definitions (public) |
+| `internal/` | Private packages, not importable externally |
+| `internal/config/` | Config loading, validation, defaults |
+| `internal/ssh/` | SSH client with auth, health monitoring |
+| `internal/diagnostics/` | Core diagnostic runner and interfaces |
+| `internal/diagnostics/checkers/` | Individual check implementations |
+| `internal/ai/` | AI provider integrations |
 
 ---
 
@@ -137,163 +76,15 @@ Phase 4 (AI Integration): 7 files, 1,964 lines (includes 214 lines of tests)
 
 ### Core Dependencies
 
-| Library | Version | Purpose | Documentation |
-|---------|---------|---------|---------------|
-| **spf13/cobra** | v1.10.1 | CLI framework - commands, subcommands, flags | [cobra.dev](https://cobra.dev) |
-| **spf13/viper** | v1.21.0 | Configuration management - YAML, env vars, defaults | [github.com/spf13/viper](https://github.com/spf13/viper) |
-| **sirupsen/logrus** | v1.9.3 | Structured logging with levels | [github.com/sirupsen/logrus](https://github.com/sirupsen/logrus) |
+| Library | Version | Purpose |
+|---------|---------|---------|
+| **spf13/cobra** | v1.10.1 | CLI framework |
+| **spf13/viper** | v1.21.0 | Configuration (YAML + env vars) |
+| **sirupsen/logrus** | v1.9.3 | Structured logging |
+| **golang.org/x/crypto/ssh** | - | SSH client |
+| **cenkalti/backoff/v4** | - | Retry logic |
 
-### Supporting Dependencies
-
-- `gopkg.in/yaml.v3` - YAML parsing
-- `github.com/spf13/afero` - Filesystem abstraction (used by Viper)
-- `github.com/spf13/pflag` - POSIX-style flags (used by Cobra)
-- `github.com/fsnotify/fsnotify` - Config file watching (used by Viper)
-- `golang.org/x/crypto/ssh` (Phase 2) - SSH client implementation
-- `github.com/cenkalti/backoff/v4` (Phase 2) - Exponential backoff retry logic
-
-### Phase 4 Dependencies (AI Integration) ✅
-
-- **Custom HTTP clients** for AI provider APIs (no external SDKs required)
-- Uses standard library `net/http` and `encoding/json`
-
-### Planned Dependencies (Future Phases)
-
-- **Phase 7 (API):** `gin-gonic/gin` or `labstack/echo` for REST API
-
----
-
-## Development Workflow
-
-### Initial Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/ignacio/lumo.git
-cd lumo
-
-# Verify Go version (requires 1.25.4+)
-go version
-
-# Download dependencies
-go mod download
-
-# Build the binary
-go build -o lumo ./cmd/lumo
-
-# Install globally (optional)
-go install ./cmd/lumo
-```
-
-### Running Locally
-
-```bash
-# Run with default config search paths
-./lumo diagnose
-
-# Run with explicit config
-./lumo --config ./configs/config.example.yaml diagnose
-
-# Run with environment variable overrides
-LUMO_SSH_PORT=2222 LUMO_LOGGING_LEVEL=debug ./lumo connect user@host
-
-# Enable verbose logging
-./lumo --verbose diagnose
-
-# Dry-run mode (simulate without changes)
-./lumo fix --dry-run
-```
-
-### Configuration Setup
-
-```bash
-# Create config directory
-mkdir -p ~/.lumo
-
-# Copy example config
-cp configs/config.example.yaml ~/.lumo/config.yaml
-
-# Edit configuration
-nano ~/.lumo/config.yaml
-```
-
-### Build & Test Workflow
-
-```bash
-# Format code
-go fmt ./...
-
-# Lint (requires golangci-lint)
-golangci-lint run
-
-# Run tests (when implemented in Phase 8)
-go test ./...
-
-# Run tests with coverage
-go test -cover ./...
-
-# Build for production
-go build -ldflags="-s -w" -o lumo ./cmd/lumo
-```
-
----
-
-## Code Organization Principles
-
-### 1. Package Structure
-
-**Follow Go's package organization best practices:**
-
-- **`cmd/`**: Executable entry points (main packages)
-  - Keep CLI-specific logic here (flag parsing, user output)
-  - Delegate business logic to `internal/` packages
-
-- **`internal/`**: Private packages (cannot be imported externally)
-  - Place all reusable business logic here
-  - Examples: `internal/ssh/`, `internal/diagnostics/`, `internal/ai/`
-
-- **`pkg/`** (future): Public libraries if needed
-  - Only if you want external projects to import your code
-
-### 2. Import Organization
-
-Organize imports in three groups (separated by blank lines):
-
-```go
-import (
-    // Standard library
-    "fmt"
-    "os"
-    "time"
-
-    // Third-party packages
-    "github.com/sirupsen/logrus"
-    "github.com/spf13/cobra"
-    "github.com/spf13/viper"
-
-    // Internal packages
-    "github.com/ignacio/lumo/internal/config"
-)
-```
-
-### 3. Naming Conventions
-
-| Type | Convention | Example |
-|------|-----------|---------|
-| **Packages** | Lowercase, single word, no underscores | `config`, `ssh`, `diagnostics` |
-| **Files** | Lowercase, underscores for separation | `config.go`, `ssh_client.go` |
-| **Types** | PascalCase (exported), camelCase (private) | `Config`, `sshClient` |
-| **Functions** | PascalCase (exported), camelCase (private) | `LoadConfig()`, `validatePort()` |
-| **Variables** | camelCase | `cfgFile`, `maxRetries` |
-| **Constants** | PascalCase or ALL_CAPS | `DefaultTimeout`, `MAX_RETRIES` |
-
-### 4. File Responsibility
-
-**One primary purpose per file:**
-
-- **Commands**: One file per subcommand (`connect.go`, `diagnose.go`)
-- **Types**: Group related types together (`config.go` has all config structs)
-- **Interfaces**: Define in the package that uses them (consumer-driven)
+**AI Integration:** Custom HTTP clients for all providers (no external SDKs)
 
 ---
 
@@ -301,410 +92,134 @@ import (
 
 ### Configuration Hierarchy
 
-Lumo searches for configuration in this order (first found wins):
-
-1. `--config` flag path (explicit override)
-2. `./config.yaml` (current directory)
-3. `~/.lumo/config.yaml` (home directory)
+Searches in this order (first wins):
+1. `--config` flag path
+2. `./config.yaml`
+3. `~/.lumo/config.yaml`
 
 ### Environment Variable Overrides
 
 **Pattern:** `LUMO_<SECTION>_<KEY>`
 
 ```bash
-# Override SSH port
+# SSH settings
 export LUMO_SSH_PORT=2222
 
-# Override AI provider
+# AI provider settings
 export LUMO_AI_PROVIDER=openai
 
-# Override logging level
-export LUMO_LOGGING_LEVEL=debug
+# AI API keys - Provider-specific (recommended - allows switching without changing keys)
+export LUMO_ANTHROPIC_API_KEY=sk-ant-...   # For Anthropic Claude
+export LUMO_OPENAI_API_KEY=sk-...          # For OpenAI GPT
+export LUMO_GEMINI_API_KEY=...             # For Google Gemini
+export LUMO_OLLAMA_API_KEY=...             # For Ollama (usually not needed)
 
-# Override API TLS settings
-export LUMO_API_TLS=true
-export LUMO_API_CERT_FILE=/path/to/cert.pem
+# AI API key - Generic fallback (works but requires changing when switching providers)
+export LUMO_AI_API_KEY=sk-...              # Fallback if provider-specific not set
+
+# Logging
+export LUMO_LOGGING_LEVEL=debug
 ```
 
-### Configuration Schema
-
-**File:** `internal/config/config.go`
+### Configuration Sections
 
 ```go
 type Config struct {
-    SSH     SSHConfig     `mapstructure:"ssh"`
-    AI      AIConfig      `mapstructure:"ai"`
-    Logging LoggingConfig `mapstructure:"logging"`
-    API     APIConfig     `mapstructure:"api"`
+    SSH     SSHConfig     // timeout, port, keepalive, retries
+    AI      AIConfig      // provider, models, timeout, temperature
+    Logging LoggingConfig // level, format, output
+    API     APIConfig     // port, host, TLS settings
 }
 ```
 
-#### SSH Configuration
+**Key AI Settings:**
+- `provider`: anthropic | openai | ollama | gemini
+- `models`: Per-provider model map (defaults in code)
+- `temperature`: 1.0 (standardized across all providers)
+- `max_tokens`: 4096
 
-```yaml
-ssh:
-  timeout: 30s              # Connection timeout (time.Duration)
-  port: 22                  # Default SSH port (1-65535)
-  keepalive: 30s            # Keep-alive interval
-  max_retries: 3            # Retry attempts
-  retry_interval: 5s        # Delay between retries
-```
-
-#### AI Configuration
-
-```yaml
-ai:
-  provider: anthropic       # Provider: anthropic|openai|local
-  models:
-    anthropic: claude-sonnet-4-5-20250929
-    openai: gpt-4
-  timeout: 60s              # API call timeout
-  max_retries: 3            # Retry attempts
-```
-
-#### Logging Configuration
-
-```yaml
-logging:
-  level: info              # Level: debug|info|warn|error
-  format: text             # Format: text|json
-  output: stdout           # Output: stdout|stderr|/path/to/file
-```
-
-#### API Configuration
-
-```yaml
-api:
-  port: 8080               # REST API port (1-65535)
-  host: 0.0.0.0            # Bind address
-  tls: false               # Enable HTTPS
-  cert_file: ""            # TLS certificate path (required if tls=true)
-  key_file: ""             # TLS key path (required if tls=true)
-  read_timeout: 15s        # Request read timeout
-  write_timeout: 15s       # Response write timeout
-  max_connections: 100     # Connection pool limit
-```
+**API Key Security:** NEVER in config file, ONLY via environment variables:
+- **Recommended:** Provider-specific env vars (`LUMO_ANTHROPIC_API_KEY`, `LUMO_OPENAI_API_KEY`, etc.)
+- **Fallback:** Generic `LUMO_AI_API_KEY` (requires changing when switching providers)
 
 ### Loading Configuration
 
 ```go
 import "github.com/ignacio/lumo/internal/config"
 
-// Load with defaults
-cfg := config.DefaultConfig()
-
-// Load from file (searches hierarchy)
-cfg, err := config.Load()
+cfg, err := config.Load()  // Searches hierarchy, validates automatically
 if err != nil {
     log.Fatalf("Failed to load config: %v", err)
 }
-
-// Validation is automatic in Load()
 ```
 
-### Validation Rules
+---
 
-**Implemented in `config.Validate()`:**
+## Code Organization Principles
 
-- SSH port: 1-65535
-- SSH timeout: must be positive
-- AI provider: must be `anthropic`, `openai`, or `local`
-- Logging level: must be `debug`, `info`, `warn`, or `error`
-- Logging format: must be `text` or `json`
-- API port: 1-65535
-- TLS validation: if `tls=true`, both `cert_file` AND `key_file` must be provided
+### Package Structure
+- **`cmd/`**: Executable entry points, CLI logic
+- **`internal/`**: Reusable business logic (private)
+- **`pkg/`**: Public libraries (future, if needed)
+
+### Import Organization
+```go
+import (
+    // Standard library
+    "fmt"
+    "time"
+
+    // Third-party
+    "github.com/spf13/cobra"
+
+    // Internal
+    "github.com/ignacio/lumo/internal/config"
+)
+```
+
+### Naming Conventions
+| Type | Convention | Example |
+|------|-----------|---------|
+| Packages | Lowercase, no underscores | `config`, `diagnostics` |
+| Files | Lowercase, underscores OK | `config.go`, `ssh_client.go` |
+| Exported Types | PascalCase | `Config`, `Provider` |
+| Private Types | camelCase | `sshClient`, `configCache` |
+| Functions | PascalCase/camelCase | `LoadConfig()`, `validatePort()` |
 
 ---
 
 ## CLI Command Structure
 
-### Root Command
-
-**File:** `cmd/lumo/root.go`
-
-```go
-var rootCmd = &cobra.Command{
-    Use:   "lumo",
-    Short: "Intelligent SRE/DevOps Agent",
-    Long:  "Lumo automates system diagnostics and remediation...",
-    Version: "0.1.0",
-}
-```
-
-### Global Flags
-
-Available to all subcommands via `PersistentFlags`:
-
-```go
-rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file path")
-rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
-rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "simulate without changes")
-```
+### Global Flags (Available to all commands)
+- `--config` - Config file path
+- `--verbose` / `-v` - Debug logging
+- `--dry-run` - Simulate without changes
 
 ### Subcommands
 
-| Command | File | Status | Purpose | Key Flags |
-|---------|------|--------|---------|-----------|
-| `connect` | `connect.go` | Phase 2 Complete | SSH connection with auth | `--port`, `--user`, `--key`, `--password` |
-| `diagnose` | `diagnose.go` | Phase 3 Complete | System health checks (all 6 checkers) | `--checks`, `--format`, `--port` |
-| `fix` | `fix.go` | Phase 5 Planned | Auto-remediation | `--auto-approve`, `--skip`, `--dry-run` |
-| `report` | `report.go` | Phase 6 Planned | Report generation | `--format`, `--output`, `--summary` |
-| `serve` | `serve.go` | Phase 7 Planned | API server | `--port`, `--host`, `--tls` |
+| Command | Status | Purpose | Key Flags |
+|---------|--------|---------|-----------|
+| `connect` | ✅ Phase 2 | SSH connection | `--port`, `--user`, `--key` |
+| `diagnose` | ✅ Phase 3+4 | System diagnostics + AI | `--checks`, `--format`, `--analyze` |
+| `fix` | ⏳ Phase 5 | Auto-remediation | `--auto-approve`, `--dry-run` |
+| `report` | ⏳ Phase 6 | Report generation | `--format`, `--output` |
+| `serve` | ⏳ Phase 7 | API server | `--port`, `--tls` |
 
 ### Command Registration Pattern
 
-**Each command file follows this structure:**
-
 ```go
-package main
-
-import (
-    "github.com/sirupsen/logrus"
-    "github.com/spf13/cobra"
-)
-
-var cmdCmd = &cobra.Command{
+var myCmd = &cobra.Command{
     Use:   "command [args]",
     Short: "Brief description",
-    Long:  "Detailed description...",
-    Args:  cobra.MinimumNArgs(1),  // Argument validation
-    Run: func(cmd *cobra.Command, args []string) {
-        log.Info("Command executed")
-        // Implementation here
-    },
-}
-
-func init() {
-    // Register with root command
-    rootCmd.AddCommand(cmdCmd)
-
-    // Define command-specific flags
-    cmdCmd.Flags().StringP("flag", "f", "default", "help text")
-    cmdCmd.Flags().BoolP("option", "o", false, "help text")
-}
-```
-
-### PersistentPreRun Hook
-
-**Runs before every command:**
-
-```go
-rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
-    // Set log level based on --verbose flag
-    if verbose {
-        log.SetLevel(logrus.DebugLevel)
-    }
-
-    // Warn in dry-run mode
-    if dryRun {
-        log.Warn("DRY RUN MODE: No changes will be made")
-    }
-}
-```
-
----
-
-## Adding New Features
-
-### Adding a New CLI Command
-
-**Example: Adding `lumo backup` command**
-
-1. **Create command file:** `cmd/lumo/backup.go`
-
-```go
-package main
-
-import (
-    "github.com/spf13/cobra"
-)
-
-var backupCmd = &cobra.Command{
-    Use:   "backup [destination]",
-    Short: "Backup system configuration",
-    Long:  "Creates a backup of system configuration to the specified destination",
     Args:  cobra.ExactArgs(1),
     Run: func(cmd *cobra.Command, args []string) {
-        destination := args[0]
-        log.Infof("Backing up to: %s", destination)
-
-        // Get flags
-        compress, _ := cmd.Flags().GetBool("compress")
-        exclude, _ := cmd.Flags().GetStringSlice("exclude")
-
         // Implementation
-        if dryRun {
-            log.Info("Would create backup (dry run)")
-            return
-        }
-
-        // Actual backup logic here
     },
 }
 
 func init() {
-    rootCmd.AddCommand(backupCmd)
-
-    backupCmd.Flags().BoolP("compress", "c", true, "compress backup")
-    backupCmd.Flags().StringSliceP("exclude", "e", []string{}, "exclude patterns")
-}
-```
-
-2. **Build and test:**
-
-```bash
-go build -o lumo ./cmd/lumo
-./lumo backup /tmp/backup --compress --exclude logs,tmp
-```
-
-### Adding a New Configuration Section
-
-**Example: Adding database configuration**
-
-1. **Define struct in `internal/config/config.go`:**
-
-```go
-type DatabaseConfig struct {
-    Host     string `mapstructure:"host"`
-    Port     int    `mapstructure:"port"`
-    Username string `mapstructure:"username"`
-    Password string `mapstructure:"password"`
-    Database string `mapstructure:"database"`
-}
-
-type Config struct {
-    SSH      SSHConfig      `mapstructure:"ssh"`
-    AI       AIConfig       `mapstructure:"ai"`
-    Logging  LoggingConfig  `mapstructure:"logging"`
-    API      APIConfig      `mapstructure:"api"`
-    Database DatabaseConfig `mapstructure:"database"`  // New!
-}
-```
-
-2. **Add defaults in `DefaultConfig()`:**
-
-```go
-func DefaultConfig() *Config {
-    return &Config{
-        // ... existing defaults ...
-        Database: DatabaseConfig{
-            Host:     "localhost",
-            Port:     5432,
-            Database: "lumo",
-        },
-    }
-}
-```
-
-3. **Add validation in `Validate()`:**
-
-```go
-func (c *Config) Validate() error {
-    // ... existing validation ...
-
-    if c.Database.Port < 1 || c.Database.Port > 65535 {
-        return fmt.Errorf("invalid database port: %d", c.Database.Port)
-    }
-
-    return nil
-}
-```
-
-4. **Update `configs/config.example.yaml`:**
-
-```yaml
-database:
-  host: localhost
-  port: 5432
-  username: lumo_user
-  password: ""  # Set via LUMO_DATABASE_PASSWORD
-  database: lumo
-```
-
-### Adding a New Internal Package
-
-**Example: Creating `internal/diagnostics` package**
-
-1. **Create directory and file:**
-
-```bash
-mkdir -p internal/diagnostics
-touch internal/diagnostics/diagnostics.go
-```
-
-2. **Define package with interfaces:**
-
-```go
-// internal/diagnostics/diagnostics.go
-package diagnostics
-
-import (
-    "context"
-    "time"
-)
-
-// Checker represents a diagnostic check
-type Checker interface {
-    Name() string
-    Run(ctx context.Context) (*Result, error)
-}
-
-// Result represents diagnostic results
-type Result struct {
-    Name      string
-    Status    Status
-    Message   string
-    Data      map[string]interface{}
-    Timestamp time.Time
-}
-
-type Status string
-
-const (
-    StatusOK      Status = "ok"
-    StatusWarning Status = "warning"
-    StatusError   Status = "error"
-)
-
-// Runner executes diagnostic checks
-type Runner struct {
-    checks []Checker
-}
-
-func NewRunner(checks ...Checker) *Runner {
-    return &Runner{checks: checks}
-}
-
-func (r *Runner) RunAll(ctx context.Context) ([]*Result, error) {
-    results := make([]*Result, 0, len(r.checks))
-
-    for _, check := range r.checks {
-        result, err := check.Run(ctx)
-        if err != nil {
-            return nil, fmt.Errorf("check %s failed: %w", check.Name(), err)
-        }
-        results = append(results, result)
-    }
-
-    return results, nil
-}
-```
-
-3. **Use in command:**
-
-```go
-// cmd/lumo/diagnose.go
-import "github.com/ignacio/lumo/internal/diagnostics"
-
-func runDiagnostics() {
-    runner := diagnostics.NewRunner(
-        &CPUCheck{},
-        &MemoryCheck{},
-        &DiskCheck{},
-    )
-
-    results, err := runner.RunAll(context.Background())
-    // Handle results...
+    rootCmd.AddCommand(myCmd)
+    myCmd.Flags().StringP("flag", "f", "default", "help")
 }
 ```
 
@@ -712,76 +227,27 @@ func runDiagnostics() {
 
 ## Error Handling Patterns
 
-### Error Wrapping
-
-**Always wrap errors with context using `fmt.Errorf` with `%w`:**
-
+**Always wrap errors with context:**
 ```go
-if err := viper.ReadInConfig(); err != nil {
-    return nil, fmt.Errorf("failed to read config file: %w", err)
+if err := doSomething(); err != nil {
+    return fmt.Errorf("failed to do something: %w", err)
 }
 ```
 
-### Error Chain Unwrapping
-
+**Validation errors:**
 ```go
-import "errors"
-
-if errors.Is(err, os.ErrNotExist) {
-    // Handle missing file
-}
-
-var pathErr *os.PathError
-if errors.As(err, &pathErr) {
-    // Handle path error
+if port < 1 || port > 65535 {
+    return fmt.Errorf("invalid port: %d (must be 1-65535)", port)
 }
 ```
 
-### Validation Errors
-
-**Return descriptive errors with values:**
-
+**Command-level error handling:**
 ```go
-func (c *Config) Validate() error {
-    if c.SSH.Port < 1 || c.SSH.Port > 65535 {
-        return fmt.Errorf("invalid SSH port: %d (must be 1-65535)", c.SSH.Port)
+Run: func(cmd *cobra.Command, args []string) {
+    if err := execute(); err != nil {
+        log.Errorf("Operation failed: %v", err)
+        os.Exit(1)
     }
-
-    if c.SSH.Timeout <= 0 {
-        return fmt.Errorf("SSH timeout must be positive, got: %v", c.SSH.Timeout)
-    }
-
-    return nil
-}
-```
-
-### Command-Level Error Handling
-
-```go
-var cmdCmd = &cobra.Command{
-    Run: func(cmd *cobra.Command, args []string) {
-        if err := doSomething(); err != nil {
-            log.Errorf("Operation failed: %v", err)
-            os.Exit(1)  // Exit with error code
-        }
-
-        log.Info("Operation successful")
-    },
-}
-```
-
-### Deferred Cleanup
-
-```go
-func processFile(path string) error {
-    f, err := os.Open(path)
-    if err != nil {
-        return fmt.Errorf("failed to open file: %w", err)
-    }
-    defer f.Close()  // Always cleanup
-
-    // Process file...
-    return nil
 }
 ```
 
@@ -789,812 +255,210 @@ func processFile(path string) error {
 
 ## Logging Guidelines
 
-### Log Levels
-
-Use appropriate log levels:
-
+**Log Levels:**
 ```go
-log.Debug("Detailed diagnostic information")   // --verbose only
-log.Info("Normal operational messages")        // Default level
-log.Warn("Warning conditions")                 // Potential issues
-log.Error("Error conditions")                  // Errors that need attention
-log.Fatal("Fatal errors - exits program")      // Critical failures
+log.Debug("Detailed info")     // --verbose only
+log.Info("Normal operations")  // Default
+log.Warn("Warnings")           // Potential issues
+log.Error("Errors")            // Need attention
+log.Fatal("Fatal")             // Exit program
 ```
 
-### Structured Logging
-
-**Use fields for structured data:**
-
+**Structured Logging:**
 ```go
 log.WithFields(logrus.Fields{
     "host": "example.com",
     "port": 22,
-    "user": "admin",
 }).Info("Connecting to SSH server")
-
-log.WithField("duration", time.Since(start)).Info("Operation completed")
 ```
 
-### Contextual Logging
-
-**Create logger with persistent context:**
-
-```go
-cmdLog := log.WithFields(logrus.Fields{
-    "command": "diagnose",
-    "session": sessionID,
-})
-
-cmdLog.Info("Starting diagnostics")
-cmdLog.Debug("Running CPU check")
-cmdLog.Warn("High memory usage detected")
-```
-
-### Formatting
-
-```go
-// Simple message
-log.Info("Connection established")
-
-// Formatted message
-log.Infof("Connected to %s:%d", host, port)
-
-// With error
-log.Errorf("Failed to connect: %v", err)
-```
-
-### Dry-Run Logging
-
+**Dry-Run:**
 ```go
 if dryRun {
-    log.Info("DRY RUN: Would execute command: systemctl restart nginx")
+    log.Info("DRY RUN: Would execute command")
     return nil
 }
-
-log.Info("Executing: systemctl restart nginx")
-// Actual execution
 ```
 
 ---
 
 ## Testing Strategy
 
-### Test File Organization
-
-**Create `*_test.go` files alongside source files:**
-
+**Test File Organization:**
 ```
 internal/config/
 ├── config.go
 └── config_test.go
 ```
 
-### Unit Testing Pattern
-
+**Table-Driven Tests (Preferred):**
 ```go
-// internal/config/config_test.go
-package config
-
-import (
-    "testing"
-)
-
-func TestConfigValidation(t *testing.T) {
+func TestValidation(t *testing.T) {
     tests := []struct {
         name    string
         config  *Config
         wantErr bool
     }{
-        {
-            name: "valid config",
-            config: &Config{
-                SSH: SSHConfig{Port: 22, Timeout: 30 * time.Second},
-            },
-            wantErr: false,
-        },
-        {
-            name: "invalid port",
-            config: &Config{
-                SSH: SSHConfig{Port: 99999},
-            },
-            wantErr: true,
-        },
+        {"valid", &Config{SSH: SSHConfig{Port: 22}}, false},
+        {"invalid port", &Config{SSH: SSHConfig{Port: 99999}}, true},
     }
 
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
             err := tt.config.Validate()
             if (err != nil) != tt.wantErr {
-                t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+                t.Errorf("got error %v, wantErr %v", err, tt.wantErr)
             }
         })
     }
 }
 ```
 
-### Running Tests
-
+**Running Tests:**
 ```bash
-# Run all tests
-go test ./...
-
-# Run tests with coverage
-go test -cover ./...
-
-# Run tests with verbose output
-go test -v ./...
-
-# Run specific test
-go test -run TestConfigValidation ./internal/config
-
-# Generate coverage report
-go test -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
-```
-
-### Table-Driven Tests
-
-**Preferred pattern for multiple scenarios:**
-
-```go
-func TestPortValidation(t *testing.T) {
-    tests := []struct {
-        port     int
-        expected bool
-    }{
-        {22, true},
-        {2222, true},
-        {0, false},
-        {-1, false},
-        {65535, true},
-        {65536, false},
-    }
-
-    for _, tt := range tests {
-        result := isValidPort(tt.port)
-        if result != tt.expected {
-            t.Errorf("isValidPort(%d) = %v, want %v", tt.port, result, tt.expected)
-        }
-    }
-}
-```
-
----
-
-## Common Tasks & Examples
-
-### Task 1: Adding a New Flag to Existing Command
-
-```go
-// In cmd/lumo/diagnose.go
-func init() {
-    rootCmd.AddCommand(diagnoseCmd)
-
-    // Add new flag
-    diagnoseCmd.Flags().BoolP("json", "j", false, "output in JSON format")
-}
-
-// Use in command
-var diagnoseCmd = &cobra.Command{
-    Run: func(cmd *cobra.Command, args []string) {
-        jsonOutput, _ := cmd.Flags().GetBool("json")
-
-        if jsonOutput {
-            // Output JSON
-        } else {
-            // Output text
-        }
-    },
-}
-```
-
-### Task 2: Reading Configuration Values
-
-```go
-import "github.com/ignacio/lumo/internal/config"
-
-func someFunction() {
-    cfg, err := config.Load()
-    if err != nil {
-        log.Fatalf("Failed to load config: %v", err)
-    }
-
-    log.Infof("SSH port: %d", cfg.SSH.Port)
-    log.Infof("AI provider: %s", cfg.AI.Provider)
-    log.Infof("Log level: %s", cfg.Logging.Level)
-}
-```
-
-### Task 3: Using Viper Directly for Config Values
-
-```go
-import "github.com/spf13/viper"
-
-func init() {
-    viper.SetDefault("custom.option", "default_value")
-}
-
-func someFunction() {
-    value := viper.GetString("custom.option")
-    port := viper.GetInt("ssh.port")
-    timeout := viper.GetDuration("ssh.timeout")
-}
-```
-
-### Task 4: Creating a Custom Logger
-
-```go
-import (
-    "github.com/sirupsen/logrus"
-    "os"
-)
-
-func setupLogger() *logrus.Logger {
-    logger := logrus.New()
-
-    logger.SetFormatter(&logrus.JSONFormatter{})
-    logger.SetOutput(os.Stdout)
-    logger.SetLevel(logrus.InfoLevel)
-
-    if verbose {
-        logger.SetLevel(logrus.DebugLevel)
-    }
-
-    return logger
-}
-```
-
-### Task 5: Implementing a Cobra Subcommand with Validation
-
-```go
-var exampleCmd = &cobra.Command{
-    Use:   "example <required-arg>",
-    Short: "Example command",
-    Args:  cobra.ExactArgs(1),  // Require exactly 1 argument
-    PreRunE: func(cmd *cobra.Command, args []string) error {
-        // Validate before running
-        flag, _ := cmd.Flags().GetString("important")
-        if flag == "" {
-            return fmt.Errorf("--important flag is required")
-        }
-        return nil
-    },
-    RunE: func(cmd *cobra.Command, args []string) error {
-        // Use RunE to return errors instead of handling manually
-        return doSomething(args[0])
-    },
-}
+go test ./...                    # All tests
+go test -cover ./...             # With coverage
+go test -v ./internal/config     # Specific package
 ```
 
 ---
 
 ## Security Considerations
 
-### .gitignore Protection
+**Never Commit (.gitignore protects):**
+- `config.yaml` - May contain secrets
+- `*.pem`, `*.key` - Certificates/keys
+- `id_rsa*` - SSH keys
+- `.env*` - Environment files
 
-**Never commit these files (already in `.gitignore`):**
+**Credential Handling:**
+- AI API keys: Use provider-specific env vars (`LUMO_ANTHROPIC_API_KEY`, `LUMO_OPENAI_API_KEY`, `LUMO_GEMINI_API_KEY`)
+- Fallback: Generic `LUMO_AI_API_KEY` (not recommended, requires changing when switching)
+- SSH passwords: Avoid, use key-based auth
+- TLS: Config validation enforces cert+key requirement
 
-- `config.yaml`, `lumo.yaml` - May contain secrets
-- `*.pem`, `*.key` - TLS certificates/keys
-- `id_rsa*` - SSH private keys
-- `.env`, `.env.*.local` - Environment files
-- Binaries: `lumo`, `*.exe`, `*.dll`
-
-### Credential Handling
-
-**Always use environment variables for secrets:**
-
-```yaml
-# configs/config.example.yaml
-ai:
-  api_key: ""  # Set via LUMO_AI_API_KEY environment variable
-
-database:
-  password: ""  # Set via LUMO_DATABASE_PASSWORD
-```
-
+**File Permissions:**
 ```bash
-# Never do this:
-export LUMO_AI_API_KEY=sk-1234567890
-
-# Better: Use secret management
-export LUMO_AI_API_KEY=$(vault kv get -field=api_key secret/lumo)
-```
-
-### TLS Validation
-
-**Config enforces TLS security:**
-
-```go
-if c.API.TLS {
-    if c.API.CertFile == "" || c.API.KeyFile == "" {
-        return fmt.Errorf("TLS enabled but cert_file or key_file not provided")
-    }
-}
-```
-
-### File Permissions
-
-```bash
-# Configuration files
 chmod 600 ~/.lumo/config.yaml
-
-# SSH keys
 chmod 600 ~/.ssh/id_rsa
-
-# TLS certificates
-chmod 644 /etc/lumo/cert.pem
 chmod 600 /etc/lumo/key.pem
-```
-
-### Input Validation
-
-**Always validate user input:**
-
-```go
-func validateHost(host string) error {
-    if host == "" {
-        return fmt.Errorf("host cannot be empty")
-    }
-
-    // Additional validation (DNS, IP address, etc.)
-    return nil
-}
 ```
 
 ---
 
 ## Important Files Reference
 
-### cmd/lumo/root.go (89 lines)
+### Core Files
 
-**Purpose:** Root command setup, global flags, configuration initialization
+| File | Purpose | Key Points |
+|------|---------|-----------|
+| `cmd/lumo/root.go` | Root command, global setup | `Execute()`, `initConfig()`, global flags |
+| `cmd/lumo/diagnose.go` | Diagnostics command | Localhost detection, SSH/local executor switching, AI integration |
+| `internal/config/config.go` | Configuration system | `Load()`, `Validate()`, defaults |
+| `internal/diagnostics/diagnostics.go` | Diagnostic orchestration | `Checker` interface, `Runner`, parallel execution |
+| `internal/diagnostics/executor.go` | Command execution | `SSHExecutor`, `LocalExecutor` |
 
-**Key Functions:**
-- `Execute()` - Entry point called from `main.go`
-- `initConfig()` - Loads configuration from file/env vars
+### Diagnostic Checkers (All 6 Complete)
 
-**Global Variables:**
-- `cfgFile` - Config file path (from `--config` flag)
-- `verbose` - Debug logging flag
-- `dryRun` - Simulation mode flag
-- `log` - Global logrus.Logger instance
+| Checker | Key Metrics |
+|---------|-------------|
+| `cpu.go` | Load average, usage %, core count |
+| `memory.go` | RAM/swap usage %, cross-platform |
+| `disk.go` | Space usage %, inode usage %, multi-filesystem |
+| `process.go` | Process count, zombies, top consumers |
+| `service.go` | Failed services, systemd/init/launchd support |
+| `network.go` | Interfaces, connectivity, DNS, statistics |
 
-**Important Sections:**
-- `init()` - Registers global flags (`--config`, `--verbose`, `--dry-run`)
-- `PersistentPreRun` - Sets up logging before any command runs
-- `cobra.OnInitialize(initConfig)` - Deferred config loading
+### AI Providers (All 4 Complete)
 
-### internal/config/config.go (152 lines)
-
-**Purpose:** Configuration types, loading, validation, defaults
-
-**Key Types:**
-- `Config` - Root configuration struct
-- `SSHConfig` - SSH connection settings
-- `AIConfig` - AI provider settings
-- `LoggingConfig` - Logger configuration
-- `APIConfig` - API server settings
-
-**Key Functions:**
-- `DefaultConfig() *Config` - Returns config with defaults
-- `Load() (*Config, error)` - Loads config from file/env
-- `(c *Config) Validate() error` - Validates all settings
-
-**Configuration Search Paths:**
-1. `--config` flag value
-2. `./config.yaml`
-3. `~/.lumo/config.yaml`
-
-### internal/diagnostics/diagnostics.go (285 lines)
-
-**Purpose:** Core diagnostic system orchestration and runner
-
-**Key Interfaces:**
-- `Checker` - Interface for all diagnostic checks
-- `CommandExecutor` - Interface for executing commands (SSH, local, etc.)
-
-**Key Types:**
-- `DiagnosticRunner` - Orchestrates check execution (parallel/sequential)
-- `RunConfig` - Configuration for diagnostic runs
-
-**Key Functions:**
-- `NewRunner(config, thresholds, executor, logger)` - Creates runner
-- `RegisterCheckers(checkers...)` - Registers diagnostic checks
-- `RunAll(ctx)` - Executes all registered checks and returns report
-
-### internal/diagnostics/checkers/cpu.go (200 lines)
-
-**Purpose:** CPU diagnostic checker implementation
-
-**Features:**
-- CPU core count detection (Linux: `nproc`, macOS: `sysctl`)
-- Load average monitoring (1/5/15 minute intervals)
-- CPU usage percentage via `top` command
-- Cross-platform command parsing
-
-**Metrics Generated:**
-- `cpu_count` - Number of CPU cores
-- `load_average_1m`, `load_average_5m`, `load_average_15m`
-- `cpu_usage_percent` - Current CPU utilization
-
-### internal/diagnostics/checkers/memory.go (338 lines)
-
-**Purpose:** Memory and swap diagnostic checker
-
-**Features:**
-- Memory usage tracking (total, used, free, available)
-- Swap usage monitoring
-- Multi-platform support (Linux `/proc/meminfo`, macOS `vm_stat`)
-- Automatic platform detection
-
-**Metrics Generated:**
-- `memory_used_percent` - RAM utilization percentage
-- `swap_used_percent` - Swap utilization percentage
-
-### internal/diagnostics/checkers/disk.go (366 lines)
-
-**Purpose:** Disk space and inode diagnostic checker
-
-**Features:**
-- Disk space monitoring (`df` command output parsing)
-- Inode usage tracking
-- Multi-filesystem support (ext4, XFS, btrfs, APFS, etc.)
-- Smart filesystem filtering (excludes pseudo-filesystems)
-- Cross-platform support (Linux & macOS)
-- Capacity and usage percentage calculations
-
-**Metrics Generated:**
-- `disk_used_percent` - Disk space utilization by path
-- `inode_used_percent` - Inode utilization by filesystem
-- `disk_available_percent` - Available disk space percentage
-
-### internal/diagnostics/checkers/process.go (298 lines)
-
-**Purpose:** Process and resource diagnostic checker
-
-**Features:**
-- Process count monitoring
-- Zombie process detection
-- Top 5 CPU consumers identification
-- Top 5 memory consumers identification
-- Process state distribution analysis
-- Cross-platform command execution (ps, top)
-- Graceful handling of missing `top` command
-
-**Metrics Generated:**
-- `process_count` - Total running processes
-- `zombie_process_count` - Count of zombie processes
-- `top_cpu_consumers` - Top 5 by CPU usage
-- `top_memory_consumers` - Top 5 by memory usage
-- `process_states` - Distribution by state (R, S, D, Z, etc.)
-
-### internal/diagnostics/checkers/service.go (344 lines)
-
-**Purpose:** Service status diagnostic checker
-
-**Features:**
-- Multi-platform service manager detection (systemd, sysvinit, launchd)
-- Failed service identification
-- Service status monitoring
-- Automatic platform detection
-- Graceful degradation on unavailable service managers
-
-**Metrics Generated:**
-- `enabled_services_count` - Number of enabled services
-- `failed_services` - List of failed services
-- `critical_services_status` - Status of critical services
-- `service_manager_type` - Detected service manager (systemd/sysvinit/launchd)
-
-### internal/diagnostics/checkers/network.go (474 lines)
-
-**Purpose:** Network and connectivity diagnostic checker
-
-**Features:**
-- Network interface monitoring (status, IP addresses, statistics)
-- Active connection tracking (listening ports, established connections)
-- DNS resolution testing
-- Internet connectivity verification (ping test)
-- Interface statistics (bytes in/out, errors, drops)
-- Cross-platform support (Linux, macOS, BSD)
-- Fallback mechanisms for unavailable tools
-
-**Metrics Generated:**
-- `network_interfaces_up` - Count of active interfaces
-- `network_interfaces_down` - Count of inactive interfaces
-- `established_connections` - Count of established TCP connections
-- `listening_ports` - Count of listening sockets
-- `dns_resolution_ok` - Whether DNS is working
-- `internet_connectivity_ok` - Whether internet is reachable
-- `interface_statistics` - Detailed per-interface metrics
-
-### internal/diagnostics/formatters/text.go (265 lines)
-
-**Purpose:** Human-readable text output formatter
-
-**Features:**
-- Color-coded severity indicators (✓ OK, ⚠ Warning, ✗ Critical/Error)
-- Grouped results by category (CPU, Memory, Disk, etc.)
-- Detailed metrics display in verbose mode
-- Summary section with overall health status
-- Configurable color output (can be disabled)
-
-**Key Functions:**
-- `FormatReport(report)` - Formats complete diagnostic report
-- `FormatResult(result)` - Formats single check result
-
-### cmd/lumo/diagnose.go (190 lines)
-
-**Purpose:** Diagnostic command implementation with full SSH integration
-
-**Features:**
-- SSH connection with authentication (all 4 methods supported)
-- Registers and runs all 6 diagnostic checkers
-- Supports text and JSON output formats
-- Configurable check selection via `--checks` flag
-- Configurable SSH port via `--port` flag
-- Full integration with severity thresholds
-- Parallel and sequential check execution
-
-**Usage Examples:**
-```bash
-lumo diagnose user@example.com
-lumo diagnose user@host --checks cpu,memory,disk
-lumo diagnose user@host --port 2222 --format json
-lumo diagnose user@host --checks all
-```
-
-**Supported Checks:**
-- `cpu` - CPU load and usage
-- `memory` - RAM and swap utilization
-- `disk` - Disk space and inode usage
-- `process` - Process count, zombies, top consumers
-- `service` - Service status by manager
-- `network` - Connectivity, interfaces, DNS
-
-### cmd/lumo/main.go (5 lines)
-
-**Purpose:** Binary entry point
-
-```go
-package main
-
-func main() {
-    Execute()  // Defined in root.go
-}
-```
-
-### configs/config.example.yaml
-
-**Purpose:** Template configuration with all available options
-
-**Usage:**
-```bash
-cp configs/config.example.yaml ~/.lumo/config.yaml
-```
+| Provider | Model | Key Features |
+|----------|-------|-------------|
+| `anthropic.go` | claude-sonnet-4-5-20250929 | Streaming, structured output |
+| `openai.go` | gpt-4-turbo-preview | Function calling, streaming |
+| `ollama.go` | llama3.1:8b | Self-hosted, no API key |
+| `gemini.go` | gemini-2.0-flash-exp | SSE streaming, token tracking |
 
 ---
 
 ## Phase Roadmap
 
-### Phase 1: Foundation & Project Setup ✅ COMPLETE
+### ✅ Phase 1: Foundation (Complete)
+- Cobra CLI + Viper config + Logrus logging
+- All command stubs registered
 
-**Status:** Done
-**Files:** `root.go`, `config.go`, all command stubs
-**Features:**
-- Cobra CLI framework integrated
-- Viper configuration system with YAML + env vars
-- Logrus structured logging
-- All 5 subcommands registered (stubs)
-- Global flags implemented
+### ✅ Phase 2: SSH & Connection (Complete - 2025-11-14)
+- 4 auth methods (agent, key, password, interactive)
+- Retry logic, health monitoring, auto-reconnect
+- 8 files, 2,410 lines
 
-### Phase 2: SSH & Connection Management ✅ COMPLETE
+### ✅ Phase 3: Diagnostic System (Complete - 2025-11-14)
+- Core runner architecture with `Checker` interface
+- All 6 core checkers (CPU, Memory, Disk, Process, Service, Network)
+- Severity system, thresholds, formatters (text, JSON)
+- Cross-platform support (Linux, macOS, BSD)
+- 12 files, 3,835 lines
 
-**Status:** Done (2025-11-14)
-**Target Package:** `internal/ssh/`
-**Dependencies:** `golang.org/x/crypto/ssh`, `github.com/cenkalti/backoff/v4`
-**Features Implemented:**
-- ✅ All 4 authentication methods (SSH agent, key files, password, keyboard-interactive)
-- ✅ Connection retry logic with exponential backoff
-- ✅ Command execution with timeout and output capture
-- ✅ Health monitoring with keep-alive
-- ✅ Auto-reconnection on connection loss
-- ✅ Full integration in `connect.go` command
-- ✅ Comprehensive error handling with custom error types
-**Total:** 8 new files, 2,410 lines of code
+### ✅ Phase 4: AI Integration (Complete - 2025-11-15)
+- 4 AI providers (Anthropic, OpenAI, Ollama, Gemini)
+- Streaming + non-streaming analysis
+- Prompt engineering for SRE diagnostics
+- Token usage tracking
+- Temperature standardized to 1.0
+- Local execution support (no SSH for localhost)
+- 7 files, 1,964 lines (includes tests)
 
-### Phase 3: Diagnostic System ✅ COMPLETE - ALL SIX CORE CHECKERS
-
-**Status:** Phase 3 Complete (2025-11-14) - Ready for Phase 4
-**Target Package:** `internal/diagnostics/`
-
-**Phase 3.1 Foundation ✅ Complete:**
-- ✅ Core `Checker` interface and `DiagnosticRunner` architecture
-- ✅ `CheckResult` types with JSON structures
-- ✅ Severity classification system with configurable thresholds
-- ✅ `ThresholdConfig` for all diagnostic categories
-- ✅ Parallel and sequential check execution support
-**Files:** `diagnostics.go`, `result.go`, `severity.go` (1,027 lines)
-
-**Phase 3.2 First Checkers ✅ Complete:**
-- ✅ CPU diagnostic checker with load average and usage monitoring
-- ✅ Memory diagnostic checker with swap tracking (Linux + macOS)
-- ✅ SSH command executor adapter
-- ✅ Text formatter with color-coded output
-- ✅ JSON output support
-- ✅ Full `diagnose.go` command integration with SSH connection
-- ✅ Cross-platform support (Linux, macOS)
-**Files:** `executor.go`, `checkers/cpu.go`, `checkers/memory.go`, `formatters/text.go` (916 lines)
-
-**Phase 3.3 Remaining Checkers ✅ Complete:**
-- ✅ Disk space checker with inode monitoring and usage thresholds
-- ✅ Process checker with zombie detection and resource tracking
-- ✅ Service checker with systemd, init, and launchd support
-- ✅ Network checker with interface, connectivity, and DNS monitoring
-- ✅ Top CPU/memory consumers identification (top 5 each)
-- ✅ Cross-platform command execution (Linux, macOS, BSD)
-- ✅ Configurable severity thresholds for all metrics
-- ✅ Graceful handling of unavailable platform-specific data
-**Files Added:** `checkers/disk.go`, `checkers/process.go`, `checkers/service.go`, `checkers/network.go`, `diagnose.go` (1,482 lines)
-**Total Phase 3:** 12 files, 3,835 lines of code
-
-**ALL SIX CORE CHECKERS:**
-1. ✅ CPU Checker - CPU load, usage, core count
-2. ✅ Memory Checker - RAM, swap utilization
-3. ✅ Disk Checker - Space, inodes, usage by path
-4. ✅ Process Checker - Count, zombies, top consumers
-5. ✅ Service Checker - Service status (systemd, init, launchd)
-6. ✅ Network Checker - Interfaces, connectivity, DNS, statistics
-
-**Future Enhancement (Phase 8+):**
-- ⏳ Additional checkers: Logs, Security scanning
-- ⏳ YAML output formatter
-- ⏳ Enhanced platform-specific optimizations
-
-### Phase 4: AI Integration ✅ COMPLETE
-
-**Status:** Complete (2025-11-15)
-**Package:** `internal/ai/`
-**Deliverables:** 7 files, 1,964 lines (including 214 lines of tests)
-
-**Features Implemented:**
-- ✅ Provider abstraction with unified `Provider` interface
-- ✅ Anthropic Claude integration (claude-sonnet-4-5-20250929)
-- ✅ OpenAI GPT integration (gpt-4-turbo-preview)
-- ✅ Ollama local model support (llama3.1:8b, self-hosted)
-- ✅ Streaming and non-streaming analysis support
-- ✅ Prompt engineering system for SRE diagnostics
-- ✅ JSON response parsing with error handling
-- ✅ Token usage tracking across all providers
-- ✅ CLI integration with `--analyze` flag in diagnose command
-- ✅ Configuration integration with environment variable support
-- ✅ Temperature defaults standardized to 1.0 across providers
-- ✅ Unit tests for prompt parsing and formatting
-
-**Key Files:**
-- `types.go` - Core interfaces and types
-- `provider.go` - Provider factory
-- `anthropic.go`, `openai.go`, `ollama.go` - Provider implementations
-- `prompts.go` - Prompt engineering and response parsing
-- `prompts_test.go` - Unit tests
-
-### Phase 5: Auto-Remediation & Approval
-
-**Status:** Planned
-**Target Package:** `internal/remediation/`
-**Tasks:**
+### ⏳ Phase 5: Auto-Remediation (Planned)
 - Remediation action registry
 - Risk classification (safe, moderate, critical)
-- Human-in-the-loop approval workflow
-- Action execution with rollback support
-- Audit logging
-- Update `fix.go` command
+- Human-in-the-loop approval
+- Rollback support, audit logging
 
-### Phase 6: Reporting & Logging
+### ⏳ Phase 6: Reporting (Planned)
+- Multiple formats (Markdown, JSON, YAML, HTML)
+- Historical data, trend analysis
 
-**Status:** Planned
-**Target Package:** `internal/reporting/`
-**Tasks:**
-- Report generation (Markdown, JSON, YAML, HTML)
-- Historical data storage
-- Trend analysis
-- Export functionality
-- Update `report.go` command
+### ⏳ Phase 7: API Server (Planned)
+- REST API + WebSocket
+- Authentication, rate limiting
+- OpenAPI/Swagger docs
 
-### Phase 7: API Server
-
-**Status:** Planned
-**Target Package:** `internal/server/`
-**Dependencies:** Gin or Echo framework
-**Tasks:**
-- REST API endpoints
-- WebSocket for real-time logs
-- Authentication/authorization
-- Rate limiting
-- API documentation (OpenAPI/Swagger)
-- Update `serve.go` command
-
-### Phase 8: Testing & Documentation
-
-**Status:** Planned
-**Tasks:**
-- Unit tests for all packages (target: 80% coverage)
-- Integration tests for CLI commands
-- End-to-end tests
-- Benchmarking for critical paths
-- GoDoc comments for all exported symbols
-- User guide and tutorials
+### ⏳ Phase 8: Testing & Documentation (Planned)
+- 80% test coverage target
+- Integration + E2E tests
+- GoDoc comments, user guides
 
 ---
 
-## Troubleshooting
+## Localhost Execution
 
-### Issue: Config file not found
+**Automatic Detection:**
+The `diagnose` command automatically detects localhost patterns and runs commands directly without SSH:
 
-**Problem:**
+**Localhost Patterns:**
+- `localhost`
+- `127.0.0.1`
+- `::1` (IPv6)
+- `0.0.0.0`
+- Empty hostname
+- `localhost.localdomain`
+
+**Implementation:**
+```go
+// diagnose.go
+isLocal := isLocalhost(hostname)
+
+if isLocal {
+    executor = diagnostics.NewLocalExecutor()  // Direct execution
+} else {
+    executor = diagnostics.NewSSHExecutor(sshClient)  // SSH
+}
 ```
-Error: failed to load config: Config File "config" Not Found in [...]
-```
 
-**Solution:**
+**Usage:**
 ```bash
-# Create config directory
-mkdir -p ~/.lumo
-
-# Copy example config
-cp configs/config.example.yaml ~/.lumo/config.yaml
-
-# Or specify explicit path
-lumo --config ./my-config.yaml diagnose
-```
-
-### Issue: Environment variables not working
-
-**Problem:** Setting `LUMO_SSH_PORT` doesn't change the SSH port
-
-**Solution:** Ensure environment variable naming is correct:
-
-```bash
-# Correct
-export LUMO_SSH_PORT=2222
-
-# Incorrect (no prefix)
-export SSH_PORT=2222
-
-# Verify Viper is reading it
-lumo diagnose --verbose  # Check debug output
-```
-
-### Issue: Build fails with import errors
-
-**Problem:**
-```
-go build: cannot find package "github.com/spf13/cobra"
-```
-
-**Solution:**
-```bash
-# Download dependencies
-go mod download
-
-# Or tidy and download
-go mod tidy
-```
-
-### Issue: Command not recognized
-
-**Problem:** `lumo: command not found`
-
-**Solution:**
-```bash
-# Install globally
-go install ./cmd/lumo
-
-# Or use explicit path
-./lumo diagnose
-
-# Or add to PATH
-export PATH=$PATH:$(go env GOPATH)/bin
+lumo diagnose localhost                    # No SSH overhead
+lumo diagnose localhost --analyze          # Local with AI
+lumo diagnose user@remote.server           # SSH connection
 ```
 
 ---
@@ -1602,94 +466,77 @@ export PATH=$PATH:$(go env GOPATH)/bin
 ## AI Assistant Best Practices
 
 ### DO:
-
-✅ **Use existing patterns** - Follow established code structure and conventions
-✅ **Validate inputs** - Always validate configuration and user input
-✅ **Wrap errors** - Use `fmt.Errorf("context: %w", err)` for error chains
-✅ **Log appropriately** - Use correct log levels (debug/info/warn/error)
-✅ **Add tests** - Write unit tests for new functionality
-✅ **Document exports** - Add GoDoc comments to public functions/types
-✅ **Use interfaces** - Define interfaces in consumer packages
-✅ **Handle dry-run** - Respect `dryRun` flag in destructive operations
+✅ Use existing patterns and code structure
+✅ Wrap errors with context: `fmt.Errorf("context: %w", err)`
+✅ Use appropriate log levels
+✅ Write tests for new functionality
+✅ Document exported functions with GoDoc comments
+✅ Respect `dryRun` flag in destructive operations
+✅ Update CLAUDE.md when completing phases
 
 ### DON'T:
-
-❌ **Commit secrets** - Never hardcode API keys, passwords, or private keys
-❌ **Ignore errors** - Always handle or propagate errors
-❌ **Use global state** - Minimize global variables (except logger, rootCmd)
-❌ **Panic unnecessarily** - Use error returns instead of `panic()`
-❌ **Skip validation** - Always validate before executing operations
-❌ **Hardcode paths** - Use config values or flags for file paths
-❌ **Mix concerns** - Keep CLI logic separate from business logic
+❌ Commit secrets (API keys, passwords)
+❌ Ignore errors
+❌ Use excessive global state
+❌ Skip validation
+❌ Hardcode paths (use config/flags)
+❌ Mix CLI logic with business logic
 
 ### Code Review Checklist:
-
-- [ ] Does it follow Go naming conventions?
-- [ ] Are errors properly wrapped with context?
-- [ ] Is logging used appropriately?
-- [ ] Are there tests for new functionality?
-- [ ] Is documentation updated (README, comments)?
-- [ ] Does it handle dry-run mode?
-- [ ] Are configuration changes reflected in `config.example.yaml`?
-- [ ] Are new dependencies necessary and well-justified?
-- [ ] Is the code formatted with `go fmt`?
-- [ ] Does it pass `go vet` and linting?
+- [ ] Go naming conventions followed?
+- [ ] Errors wrapped with context?
+- [ ] Logging appropriate?
+- [ ] Tests added?
+- [ ] Documentation updated?
+- [ ] Dry-run mode handled?
+- [ ] Config changes in `config.example.yaml`?
+- [ ] Formatted with `go fmt`?
+- [ ] Passes `go vet`?
 
 ---
 
 ## Quick Reference
 
 ### Key Commands
-
 ```bash
 # Build
 go build -o lumo ./cmd/lumo
 
-# Run with verbose logging
-./lumo --verbose diagnose
+# Install globally
+go install ./cmd/lumo
 
-# Dry run
-./lumo fix --dry-run
+# Run with options
+./lumo --verbose diagnose localhost
+./lumo diagnose user@host --checks cpu,memory --analyze
 
-# Custom config
-./lumo --config /path/to/config.yaml connect user@host
+# With AI analysis (provider-specific API keys)
+LUMO_ANTHROPIC_API_KEY=sk-ant-... ./lumo diagnose --analyze
+LUMO_OPENAI_API_KEY=sk-... LUMO_AI_PROVIDER=openai ./lumo diagnose --analyze
+LUMO_GEMINI_API_KEY=... LUMO_AI_PROVIDER=gemini ./lumo diagnose --analyze
 
-# Environment override
-LUMO_SSH_PORT=2222 ./lumo connect user@host
+# Development
+go fmt ./...
+go vet ./...
+go test ./...
 ```
 
-### Key Files
-
-| File | Purpose |
-|------|---------|
-| `cmd/lumo/root.go` | Root command, global flags, config loading |
-| `cmd/lumo/main.go` | Entry point |
-| `internal/config/config.go` | Configuration types and validation |
-| `configs/config.example.yaml` | Configuration template |
-| `.gitignore` | Protected files (secrets, binaries) |
-| `go.mod` | Dependencies |
-
 ### Key Patterns
-
 ```go
 // Error wrapping
 return fmt.Errorf("context: %w", err)
 
 // Logging
-log.WithFields(logrus.Fields{"key": "value"}).Info("message")
+log.WithFields(logrus.Fields{"key": "val"}).Info("msg")
 
 // Config loading
 cfg, err := config.Load()
 
 // Command registration
 rootCmd.AddCommand(myCmd)
-
-// Flag definition
-cmd.Flags().StringP("name", "n", "default", "help")
 ```
 
 ---
 
 **End of CLAUDE.md**
 
-> For questions or improvements to this guide, please open an issue at https://github.com/ignacio/lumo/issues
+> For questions or improvements, open an issue at https://github.com/ignacio/lumo/issues

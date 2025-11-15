@@ -134,8 +134,8 @@ func (c *CPUChecker) getCPUCount(ctx context.Context, executor diagnostics.Comma
 
 // getLoadAverage returns 1, 5, and 15 minute load averages
 func (c *CPUChecker) getLoadAverage(ctx context.Context, executor diagnostics.CommandExecutor) (float64, float64, float64, error) {
-	// Try Linux /proc/loadavg first
-	stdout, _, exitCode, err := executor.ExecuteWithContext(ctx, "cat /proc/loadavg 2>/dev/null || uptime | awk -F'load average:' '{ print $2 }' | awk '{ print $1, $2, $3 }' | tr -d ','")
+	// Try Linux /proc/loadavg first, then macOS uptime (handles both "load average:" and "load averages:")
+	stdout, _, exitCode, err := executor.ExecuteWithContext(ctx, "cat /proc/loadavg 2>/dev/null || uptime | sed 's/.*load average[s]*: //' | awk '{ print $1, $2, $3 }' | tr -d ','")
 	if err != nil || exitCode != 0 {
 		return 0, 0, 0, fmt.Errorf("failed to get load average: %w", err)
 	}

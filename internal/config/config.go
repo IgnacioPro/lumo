@@ -160,8 +160,18 @@ func (c *Config) Validate() error {
 		}
 
 		// Validate API key for cloud providers
-		if (c.AI.Provider == "anthropic" || c.AI.Provider == "openai") && c.AI.APIKey == "" {
-			return fmt.Errorf("AI provider %s requires api_key (set via LUMO_AI_API_KEY environment variable)", c.AI.Provider)
+		needsAPIKey := c.AI.Provider == "anthropic" || c.AI.Provider == "openai" || c.AI.Provider == "gemini" || c.AI.Provider == "google"
+		if needsAPIKey && c.AI.GetAPIKeyForProvider(c.AI.Provider) == "" {
+			providerName := c.AI.Provider
+			if providerName == "google" {
+				providerName = "gemini"
+			}
+			envVar := fmt.Sprintf("LUMO_%s_API_KEY", map[string]string{
+				"anthropic": "ANTHROPIC",
+				"openai":    "OPENAI",
+				"gemini":    "GEMINI",
+			}[providerName])
+			return fmt.Errorf("AI provider %s requires API key (set via %s or LUMO_AI_API_KEY environment variable)", c.AI.Provider, envVar)
 		}
 	}
 
@@ -210,4 +220,47 @@ func (c *AIConfig) GetModelForProvider(provider string) string {
 
 	// Will use provider's default model
 	return ""
+}
+
+// GetAPIKeyForProvider returns the API key for a specific provider.
+// It checks provider-specific environment variables first, then falls back to generic LUMO_AI_API_KEY.
+// Provider-specific environment variables:
+//   - LUMO_ANTHROPIC_API_KEY
+//   - LUMO_OPENAI_API_KEY
+//   - LUMO_GEMINI_API_KEY
+//   - LUMO_OLLAMA_API_KEY (optional, usually not needed)
+func (c *AIConfig) GetAPIKeyForProvider(provider string) string {
+	// Normalize provider name (handle aliases)
+	normalizedProvider := provider
+	switch provider {
+	case "google":
+		normalizedProvider = "gemini"
+	case "local":
+		normalizedProvider = "ollama"
+	}
+
+	// Check provider-specific environment variable first
+	// Viper expects key names without the prefix when using SetEnvPrefix("LUMO")
+	providerEnvVarKey := map[string]string{
+		"anthropic": "anthropic_api_key",
+		"openai":    "openai_api_key",
+		"gemini":    "gemini_api_key",
+		"ollama":    "ollama_api_key",
+	}[normalizedProvider]
+
+	if key := viper.GetString(providerEnvVarKey); key != "" {
+		return key
+	}
+
+	// Fall back to generic LUMO_AI_API_KEY
+	if key := viper.GetString("ai_api_key"); key != "" {
+		return key
+	}
+
+	// Finally, fall back to config file value
+	if c.APIKey != "" {
+		return c.APIKey
+	}
+
+	return viper.GetString("ai.api_key")
 }
