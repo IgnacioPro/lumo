@@ -20,7 +20,7 @@ import (
 )
 
 var diagnoseCmd = &cobra.Command{
-	Use:   "diagnose [user@]host",
+	Use:   "diagnose [[user@]host]",
 	Short: "Run diagnostic commands on remote or local systems",
 	Long: `Run diagnostic commands to check system health including:
   - CPU usage and load average
@@ -33,13 +33,16 @@ var diagnoseCmd = &cobra.Command{
 For remote hosts, connects via SSH. For localhost, runs commands directly
 without SSH overhead.
 
+If no host is specified, defaults to localhost.
+
 Examples:
+  lumo diagnose                              # Run locally (defaults to localhost)
   lumo diagnose localhost                    # Run locally without SSH
   lumo diagnose user@example.com             # Remote server via SSH
   lumo diagnose root@192.168.1.10 --port 2222
   lumo diagnose admin@server --checks cpu,memory,disk
-  lumo diagnose localhost --analyze          # Local with AI analysis`,
-	Args: cobra.ExactArgs(1),
+  lumo diagnose --analyze                    # Local with AI analysis`,
+	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runDiagnostics(cmd, args); err != nil {
 			log.Errorf("Diagnostics failed: %v", err)
@@ -69,7 +72,11 @@ func init() {
 }
 
 func runDiagnostics(cmd *cobra.Command, args []string) error {
-	hostArg := args[0]
+	// Default to localhost if no host argument provided
+	hostArg := "localhost"
+	if len(args) > 0 {
+		hostArg = args[0]
+	}
 
 	// Parse host argument (supports user@host format)
 	var username, hostname string
@@ -255,7 +262,7 @@ func runAIAnalysis(cfg *config.Config, report *diagnostics.Report, hostname stri
 	// Build provider config
 	providerConfig := &ai.ProviderConfig{
 		Name:        string(providerType),
-		APIKey:      cfg.AI.APIKey,
+		APIKey:      cfg.AI.GetAPIKeyForProvider(cfg.AI.Provider),
 		Model:       cfg.AI.GetModelForProvider(cfg.AI.Provider),
 		Endpoint:    cfg.AI.Endpoint,
 		Timeout:     cfg.AI.Timeout,

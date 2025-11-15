@@ -123,14 +123,24 @@ api:
 #   LUMO_SSH_PORT=2222
 #   LUMO_SSH_STRICT_HOST_KEY_CHECKING=true
 #   LUMO_SSH_DEFAULT_KEY_PATH=~/.ssh/id_ed25519
-# AI:
-#   LUMO_AI_API_KEY=sk-...              # API key (REQUIRED - set this!)
+#
+# AI - Provider-specific API keys (recommended - allows switching providers without changing keys):
+#   LUMO_ANTHROPIC_API_KEY=sk-ant-...   # Anthropic Claude API key
+#   LUMO_OPENAI_API_KEY=sk-...          # OpenAI GPT API key
+#   LUMO_GEMINI_API_KEY=...             # Google Gemini API key
+#   LUMO_OLLAMA_API_KEY=...             # Ollama API key (usually not needed for local)
+#
+# AI - Generic fallback (works but requires changing when switching providers):
+#   LUMO_AI_API_KEY=sk-...              # Generic API key (fallback if provider-specific not set)
+#
+# AI - Other settings:
 #   LUMO_AI_ENABLED=true                # Override enabled setting
 #   LUMO_AI_PROVIDER=openai             # Override provider
 #   LUMO_AI_MODEL=gpt-4                 # Override model
 #   LUMO_AI_ENDPOINT=http://...         # Override endpoint
 #   LUMO_AI_TEMPERATURE=0.7             # Override temperature
 #   LUMO_AI_MAX_TOKENS=2048             # Override max tokens
+#
 # Logging:
 #   LUMO_LOGGING_LEVEL=debug
 #   LUMO_LOGGING_FORMAT=json
