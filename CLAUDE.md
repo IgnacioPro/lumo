@@ -424,6 +424,12 @@ chmod 600 /etc/lumo/key.pem
 - Local execution support (no SSH for localhost)
 - 7 files, 1,964 lines (includes tests)
 
+### ⏳ Phase 4.1: Enhanced Diagnostics (Planned)
+- **Memory enhancements:** Top memory consumers, page fault tracking
+- Deep-dive metrics for existing checkers
+- Better process-level insights
+- Memory pressure indicators
+
 ### ⏳ Phase 5: Auto-Remediation (Planned)
 - Remediation action registry
 - Risk classification (safe, moderate, critical)
