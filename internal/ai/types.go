@@ -37,6 +37,10 @@ type AnalysisRequest struct {
 	// SystemInfo provides context about the system being analyzed
 	SystemInfo SystemInfo
 
+	// SelectedChecks indicates which checks were requested (empty = all checks)
+	// Used to inform AI that missing data is expected, not a problem
+	SelectedChecks []string
+
 	// Focus specifies areas to focus analysis on (empty = analyze all)
 	Focus []string
 
