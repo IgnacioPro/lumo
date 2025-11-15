@@ -91,6 +91,17 @@ func (pb *PromptBuilder) BuildAnalysisPrompt(req *AnalysisRequest) (string, erro
 	sb.WriteString(pb.formatSystemInfo(req.SystemInfo))
 	sb.WriteString("\n\n")
 
+	// Add selected checks information if specific checks were requested
+	if len(req.SelectedChecks) > 0 {
+		sb.WriteString("# Selected Checks\n\n")
+		sb.WriteString("**IMPORTANT:** Only the following checks were requested:\n")
+		for _, check := range req.SelectedChecks {
+			sb.WriteString(fmt.Sprintf("- %s\n", check))
+		}
+		sb.WriteString("\nMissing data for other system areas (CPU, memory, disk, etc.) is EXPECTED and NOT a problem.\n")
+		sb.WriteString("Focus your analysis ONLY on the data provided from these selected checks.\n\n")
+	}
+
 	// Add diagnostic report summary
 	sb.WriteString("# Diagnostic Report\n\n")
 	sb.WriteString(pb.formatReportSummary(req.Report))

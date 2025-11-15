@@ -201,7 +201,7 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 	if enableAI || (cfg.AI.Enabled && cfg.AI.Provider != "") {
 		log.Info("Running AI-powered analysis...")
 
-		analysis, err = runAIAnalysis(cfg, report, hostname, focusAreas)
+		analysis, err = runAIAnalysis(cfg, report, hostname, checksFilter, focusAreas)
 		if err != nil {
 			log.Warnf("AI analysis failed: %v", err)
 			// Continue without AI analysis rather than failing completely
@@ -252,7 +252,7 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 }
 
 // runAIAnalysis performs AI-powered analysis of diagnostic results.
-func runAIAnalysis(cfg *config.Config, report *diagnostics.Report, hostname string, focusAreas []string) (*ai.AnalysisResponse, error) {
+func runAIAnalysis(cfg *config.Config, report *diagnostics.Report, hostname string, selectedChecks []string, focusAreas []string) (*ai.AnalysisResponse, error) {
 	// Parse provider type
 	providerType, err := ai.ParseProviderType(cfg.AI.Provider)
 	if err != nil {
@@ -287,11 +287,12 @@ func runAIAnalysis(cfg *config.Config, report *diagnostics.Report, hostname stri
 
 	// Build analysis request
 	req := &ai.AnalysisRequest{
-		Report: report,
+		Report:         report,
 		SystemInfo: ai.SystemInfo{
 			Hostname: hostname,
 		},
-		Focus: focusAreas,
+		SelectedChecks: selectedChecks,
+		Focus:          focusAreas,
 	}
 
 	// Run analysis
