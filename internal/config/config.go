@@ -85,6 +85,7 @@ func DefaultConfig() *Config {
 				"anthropic": "claude-sonnet-4-5-20250929",
 				"openai":    "gpt-4-turbo-preview",
 				"ollama":    "llama3.1:8b",
+				"gemini":    "gemini-2.0-flash-exp",
 			},
 			Endpoint:    "", // Will use provider-specific default
 			Timeout:     120 * time.Second,
@@ -140,10 +141,12 @@ func (c *Config) Validate() error {
 			"anthropic": true,
 			"openai":    true,
 			"ollama":    true,
-			"local":     true, // Alias for ollama
+			"gemini":    true,
+			"local":     true,  // Alias for ollama
+			"google":    true,  // Alias for gemini
 		}
 		if !validProviders[c.AI.Provider] {
-			return fmt.Errorf("unsupported AI provider: %s (supported: anthropic, openai, ollama)", c.AI.Provider)
+			return fmt.Errorf("unsupported AI provider: %s (supported: anthropic, openai, ollama, gemini)", c.AI.Provider)
 		}
 
 		// Validate temperature range
