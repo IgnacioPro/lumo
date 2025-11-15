@@ -1,0 +1,323 @@
+package ai
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/ignacio/lumo/internal/diagnostics"
+)
+
+// PromptBuilder constructs prompts for AI analysis of diagnostic results.
+type PromptBuilder struct {
+	includeThinking bool
+	focusAreas      []string
+}
+
+// NewPromptBuilder creates a new prompt builder.
+func NewPromptBuilder() *PromptBuilder {
+	return &PromptBuilder{
+		includeThinking: true,
+	}
+}
+
+// WithThinking controls whether to include thinking/reasoning in responses.
+func (pb *PromptBuilder) WithThinking(include bool) *PromptBuilder {
+	pb.includeThinking = include
+	return pb
+}
+
+// WithFocus sets specific areas to focus analysis on.
+func (pb *PromptBuilder) WithFocus(areas ...string) *PromptBuilder {
+	pb.focusAreas = areas
+	return pb
+}
+
+// BuildSystemPrompt creates the system prompt that defines the AI's role.
+func (pb *PromptBuilder) BuildSystemPrompt() string {
+	return `You are an expert SRE/DevOps engineer analyzing system diagnostics. Your role is to:
+
+1. Analyze diagnostic data from remote systems
+2. Identify performance issues, resource constraints, and potential failures
+3. Provide actionable recommendations with specific commands
+4. Assess risk levels for proposed changes
+5. Prioritize findings based on severity and impact
+
+Guidelines:
+- Be specific and technical in your analysis
+- Always provide evidence from the diagnostic data
+- Recommend concrete commands when applicable
+- Assess risk levels honestly (safe, low, moderate, high, critical)
+- Prioritize recommendations (critical, high, medium, low)
+- Consider system stability when recommending changes
+- If data is missing or unclear, note limitations in your analysis
+
+Output Format:
+Provide your analysis in JSON format with this structure:
+{
+  "summary": "Brief overview of system health",
+  "overall_health": "healthy|degraded|critical",
+  "confidence": 0.0-1.0,
+  "findings": [
+    {
+      "category": "CPU|Memory|Disk|Process|Service|Network",
+      "severity": "info|warning|error|critical",
+      "title": "Brief finding title",
+      "description": "Detailed explanation",
+      "evidence": {"key": "value"},
+      "related_checks": ["check_name"]
+    }
+  ],
+  "recommendations": [
+    {
+      "priority": "critical|high|medium|low",
+      "title": "Brief recommendation",
+      "description": "What to do and why",
+      "commands": ["specific commands to run"],
+      "risk": "safe|low|moderate|high|critical",
+      "estimated_impact": "Expected improvement",
+      "related_findings": [0, 1]
+    }
+  ]
+}`
+}
+
+// BuildAnalysisPrompt creates the user prompt with diagnostic data.
+func (pb *PromptBuilder) BuildAnalysisPrompt(req *AnalysisRequest) (string, error) {
+	var sb strings.Builder
+
+	// Add system information
+	sb.WriteString("# System Information\n\n")
+	sb.WriteString(pb.formatSystemInfo(req.SystemInfo))
+	sb.WriteString("\n\n")
+
+	// Add diagnostic report summary
+	sb.WriteString("# Diagnostic Report\n\n")
+	sb.WriteString(pb.formatReportSummary(req.Report))
+	sb.WriteString("\n\n")
+
+	// Add detailed results
+	sb.WriteString("# Detailed Results\n\n")
+	for _, result := range req.Report.Results {
+		sb.WriteString(pb.formatCheckResult(result))
+		sb.WriteString("\n")
+	}
+
+	// Add focus areas if specified
+	if len(req.Focus) > 0 {
+		sb.WriteString("\n# Focus Areas\n\n")
+		sb.WriteString("Please pay special attention to these areas:\n")
+		for _, area := range req.Focus {
+			sb.WriteString(fmt.Sprintf("- %s\n", area))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Add analysis request
+	sb.WriteString("\n# Analysis Request\n\n")
+	sb.WriteString("Please analyze this diagnostic data and provide:\n")
+	sb.WriteString("1. A summary of overall system health\n")
+	sb.WriteString("2. Specific findings with evidence from the data\n")
+	sb.WriteString("3. Prioritized recommendations with commands\n")
+	sb.WriteString("4. Risk assessment for each recommendation\n\n")
+	sb.WriteString("Respond in the JSON format specified in your system prompt.\n")
+
+	return sb.String(), nil
+}
+
+// formatSystemInfo formats system information for the prompt.
+func (pb *PromptBuilder) formatSystemInfo(info SystemInfo) string {
+	var sb strings.Builder
+
+	if info.Hostname != "" {
+		sb.WriteString(fmt.Sprintf("- **Hostname:** %s\n", info.Hostname))
+	}
+	if info.Platform != "" {
+		sb.WriteString(fmt.Sprintf("- **Platform:** %s\n", info.Platform))
+	}
+	if info.Architecture != "" {
+		sb.WriteString(fmt.Sprintf("- **Architecture:** %s\n", info.Architecture))
+	}
+	if info.KernelVersion != "" {
+		sb.WriteString(fmt.Sprintf("- **Kernel:** %s\n", info.KernelVersion))
+	}
+	if info.UptimeDays > 0 {
+		sb.WriteString(fmt.Sprintf("- **Uptime:** %.1f days\n", info.UptimeDays))
+	}
+	if info.Environment != "" {
+		sb.WriteString(fmt.Sprintf("- **Environment:** %s\n", info.Environment))
+	}
+	if len(info.Tags) > 0 {
+		sb.WriteString("- **Tags:** ")
+		tags := make([]string, 0, len(info.Tags))
+		for k, v := range info.Tags {
+			tags = append(tags, fmt.Sprintf("%s=%s", k, v))
+		}
+		sb.WriteString(strings.Join(tags, ", "))
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
+// formatReportSummary formats the diagnostic report summary.
+func (pb *PromptBuilder) formatReportSummary(report *diagnostics.Report) string {
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("- **Total Checks:** %d\n", report.Summary.TotalChecks))
+	sb.WriteString(fmt.Sprintf("- **OK:** %d\n", report.Summary.OKCount))
+	sb.WriteString(fmt.Sprintf("- **Info:** %d\n", report.Summary.InfoCount))
+	sb.WriteString(fmt.Sprintf("- **Warnings:** %d\n", report.Summary.WarningCount))
+	sb.WriteString(fmt.Sprintf("- **Errors:** %d\n", report.Summary.ErrorCount))
+	sb.WriteString(fmt.Sprintf("- **Critical:** %d\n", report.Summary.CriticalCount))
+	sb.WriteString(fmt.Sprintf("- **Duration:** %v\n", report.Duration))
+
+	return sb.String()
+}
+
+// formatCheckResult formats a single check result.
+func (pb *PromptBuilder) formatCheckResult(result *diagnostics.CheckResult) string {
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("## %s\n\n", result.Name))
+	sb.WriteString(fmt.Sprintf("- **Status:** %s\n", result.Status))
+	sb.WriteString(fmt.Sprintf("- **Severity:** %s\n", result.Severity))
+
+	if result.Message != "" {
+		sb.WriteString(fmt.Sprintf("- **Message:** %s\n", result.Message))
+	}
+
+	if result.Error != "" {
+		sb.WriteString(fmt.Sprintf("- **Error:** %s\n", result.Error))
+	}
+
+	// Format metrics
+	if len(result.Metrics) > 0 {
+		sb.WriteString("\n**Metrics:**\n\n")
+		for _, metric := range result.Metrics {
+			sb.WriteString(fmt.Sprintf("- `%s`: %v\n", metric.Name, formatMetricValue(metric.Value)))
+		}
+	}
+
+	return sb.String()
+}
+
+// formatMetricValue formats a metric value for display.
+func formatMetricValue(value interface{}) string {
+	switch v := value.(type) {
+	case float64:
+		return fmt.Sprintf("%.2f", v)
+	case []interface{}:
+		// Format arrays (e.g., top processes)
+		if len(v) > 0 {
+			if bytes, err := json.Marshal(v); err == nil {
+				return string(bytes)
+			}
+		}
+		return fmt.Sprintf("%v", v)
+	case map[string]interface{}:
+		// Format objects
+		if bytes, err := json.Marshal(v); err == nil {
+			return string(bytes)
+		}
+		return fmt.Sprintf("%v", v)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// ParseAnalysisResponse parses the AI provider's JSON response.
+func ParseAnalysisResponse(content string, provider string, model string) (*AnalysisResponse, error) {
+	var rawResponse struct {
+		Summary       string  `json:"summary"`
+		OverallHealth string  `json:"overall_health"`
+		Confidence    float64 `json:"confidence"`
+		Findings      []struct {
+			Category      string                 `json:"category"`
+			Severity      string                 `json:"severity"`
+			Title         string                 `json:"title"`
+			Description   string                 `json:"description"`
+			Evidence      map[string]interface{} `json:"evidence"`
+			RelatedChecks []string               `json:"related_checks"`
+		} `json:"findings"`
+		Recommendations []struct {
+			Priority        string   `json:"priority"`
+			Title           string   `json:"title"`
+			Description     string   `json:"description"`
+			Commands        []string `json:"commands"`
+			Risk            string   `json:"risk"`
+			EstimatedImpact string   `json:"estimated_impact"`
+			RelatedFindings []int    `json:"related_findings"`
+		} `json:"recommendations"`
+	}
+
+	// Try to extract JSON from markdown code blocks if present
+	content = strings.TrimSpace(content)
+	if strings.HasPrefix(content, "```json") {
+		content = strings.TrimPrefix(content, "```json")
+		content = strings.TrimSuffix(content, "```")
+		content = strings.TrimSpace(content)
+	} else if strings.HasPrefix(content, "```") {
+		content = strings.TrimPrefix(content, "```")
+		content = strings.TrimSuffix(content, "```")
+		content = strings.TrimSpace(content)
+	}
+
+	if err := json.Unmarshal([]byte(content), &rawResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse AI response: %w", err)
+	}
+
+	// Convert to AnalysisResponse
+	response := &AnalysisResponse{
+		Summary:       rawResponse.Summary,
+		OverallHealth: HealthStatus(rawResponse.OverallHealth),
+		Confidence:    rawResponse.Confidence,
+		Provider:      provider,
+		Model:         model,
+	}
+
+	// Convert findings
+	response.Findings = make([]Finding, len(rawResponse.Findings))
+	for i, f := range rawResponse.Findings {
+		response.Findings[i] = Finding{
+			Category:      f.Category,
+			Severity:      parseSeverity(f.Severity),
+			Title:         f.Title,
+			Description:   f.Description,
+			Evidence:      f.Evidence,
+			RelatedChecks: f.RelatedChecks,
+		}
+	}
+
+	// Convert recommendations
+	response.Recommendations = make([]Recommendation, len(rawResponse.Recommendations))
+	for i, r := range rawResponse.Recommendations {
+		response.Recommendations[i] = Recommendation{
+			Priority:        Priority(r.Priority),
+			Title:           r.Title,
+			Description:     r.Description,
+			Commands:        r.Commands,
+			Risk:            RiskLevel(r.Risk),
+			EstimatedImpact: r.EstimatedImpact,
+			RelatedFindings: r.RelatedFindings,
+		}
+	}
+
+	return response, nil
+}
+
+// parseSeverity converts string severity to diagnostics.Severity.
+func parseSeverity(s string) diagnostics.Severity {
+	switch strings.ToLower(s) {
+	case "info":
+		return diagnostics.SeverityInfo
+	case "warning":
+		return diagnostics.SeverityWarning
+	case "error":
+		return diagnostics.SeverityError
+	case "critical":
+		return diagnostics.SeverityCritical
+	default:
+		return diagnostics.SeverityInfo
+	}
+}

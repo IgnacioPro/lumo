@@ -147,12 +147,12 @@ type NetworkInterface struct {
 
 // ConnectivityResult holds connectivity test results
 type ConnectivityResult struct {
-	Host         string  `json:"host"`
-	Reachable    bool    `json:"reachable"`
-	AvgLatency   float64 `json:"avg_latency_ms"`
-	PacketLoss   float64 `json:"packet_loss_percent"`
-	PacketsSent  int     `json:"packets_sent"`
-	PacketsRecv  int     `json:"packets_received"`
+	Host        string  `json:"host"`
+	Reachable   bool    `json:"reachable"`
+	AvgLatency  float64 `json:"avg_latency_ms"`
+	PacketLoss  float64 `json:"packet_loss_percent"`
+	PacketsSent int     `json:"packets_sent"`
+	PacketsRecv int     `json:"packets_received"`
 }
 
 // InterfaceStats holds interface statistics

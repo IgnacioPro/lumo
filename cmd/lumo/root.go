@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -14,7 +14,7 @@ var (
 	verbose bool
 	dryRun  bool
 	log     = logrus.New()
-	version = "0.1.0"
+	version = "0.4.0"
 )
 
 var rootCmd = &cobra.Command{

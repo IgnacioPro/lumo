@@ -17,24 +17,30 @@ type Config struct {
 
 // SSHConfig contains SSH connection settings
 type SSHConfig struct {
-	Timeout                time.Duration `mapstructure:"timeout"`
-	Port                   int           `mapstructure:"port"`
-	KeepAlive              time.Duration `mapstructure:"keepalive"`
-	MaxRetries             int           `mapstructure:"max_retries"`
-	RetryInterval          time.Duration `mapstructure:"retry_interval"`
-	KnownHostsPath         string        `mapstructure:"known_hosts_path"`
-	StrictHostKeyChecking  bool          `mapstructure:"strict_host_key_checking"`
-	PreferredAuthMethods   []string      `mapstructure:"preferred_auth_methods"`
-	CommandTimeout         time.Duration `mapstructure:"command_timeout"`
-	DefaultKeyPath         string        `mapstructure:"default_key_path"`
+	Timeout               time.Duration `mapstructure:"timeout"`
+	Port                  int           `mapstructure:"port"`
+	KeepAlive             time.Duration `mapstructure:"keepalive"`
+	MaxRetries            int           `mapstructure:"max_retries"`
+	RetryInterval         time.Duration `mapstructure:"retry_interval"`
+	KnownHostsPath        string        `mapstructure:"known_hosts_path"`
+	StrictHostKeyChecking bool          `mapstructure:"strict_host_key_checking"`
+	PreferredAuthMethods  []string      `mapstructure:"preferred_auth_methods"`
+	CommandTimeout        time.Duration `mapstructure:"command_timeout"`
+	DefaultKeyPath        string        `mapstructure:"default_key_path"`
 }
 
 // AIConfig contains AI provider settings
 type AIConfig struct {
-	Provider string            `mapstructure:"provider"`
-	Models   map[string]string `mapstructure:"models"`
-	Timeout  time.Duration     `mapstructure:"timeout"`
-	MaxRetries int             `mapstructure:"max_retries"`
+	Provider    string            `mapstructure:"provider"`
+	APIKey      string            `mapstructure:"api_key"`
+	Model       string            `mapstructure:"model"`
+	Models      map[string]string `mapstructure:"models"`   // Per-provider model overrides
+	Endpoint    string            `mapstructure:"endpoint"` // Custom endpoint (optional)
+	Timeout     time.Duration     `mapstructure:"timeout"`
+	MaxRetries  int               `mapstructure:"max_retries"`
+	Temperature float64           `mapstructure:"temperature"` // 0.0-1.0 (default 1.0)
+	MaxTokens   int               `mapstructure:"max_tokens"`  // Maximum response tokens
+	Enabled     bool              `mapstructure:"enabled"`     // Enable/disable AI analysis
 }
 
 // LoggingConfig contains logging settings
@@ -73,12 +79,20 @@ func DefaultConfig() *Config {
 		},
 		AI: AIConfig{
 			Provider: "anthropic",
+			APIKey:   "", // Set via LUMO_AI_API_KEY environment variable
+			Model:    "", // Will use provider-specific default
 			Models: map[string]string{
 				"anthropic": "claude-sonnet-4-5-20250929",
-				"openai":    "gpt-4",
+				"openai":    "gpt-4-turbo-preview",
+				"ollama":    "llama3.1:8b",
+				"gemini":    "gemini-2.0-flash-exp",
 			},
-			Timeout:    60 * time.Second,
-			MaxRetries: 3,
+			Endpoint:    "", // Will use provider-specific default
+			Timeout:     120 * time.Second,
+			MaxRetries:  3,
+			Temperature: 1.0,
+			MaxTokens:   4096,
+			Enabled:     true,
 		},
 		Logging: LoggingConfig{
 			Level:  "info",
@@ -122,13 +136,43 @@ func (c *Config) Validate() error {
 	}
 
 	// AI validation
-	validProviders := map[string]bool{
-		"anthropic": true,
-		"openai":    true,
-		"local":     true,
-	}
-	if !validProviders[c.AI.Provider] {
-		return fmt.Errorf("unsupported AI provider: %s", c.AI.Provider)
+	if c.AI.Enabled {
+		validProviders := map[string]bool{
+			"anthropic": true,
+			"openai":    true,
+			"ollama":    true,
+			"gemini":    true,
+			"local":     true,  // Alias for ollama
+			"google":    true,  // Alias for gemini
+		}
+		if !validProviders[c.AI.Provider] {
+			return fmt.Errorf("unsupported AI provider: %s (supported: anthropic, openai, ollama, gemini)", c.AI.Provider)
+		}
+
+		// Validate temperature range
+		if c.AI.Temperature < 0 || c.AI.Temperature > 1.0 {
+			return fmt.Errorf("AI temperature must be between 0.0 and 1.0, got: %.2f", c.AI.Temperature)
+		}
+
+		// Validate max tokens
+		if c.AI.MaxTokens < 1 {
+			return fmt.Errorf("AI max_tokens must be positive, got: %d", c.AI.MaxTokens)
+		}
+
+		// Validate API key for cloud providers
+		needsAPIKey := c.AI.Provider == "anthropic" || c.AI.Provider == "openai" || c.AI.Provider == "gemini" || c.AI.Provider == "google"
+		if needsAPIKey && c.AI.GetAPIKeyForProvider(c.AI.Provider) == "" {
+			providerName := c.AI.Provider
+			if providerName == "google" {
+				providerName = "gemini"
+			}
+			envVar := fmt.Sprintf("LUMO_%s_API_KEY", map[string]string{
+				"anthropic": "ANTHROPIC",
+				"openai":    "OPENAI",
+				"gemini":    "GEMINI",
+			}[providerName])
+			return fmt.Errorf("AI provider %s requires API key (set via %s or LUMO_AI_API_KEY environment variable)", c.AI.Provider, envVar)
+		}
 	}
 
 	// Logging validation
@@ -159,4 +203,64 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// GetModelForProvider returns the model to use for a specific provider.
+// It checks the Model field first, then falls back to the Models map, then provider defaults.
+func (c *AIConfig) GetModelForProvider(provider string) string {
+	// Use explicitly set model if available
+	if c.Model != "" {
+		return c.Model
+	}
+
+	// Fall back to provider-specific model from map
+	if model, ok := c.Models[provider]; ok && model != "" {
+		return model
+	}
+
+	// Will use provider's default model
+	return ""
+}
+
+// GetAPIKeyForProvider returns the API key for a specific provider.
+// It checks provider-specific environment variables first, then falls back to generic LUMO_AI_API_KEY.
+// Provider-specific environment variables:
+//   - LUMO_ANTHROPIC_API_KEY
+//   - LUMO_OPENAI_API_KEY
+//   - LUMO_GEMINI_API_KEY
+//   - LUMO_OLLAMA_API_KEY (optional, usually not needed)
+func (c *AIConfig) GetAPIKeyForProvider(provider string) string {
+	// Normalize provider name (handle aliases)
+	normalizedProvider := provider
+	switch provider {
+	case "google":
+		normalizedProvider = "gemini"
+	case "local":
+		normalizedProvider = "ollama"
+	}
+
+	// Check provider-specific environment variable first
+	// Viper expects key names without the prefix when using SetEnvPrefix("LUMO")
+	providerEnvVarKey := map[string]string{
+		"anthropic": "anthropic_api_key",
+		"openai":    "openai_api_key",
+		"gemini":    "gemini_api_key",
+		"ollama":    "ollama_api_key",
+	}[normalizedProvider]
+
+	if key := viper.GetString(providerEnvVarKey); key != "" {
+		return key
+	}
+
+	// Fall back to generic LUMO_AI_API_KEY
+	if key := viper.GetString("ai_api_key"); key != "" {
+		return key
+	}
+
+	// Finally, fall back to config file value
+	if c.APIKey != "" {
+		return c.APIKey
+	}
+
+	return viper.GetString("ai.api_key")
 }
