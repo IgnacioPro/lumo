@@ -1,7 +1,7 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
 > **Last Updated:** 2025-11-15
-> **Project Version:** 0.5.0
+> **Project Version:** 0.4.0
 > **Current Phase:** Phase 4 Complete (AI Integration with 3 Providers)
 
 This document provides comprehensive guidance for AI assistants (like Claude) working on the Lumo codebase. It covers architecture, conventions, workflows, and best practices to ensure consistent, high-quality contributions.
