@@ -62,9 +62,88 @@ func TestNetworkChecker_RequiresRoot(t *testing.T) {
 	}
 }
 
-// TestNetworkChecker_Run is complex due to network commands - covered by integration tests
+func TestNetworkChecker_Run(t *testing.T) {
+	targets := []config.NetworkTarget{
+		{Host: "8.8.8.8", Port: 0, Protocol: "icmp"},
+		{Host: "example.com", Port: 80, Protocol: "tcp"},
+	}
 
-// parseInterfaces and InterfaceInfo are private, testing via Run() instead
+	thresholds := diagnostics.NetworkThresholds{
+		ConnectionsWarn: 1000,
+	}
+
+	executor := &mockExecutor{
+		responses: map[string]mockResponse{
+			"ip -br addr": {
+				stdout:   "eth0             UP             192.168.1.100/24\nlo               UP             127.0.0.1/8\n",
+				exitCode: 0,
+			},
+			"ss -tan": {
+				stdout:   "250\n",
+				exitCode: 0,
+			},
+			"ping -c 1 -W 2 8.8.8.8": {
+				stdout:   "time=15.2 ms\n",
+				exitCode: 0,
+			},
+			"nc -zv -w 2 example.com 80": {
+				stdout:   "Connection to example.com 80 port [tcp/http] succeeded!\n",
+				exitCode: 0,
+			},
+		},
+	}
+
+	checker := NewNetworkChecker(thresholds, targets)
+	result, err := checker.Run(context.Background(), executor)
+
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("Run() returned nil result")
+	}
+
+	if result.Name != "network_check" {
+		t.Errorf("Name = %v, want network_check", result.Name)
+	}
+
+	if result.Category != diagnostics.CategoryNetwork {
+		t.Errorf("Category = %v, want %v", result.Category, diagnostics.CategoryNetwork)
+	}
+}
+
+func TestNetworkChecker_RunWithErrors(t *testing.T) {
+	executor := &mockExecutor{
+		responses: map[string]mockResponse{
+			"ip -br addr": {
+				stderr:   "command not found",
+				exitCode: 127,
+			},
+			"ss -tan": {
+				stderr:   "ss: command not found",
+				exitCode: 127,
+			},
+		},
+	}
+
+	checker := NewNetworkChecker(diagnostics.NetworkThresholds{}, nil)
+	result, err := checker.Run(context.Background(), executor)
+
+	// Should still complete even with errors
+	if err != nil {
+		t.Fatalf("Run() should not error even with command failures, got: %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("Run() returned nil result")
+	}
+
+	// Check that warnings were recorded
+	if _, exists := result.Data["interfaces_warning"]; !exists {
+		t.Error("Expected interfaces_warning in result data")
+	}
+}
 
 func TestNetworkChecker_GetConnectionCount(t *testing.T) {
 	tests := []struct {
