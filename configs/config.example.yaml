@@ -47,10 +47,9 @@ ai:
   # Primary AI provider: anthropic, openai, or ollama
   provider: anthropic
 
-  # API key for cloud providers (REQUIRED for anthropic/openai)
-  # DO NOT commit this to version control!
-  # Best practice: Set via environment variable LUMO_AI_API_KEY
-  api_key: ""
+  # API key: DO NOT set here! Use environment variable instead:
+  #   export LUMO_AI_API_KEY=your-api-key
+  # (REQUIRED for anthropic/openai, not needed for ollama)
 
   # Model to use (leave empty to use provider defaults)
   # This overrides the provider-specific model from the models map
@@ -124,13 +123,13 @@ api:
 #   LUMO_SSH_STRICT_HOST_KEY_CHECKING=true
 #   LUMO_SSH_DEFAULT_KEY_PATH=~/.ssh/id_ed25519
 # AI:
-#   LUMO_AI_ENABLED=true
-#   LUMO_AI_PROVIDER=openai
-#   LUMO_AI_API_KEY=sk-...
-#   LUMO_AI_MODEL=gpt-4
-#   LUMO_AI_ENDPOINT=http://localhost:11434/api/chat
-#   LUMO_AI_TEMPERATURE=0.7
-#   LUMO_AI_MAX_TOKENS=2048
+#   LUMO_AI_API_KEY=sk-...              # API key (REQUIRED - set this!)
+#   LUMO_AI_ENABLED=true                # Override enabled setting
+#   LUMO_AI_PROVIDER=openai             # Override provider
+#   LUMO_AI_MODEL=gpt-4                 # Override model
+#   LUMO_AI_ENDPOINT=http://...         # Override endpoint
+#   LUMO_AI_TEMPERATURE=0.7             # Override temperature
+#   LUMO_AI_MAX_TOKENS=2048             # Override max tokens
 # Logging:
 #   LUMO_LOGGING_LEVEL=debug
 #   LUMO_LOGGING_FORMAT=json
