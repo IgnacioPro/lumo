@@ -1,8 +1,8 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-15 (Network targets & AI improvements)
+> **Last Updated:** 2025-11-15 (Test coverage expansion)
 > **Project Version:** 0.4.0
-> **Current Phase:** Phase 4 Complete + Enhancements
+> **Current Phase:** Phase 4 Complete + Phase 8 In Progress (Testing)
 
 This document provides comprehensive guidance for AI assistants working on the Lumo codebase.
 
@@ -55,7 +55,7 @@ lumo/
 └── configs/
     └── config.example.yaml        # Configuration template
 
-Total: 37 Go files, ~10,600 lines
+Total: 37 Go files (~10,600 lines) + 14 test files (~5,246 lines)
 ```
 
 **Directory Purposes:**
@@ -331,12 +331,39 @@ func TestValidation(t *testing.T) {
 }
 ```
 
+**Mock Executors for Checkers:**
+```go
+// Mock executor for testing checkers without real commands
+type mockExecutor struct {
+    responses map[string]mockResponse
+}
+
+func (m *mockExecutor) ExecuteWithContext(ctx context.Context, command string) (stdout, stderr string, exitCode int, err error) {
+    for pattern, resp := range m.responses {
+        if strings.Contains(command, pattern) {
+            return resp.stdout, resp.stderr, resp.exitCode, resp.err
+        }
+    }
+    return "", "command not mocked", 127, nil
+}
+```
+
 **Running Tests:**
 ```bash
-go test ./...                    # All tests
-go test -cover ./...             # With coverage
-go test -v ./internal/config     # Specific package
+go test ./...                    # All tests (currently 36.8% coverage)
+go test -cover ./...             # With coverage report
+go test -v ./internal/config     # Specific package verbose
+go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out  # HTML coverage
 ```
+
+**Current Coverage by Package:**
+- internal/diagnostics/formatters: 100.0%
+- internal/config: 68.8%
+- internal/diagnostics/checkers: 62.1%
+- internal/diagnostics: 54.1%
+- internal/ai: 27.0%
+- internal/ssh: 16.3%
+- cmd/lumo: 0.0%
 
 ---
 
@@ -445,10 +472,72 @@ chmod 600 /etc/lumo/key.pem
 - Authentication, rate limiting
 - OpenAPI/Swagger docs
 
-### ⏳ Phase 8: Testing & Documentation (Planned)
-- 80% test coverage target
-- Integration + E2E tests
-- GoDoc comments, user guides
+### 🚧 Phase 8: Testing & Documentation (In Progress)
+**Status:** Significant progress made on unit test coverage
+
+**Overall Test Coverage: 36.8%**
+
+#### Package Coverage Status:
+
+| Package | Coverage | Test Files | Status |
+|---------|----------|------------|--------|
+| **internal/diagnostics/formatters** | 100.0% | text_test.go | ✅ Complete |
+| **internal/config** | 68.8% | config_test.go, config_api_key_test.go | ✅ Good |
+| **internal/diagnostics/checkers** | 62.1% | cpu, disk, memory, network, process, service tests | ✅ Good |
+| **internal/diagnostics** | 54.1% | result_test.go, severity_test.go | ✅ Solid |
+| **internal/ai** | 27.0% | prompts_test.go, provider_test.go | ⚠️ Needs expansion |
+| **internal/ssh** | 16.3% | config_test.go, errors_test.go, types_test.go | ⚠️ Needs expansion |
+| **cmd/lumo** | 0.0% | (none) | ❌ Not started |
+
+#### Test Files Added (5,246 lines):
+
+**SSH Package Tests (1,230 lines):**
+- `internal/ssh/config_test.go` - ClientConfig validation, key handling
+- `internal/ssh/errors_test.go` - All error types, helper functions
+- `internal/ssh/types_test.go` - Enums, CommandResult, constants
+
+**Diagnostics Tests (3,693 lines):**
+- `internal/diagnostics/checkers/cpu_test.go` - CPU checker with mock executor
+- `internal/diagnostics/checkers/disk_test.go` - Disk checker tests
+- `internal/diagnostics/checkers/memory_test.go` - Memory checker tests
+- `internal/diagnostics/checkers/network_test.go` - Network checker + Run() tests
+- `internal/diagnostics/checkers/process_test.go` - Process checker tests
+- `internal/diagnostics/checkers/service_test.go` - Service checker + Run() tests
+- `internal/diagnostics/formatters/text_test.go` - Text formatter (100% coverage)
+- `internal/diagnostics/result_test.go` - CheckResult and Report types
+- `internal/diagnostics/severity_test.go` - Severity and threshold types
+
+**AI Package Tests (767 lines):**
+- `internal/ai/prompts_test.go` - PromptBuilder, formatters, parsers
+- `internal/ai/provider_test.go` - Provider factory, type validation
+
+**Config Package Tests (237 lines):**
+- `internal/config/config_test.go` - Config loading, validation
+- `internal/config/config_api_key_test.go` - API key handling
+
+#### Test Patterns Established:
+
+✅ **Mock Executors:** Comprehensive mock command executor for checkers
+✅ **Table-Driven Tests:** Used throughout for clarity and coverage
+✅ **Error Wrapping Tests:** All custom error types tested
+✅ **Method Chaining:** Builder pattern tests verify fluent APIs
+✅ **Edge Cases:** Nil values, empty strings, boundary conditions
+
+#### Remaining Work for 80% Target:
+
+**High Priority:**
+1. **cmd/lumo (0%)** - CLI command tests
+2. **AI providers (27%)** - HTTP client tests for Anthropic, OpenAI, Ollama, Gemini
+3. **SSH package (16.3%)** - Auth flow tests, retry logic tests
+
+**Medium Priority:**
+4. **Checkers (62.1%)** - Edge case coverage for parsing functions
+5. **Diagnostics core (54.1%)** - Runner orchestration tests
+
+**Future:**
+6. Integration tests with real SSH connections
+7. E2E tests for full diagnostic flows
+8. GoDoc comments for exported functions
 
 ---
 
