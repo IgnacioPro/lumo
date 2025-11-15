@@ -1,6 +1,7 @@
 package checkers
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -52,9 +53,120 @@ func TestServiceChecker_RequiresRoot(t *testing.T) {
 	}
 }
 
-// TestServiceChecker_Run is complex - tested via integration tests
+func TestServiceChecker_Run_Systemd(t *testing.T) {
+	executor := &mockExecutor{
+		responses: map[string]mockResponse{
+			"command -v systemctl": {
+				stdout:   "/usr/bin/systemctl\n",
+				exitCode: 0,
+			},
+			"systemctl is-system-running": {
+				stdout:   "running\n",
+				exitCode: 0,
+			},
+			"systemctl list-units": {
+				stdout: `UNIT                  LOAD   ACTIVE SUB     DESCRIPTION
+nginx.service        loaded active running A high performance web server
+mysql.service        loaded failed failed  MySQL Database Server
+ssh.service          loaded active running OpenBSD Secure Shell server
+`,
+				exitCode: 0,
+			},
+		},
+	}
 
-// detectServiceManager is complex - tested via integration tests
+	checker := NewServiceChecker([]string{"nginx", "mysql"})
+	result, err := checker.Run(context.Background(), executor)
+
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("Run() returned nil result")
+	}
+
+	if result.Name != "service_check" {
+		t.Errorf("Name = %v, want service_check", result.Name)
+	}
+
+	if result.Category != diagnostics.CategoryService {
+		t.Errorf("Category = %v, want %v", result.Category, diagnostics.CategoryService)
+	}
+}
+
+func TestServiceChecker_Run_NoServiceManager(t *testing.T) {
+	executor := &mockExecutor{
+		responses: map[string]mockResponse{
+			"command -v systemctl": {
+				stderr:   "not found",
+				exitCode: 1,
+			},
+			"command -v service": {
+				stderr:   "not found",
+				exitCode: 1,
+			},
+			"command -v launchctl": {
+				stderr:   "not found",
+				exitCode: 1,
+			},
+		},
+	}
+
+	checker := NewServiceChecker(nil)
+	result, err := checker.Run(context.Background(), executor)
+
+	// Should return error when no service manager is found
+	if err == nil {
+		t.Fatal("Run() should return error when no service manager found")
+	}
+
+	// Result should be nil when error is returned
+	if result != nil {
+		t.Error("Run() should return nil result when error occurs")
+	}
+}
+
+func TestServiceChecker_Run_WithMonitoredServices(t *testing.T) {
+	executor := &mockExecutor{
+		responses: map[string]mockResponse{
+			"command -v systemctl": {
+				stdout:   "/usr/bin/systemctl\n",
+				exitCode: 0,
+			},
+			"systemctl is-system-running": {
+				stdout:   "running\n",
+				exitCode: 0,
+			},
+			"systemctl list-units": {
+				stdout: `UNIT                  LOAD   ACTIVE SUB     DESCRIPTION
+nginx.service        loaded active running Nginx
+mysql.service        loaded active running MySQL
+redis.service        loaded failed failed  Redis
+postgres.service     loaded active running PostgreSQL
+`,
+				exitCode: 0,
+			},
+		},
+	}
+
+	// Only monitor nginx and mysql
+	checker := NewServiceChecker([]string{"nginx", "mysql"})
+	result, err := checker.Run(context.Background(), executor)
+
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("Run() returned nil result")
+	}
+
+	// Result should have data about monitored services
+	if result.Data == nil {
+		t.Error("Result.Data is nil")
+	}
+}
 
 func TestServiceChecker_FilterServices(t *testing.T) {
 	services := []ServiceInfo{
