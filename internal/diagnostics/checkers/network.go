@@ -153,9 +153,10 @@ func (n *NetworkChecker) Run(ctx context.Context, executor diagnostics.CommandEx
 // NetworkInterface holds information about a network interface
 type NetworkInterface struct {
 	Name       string `json:"name"`
-	State      string `json:"state"`       // up, down, unknown
+	State      string `json:"state"`       // up, down, inactive, unknown
 	IPAddress  string `json:"ip_address"`  // IPv4 address
 	MACAddress string `json:"mac_address"` // Hardware address
+	Status     string `json:"status,omitempty"` // active, inactive, unknown (from status line)
 }
 
 // ConnectivityResult holds connectivity test results
@@ -200,11 +201,29 @@ func (n *NetworkChecker) getNetworkInterfaces(ctx context.Context, executor diag
 	}
 
 	// Check if it's ip command output (brief format)
-	if strings.Contains(stdout, "UP") || strings.Contains(stdout, "DOWN") {
-		return n.parseIpBrief(stdout)
+	// The 'ip -br addr show' format has specific patterns:
+	// - No leading tabs/spaces
+	// - Lines like: "eth0 UP 192.168.1.1/24"
+	// - No "flags=" pattern (which is in ifconfig)
+	if strings.Contains(stdout, "flags=") {
+		// This is ifconfig output
+		return n.parseIfconfig(stdout)
 	}
 
-	// Otherwise parse as ifconfig
+	// Check if this looks like ip -br output (has proper state columns)
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	if len(lines) > 0 {
+		firstLine := strings.Fields(lines[0])
+		if len(firstLine) >= 2 {
+			state := strings.ToUpper(firstLine[1])
+			if state == "UP" || state == "DOWN" || state == "UNKNOWN" {
+				// Likely ip -br format
+				return n.parseIpBrief(stdout)
+			}
+		}
+	}
+
+	// Default to ifconfig parsing
 	return n.parseIfconfig(stdout)
 }
 
@@ -248,8 +267,13 @@ func (n *NetworkChecker) parseIfconfig(output string) ([]NetworkInterface, error
 
 	var currentIface *NetworkInterface
 	for _, line := range lines {
+		// Trim for checking, but preserve for parsing
+		trimmedLine := strings.TrimSpace(line)
+
 		// New interface starts at beginning of line (no leading whitespace)
-		if len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
+		// Interface lines start with alphanumeric (e.g., "en0:", "lo0:", "eth0:")
+		if len(line) > 0 && line[0] != ' ' && line[0] != '\t' && trimmedLine != "" {
+			// This is a new interface line
 			if currentIface != nil {
 				interfaces = append(interfaces, *currentIface)
 			}
@@ -258,12 +282,27 @@ func (n *NetworkChecker) parseIfconfig(output string) ([]NetworkInterface, error
 			if len(fields) > 0 {
 				name := strings.TrimSuffix(fields[0], ":")
 				currentIface = &NetworkInterface{
-					Name:  name,
-					State: "unknown",
+					Name:   name,
+					State:  "unknown",
+					Status: "unknown",
+				}
+
+				// Check flags on the interface line itself (macOS format)
+				// flags=<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST>
+				if strings.Contains(line, "flags=") {
+					// Extract flags between < and >
+					flagStart := strings.Index(line, "<")
+					flagEnd := strings.Index(line, ">")
+					if flagStart != -1 && flagEnd != -1 {
+						flags := line[flagStart+1 : flagEnd]
+						if strings.Contains(flags, "UP") {
+							currentIface.State = "up"
+						}
+					}
 				}
 			}
-		} else if currentIface != nil {
-			// Parse interface details
+		} else if currentIface != nil && trimmedLine != "" {
+			// Parse interface details (indented lines)
 			if strings.Contains(line, "inet ") && !strings.Contains(line, "inet6") {
 				fields := strings.Fields(line)
 				for i, field := range fields {
@@ -274,7 +313,23 @@ func (n *NetworkChecker) parseIfconfig(output string) ([]NetworkInterface, error
 				}
 			}
 
-			if strings.Contains(strings.ToUpper(line), "UP") {
+			// Check for status line (macOS: "status: active" or "status: inactive")
+			if strings.Contains(line, "status:") {
+				fields := strings.Fields(line)
+				if len(fields) >= 2 {
+					statusVal := fields[len(fields)-1]
+					currentIface.Status = statusVal
+					// Override state based on actual status
+					if statusVal == "active" {
+						currentIface.State = "up"
+					} else if statusVal == "inactive" {
+						currentIface.State = "down"
+					}
+				}
+			}
+
+			// Also check for UP in detail lines (Linux format - less common)
+			if strings.Contains(strings.ToUpper(line), " UP") || strings.Contains(strings.ToUpper(line), "UP ") {
 				currentIface.State = "up"
 			}
 		}
