@@ -150,10 +150,10 @@ type SystemInfo struct {
 type HealthStatus string
 
 const (
-	HealthHealthy   HealthStatus = "healthy"   // No critical issues
-	HealthDegraded  HealthStatus = "degraded"  // Some issues but functional
-	HealthCritical  HealthStatus = "critical"  // Serious issues requiring immediate attention
-	HealthUnknown   HealthStatus = "unknown"   // Unable to determine health
+	HealthHealthy  HealthStatus = "healthy"  // No critical issues
+	HealthDegraded HealthStatus = "degraded" // Some issues but functional
+	HealthCritical HealthStatus = "critical" // Serious issues requiring immediate attention
+	HealthUnknown  HealthStatus = "unknown"  // Unable to determine health
 )
 
 // Priority indicates recommendation urgency.

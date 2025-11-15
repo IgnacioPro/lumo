@@ -17,16 +17,16 @@ type Config struct {
 
 // SSHConfig contains SSH connection settings
 type SSHConfig struct {
-	Timeout                time.Duration `mapstructure:"timeout"`
-	Port                   int           `mapstructure:"port"`
-	KeepAlive              time.Duration `mapstructure:"keepalive"`
-	MaxRetries             int           `mapstructure:"max_retries"`
-	RetryInterval          time.Duration `mapstructure:"retry_interval"`
-	KnownHostsPath         string        `mapstructure:"known_hosts_path"`
-	StrictHostKeyChecking  bool          `mapstructure:"strict_host_key_checking"`
-	PreferredAuthMethods   []string      `mapstructure:"preferred_auth_methods"`
-	CommandTimeout         time.Duration `mapstructure:"command_timeout"`
-	DefaultKeyPath         string        `mapstructure:"default_key_path"`
+	Timeout               time.Duration `mapstructure:"timeout"`
+	Port                  int           `mapstructure:"port"`
+	KeepAlive             time.Duration `mapstructure:"keepalive"`
+	MaxRetries            int           `mapstructure:"max_retries"`
+	RetryInterval         time.Duration `mapstructure:"retry_interval"`
+	KnownHostsPath        string        `mapstructure:"known_hosts_path"`
+	StrictHostKeyChecking bool          `mapstructure:"strict_host_key_checking"`
+	PreferredAuthMethods  []string      `mapstructure:"preferred_auth_methods"`
+	CommandTimeout        time.Duration `mapstructure:"command_timeout"`
+	DefaultKeyPath        string        `mapstructure:"default_key_path"`
 }
 
 // AIConfig contains AI provider settings
@@ -34,13 +34,13 @@ type AIConfig struct {
 	Provider    string            `mapstructure:"provider"`
 	APIKey      string            `mapstructure:"api_key"`
 	Model       string            `mapstructure:"model"`
-	Models      map[string]string `mapstructure:"models"`       // Per-provider model overrides
-	Endpoint    string            `mapstructure:"endpoint"`     // Custom endpoint (optional)
+	Models      map[string]string `mapstructure:"models"`   // Per-provider model overrides
+	Endpoint    string            `mapstructure:"endpoint"` // Custom endpoint (optional)
 	Timeout     time.Duration     `mapstructure:"timeout"`
 	MaxRetries  int               `mapstructure:"max_retries"`
-	Temperature float64           `mapstructure:"temperature"`  // 0.0-1.0 (default 1.0)
-	MaxTokens   int               `mapstructure:"max_tokens"`   // Maximum response tokens
-	Enabled     bool              `mapstructure:"enabled"`      // Enable/disable AI analysis
+	Temperature float64           `mapstructure:"temperature"` // 0.0-1.0 (default 1.0)
+	MaxTokens   int               `mapstructure:"max_tokens"`  // Maximum response tokens
+	Enabled     bool              `mapstructure:"enabled"`     // Enable/disable AI analysis
 }
 
 // LoggingConfig contains logging settings
@@ -78,9 +78,9 @@ func DefaultConfig() *Config {
 			DefaultKeyPath:        "", // Will auto-discover in ~/.ssh/
 		},
 		AI: AIConfig{
-			Provider:    "anthropic",
-			APIKey:      "", // Set via LUMO_AI_API_KEY environment variable
-			Model:       "", // Will use provider-specific default
+			Provider: "anthropic",
+			APIKey:   "", // Set via LUMO_AI_API_KEY environment variable
+			Model:    "", // Will use provider-specific default
 			Models: map[string]string{
 				"anthropic": "claude-sonnet-4-5-20250929",
 				"openai":    "gpt-4-turbo-preview",

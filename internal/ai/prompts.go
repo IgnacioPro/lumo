@@ -194,8 +194,8 @@ func (pb *PromptBuilder) formatCheckResult(result *diagnostics.CheckResult) stri
 	// Format metrics
 	if len(result.Metrics) > 0 {
 		sb.WriteString("\n**Metrics:**\n\n")
-		for key, value := range result.Metrics {
-			sb.WriteString(fmt.Sprintf("- `%s`: %v\n", key, formatMetricValue(value)))
+		for _, metric := range result.Metrics {
+			sb.WriteString(fmt.Sprintf("- `%s`: %v\n", metric.Name, formatMetricValue(metric.Value)))
 		}
 	}
 
@@ -229,8 +229,8 @@ func formatMetricValue(value interface{}) string {
 // ParseAnalysisResponse parses the AI provider's JSON response.
 func ParseAnalysisResponse(content string, provider string, model string) (*AnalysisResponse, error) {
 	var rawResponse struct {
-		Summary       string `json:"summary"`
-		OverallHealth string `json:"overall_health"`
+		Summary       string  `json:"summary"`
+		OverallHealth string  `json:"overall_health"`
 		Confidence    float64 `json:"confidence"`
 		Findings      []struct {
 			Category      string                 `json:"category"`

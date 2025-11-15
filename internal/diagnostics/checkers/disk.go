@@ -72,11 +72,11 @@ func (d *DiskChecker) Run(ctx context.Context, executor diagnostics.CommandExecu
 	filesystems := make([]map[string]interface{}, 0, len(diskUsage))
 	for _, fs := range diskUsage {
 		fsData := map[string]interface{}{
-			"filesystem":  fs.Filesystem,
-			"mount_point": fs.MountPoint,
-			"total_bytes": fs.TotalBytes,
-			"used_bytes":  fs.UsedBytes,
-			"avail_bytes": fs.AvailBytes,
+			"filesystem":   fs.Filesystem,
+			"mount_point":  fs.MountPoint,
+			"total_bytes":  fs.TotalBytes,
+			"used_bytes":   fs.UsedBytes,
+			"avail_bytes":  fs.AvailBytes,
 			"used_percent": fs.UsedPercent,
 		}
 

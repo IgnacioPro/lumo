@@ -40,7 +40,8 @@ func NewOllamaProvider(config *ProviderConfig, log *logrus.Logger) (*OllamaProvi
 	}
 
 	if config.Temperature == 0 {
-		config.Temperature = 0.7
+		// Default to 1.0 for consistency with Anthropic and more creative responses
+		config.Temperature = 1.0
 	}
 
 	if config.Endpoint == "" {
