@@ -69,24 +69,24 @@ type CPUThresholds struct {
 
 // MemoryThresholds contains memory-specific thresholds
 type MemoryThresholds struct {
-	UsageWarn        float64 `mapstructure:"usage_warn"`
-	UsageCritical    float64 `mapstructure:"usage_critical"`
-	SwapWarn         float64 `mapstructure:"swap_warn"`
-	SwapCritical     float64 `mapstructure:"swap_critical"`
-	SwapIOWarn       float64 `mapstructure:"swap_io_warn"`
-	SwapIOCritical   float64 `mapstructure:"swap_io_critical"`
+	UsageWarn      float64 `mapstructure:"usage_warn"`
+	UsageCritical  float64 `mapstructure:"usage_critical"`
+	SwapWarn       float64 `mapstructure:"swap_warn"`
+	SwapCritical   float64 `mapstructure:"swap_critical"`
+	SwapIOWarn     float64 `mapstructure:"swap_io_warn"`
+	SwapIOCritical float64 `mapstructure:"swap_io_critical"`
 }
 
 // DiskThresholds contains disk-specific thresholds
 type DiskThresholds struct {
-	UsageWarn        float64 `mapstructure:"usage_warn"`
-	UsageCritical    float64 `mapstructure:"usage_critical"`
-	InodeWarn        float64 `mapstructure:"inode_warn"`
-	InodeCritical    float64 `mapstructure:"inode_critical"`
-	IOUtilWarn       float64 `mapstructure:"io_util_warn"`
-	IOUtilCritical   float64 `mapstructure:"io_util_critical"`
-	IOAwaitWarn      float64 `mapstructure:"io_await_warn"`
-	IOAwaitCritical  float64 `mapstructure:"io_await_critical"`
+	UsageWarn       float64 `mapstructure:"usage_warn"`
+	UsageCritical   float64 `mapstructure:"usage_critical"`
+	InodeWarn       float64 `mapstructure:"inode_warn"`
+	InodeCritical   float64 `mapstructure:"inode_critical"`
+	IOUtilWarn      float64 `mapstructure:"io_util_warn"`
+	IOUtilCritical  float64 `mapstructure:"io_util_critical"`
+	IOAwaitWarn     float64 `mapstructure:"io_await_warn"`
+	IOAwaitCritical float64 `mapstructure:"io_await_critical"`
 }
 
 // ProcessThresholds contains process-specific thresholds
@@ -99,34 +99,34 @@ type ProcessThresholds struct {
 
 // NetworkThresholds contains network-specific thresholds
 type NetworkThresholds struct {
-	ConnectionsWarn         int     `mapstructure:"connections_warn"`
-	ConnectionsCritical     int     `mapstructure:"connections_critical"`
-	ErrorsPerHourWarn       int     `mapstructure:"errors_per_hour_warn"`
-	ErrorsPerHourCritical   int     `mapstructure:"errors_per_hour_critical"`
-	PacketLossWarn          float64 `mapstructure:"packet_loss_warn"`
-	PacketLossCritical      float64 `mapstructure:"packet_loss_critical"`
-	DNSLatencyWarn          float64 `mapstructure:"dns_latency_warn"`
-	DNSLatencyCritical      float64 `mapstructure:"dns_latency_critical"`
+	ConnectionsWarn       int     `mapstructure:"connections_warn"`
+	ConnectionsCritical   int     `mapstructure:"connections_critical"`
+	ErrorsPerHourWarn     int     `mapstructure:"errors_per_hour_warn"`
+	ErrorsPerHourCritical int     `mapstructure:"errors_per_hour_critical"`
+	PacketLossWarn        float64 `mapstructure:"packet_loss_warn"`
+	PacketLossCritical    float64 `mapstructure:"packet_loss_critical"`
+	DNSLatencyWarn        float64 `mapstructure:"dns_latency_warn"`
+	DNSLatencyCritical    float64 `mapstructure:"dns_latency_critical"`
 }
 
 // LogThresholds contains log analysis thresholds
 type LogThresholds struct {
-	ErrorCountWarn         int `mapstructure:"error_count_warn"`
-	ErrorCountCritical     int `mapstructure:"error_count_critical"`
-	CriticalCountWarn      int `mapstructure:"critical_count_warn"`
-	CriticalCountCritical  int `mapstructure:"critical_count_critical"`
-	AuthFailuresWarn       int `mapstructure:"auth_failures_warn"`
-	AuthFailuresCritical   int `mapstructure:"auth_failures_critical"`
+	ErrorCountWarn        int `mapstructure:"error_count_warn"`
+	ErrorCountCritical    int `mapstructure:"error_count_critical"`
+	CriticalCountWarn     int `mapstructure:"critical_count_warn"`
+	CriticalCountCritical int `mapstructure:"critical_count_critical"`
+	AuthFailuresWarn      int `mapstructure:"auth_failures_warn"`
+	AuthFailuresCritical  int `mapstructure:"auth_failures_critical"`
 }
 
 // SecurityThresholds contains security check thresholds
 type SecurityThresholds struct {
-	FailedLoginsWarn        int `mapstructure:"failed_logins_warn"`
-	FailedLoginsCritical    int `mapstructure:"failed_logins_critical"`
-	WritableFilesWarn       int `mapstructure:"writable_files_warn"`
-	WritableFilesCritical   int `mapstructure:"writable_files_critical"`
-	OpenPortsWarn           int `mapstructure:"open_ports_warn"`
-	OpenPortsCritical       int `mapstructure:"open_ports_critical"`
+	FailedLoginsWarn      int `mapstructure:"failed_logins_warn"`
+	FailedLoginsCritical  int `mapstructure:"failed_logins_critical"`
+	WritableFilesWarn     int `mapstructure:"writable_files_warn"`
+	WritableFilesCritical int `mapstructure:"writable_files_critical"`
+	OpenPortsWarn         int `mapstructure:"open_ports_warn"`
+	OpenPortsCritical     int `mapstructure:"open_ports_critical"`
 }
 
 // DefaultThresholds returns default threshold configuration

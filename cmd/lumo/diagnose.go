@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/user"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ignacio/lumo/internal/ai"
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/ignacio/lumo/internal/diagnostics/checkers"
@@ -18,8 +20,8 @@ import (
 )
 
 var diagnoseCmd = &cobra.Command{
-	Use:   "diagnose [user@]host",
-	Short: "Run diagnostic commands on remote servers",
+	Use:   "diagnose [[user@]host]",
+	Short: "Run diagnostic commands on remote or local systems",
 	Long: `Run diagnostic commands to check system health including:
   - CPU usage and load average
   - Memory and swap usage
@@ -28,15 +30,19 @@ var diagnoseCmd = &cobra.Command{
   - Service status (systemd, init, launchd)
   - Network interfaces, connectivity, and DNS
 
-The command connects to the remote server via SSH, runs diagnostic checks,
-and displays the results in a formatted report.
+For remote hosts, connects via SSH. For localhost, runs commands directly
+without SSH overhead.
+
+If no host is specified, defaults to localhost.
 
 Examples:
-  lumo diagnose user@example.com
+  lumo diagnose                              # Run locally (defaults to localhost)
+  lumo diagnose localhost                    # Run locally without SSH
+  lumo diagnose user@example.com             # Remote server via SSH
   lumo diagnose root@192.168.1.10 --port 2222
-  lumo diagnose admin@server --checks cpu,memory,disk,process,service,network
-  lumo diagnose user@host --format json`,
-	Args: cobra.ExactArgs(1),
+  lumo diagnose admin@server --checks cpu,memory,disk
+  lumo diagnose --analyze                    # Local with AI analysis`,
+	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runDiagnostics(cmd, args); err != nil {
 			log.Errorf("Diagnostics failed: %v", err)
@@ -59,10 +65,18 @@ func init() {
 	diagnoseCmd.Flags().BoolP("all", "a", true, "Run all available diagnostic checks")
 	diagnoseCmd.Flags().StringP("format", "f", "text", "Output format (text, json)")
 	diagnoseCmd.Flags().BoolP("no-color", "n", false, "Disable colored output")
+
+	// AI analysis flags
+	diagnoseCmd.Flags().BoolP("analyze", "A", false, "Enable AI-powered analysis (requires AI provider configuration)")
+	diagnoseCmd.Flags().StringSlice("focus", []string{}, "Focus AI analysis on specific areas (cpu, memory, disk, etc.)")
 }
 
 func runDiagnostics(cmd *cobra.Command, args []string) error {
-	hostArg := args[0]
+	// Default to localhost if no host argument provided
+	hostArg := "localhost"
+	if len(args) > 0 {
+		hostArg = args[0]
+	}
 
 	// Parse host argument (supports user@host format)
 	var username, hostname string
@@ -81,6 +95,8 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 	checksFilter, _ := cmd.Flags().GetStringSlice("checks")
 	format, _ := cmd.Flags().GetString("format")
 	noColor, _ := cmd.Flags().GetBool("no-color")
+	enableAI, _ := cmd.Flags().GetBool("analyze")
+	focusAreas, _ := cmd.Flags().GetStringSlice("focus")
 
 	// Default to current user if not specified
 	if username == "" {
@@ -91,7 +107,14 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 		username = currentUser.Username
 	}
 
-	log.Infof("Starting diagnostics for %s@%s", username, hostname)
+	// Check if this is a localhost execution (no SSH needed)
+	isLocal := isLocalhost(hostname)
+
+	if isLocal {
+		log.Info("Running diagnostics locally (no SSH connection needed)")
+	} else {
+		log.Infof("Starting diagnostics for %s@%s", username, hostname)
+	}
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -100,39 +123,47 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 		cfg = config.DefaultConfig()
 	}
 
-	// Create SSH client configuration
-	sshClientConfig := ssh.NewClientConfig(cfg.SSH)
+	// Create command executor (local or SSH)
+	var executor diagnostics.CommandExecutor
+	if isLocal {
+		// Use local executor - no SSH needed
+		executor = diagnostics.NewLocalExecutor()
+		log.Debug("Using local command executor")
+	} else {
+		// Create SSH client configuration
+		sshClientConfig := ssh.NewClientConfig(cfg.SSH)
 
-	// Override with command-line flags
-	if identityFile != "" {
-		if err := sshClientConfig.SetKeyPath(identityFile); err != nil {
-			return fmt.Errorf("invalid key path: %w", err)
+		// Override with command-line flags
+		if identityFile != "" {
+			if err := sshClientConfig.SetKeyPath(identityFile); err != nil {
+				return fmt.Errorf("invalid key path: %w", err)
+			}
 		}
+
+		if password != "" {
+			log.Warn("Using password from command line is not secure!")
+			sshClientConfig.SetPassword(password)
+		}
+
+		// Create SSH client
+		log.Debug("Creating SSH client")
+		sshClient, err := ssh.NewClient(sshClientConfig, log)
+		if err != nil {
+			return fmt.Errorf("failed to create SSH client: %w", err)
+		}
+
+		// Connect
+		log.Infof("Connecting to %s@%s:%d", username, hostname, port)
+		if err := sshClient.Connect(hostname, port, username); err != nil {
+			return fmt.Errorf("failed to connect: %w", err)
+		}
+		defer sshClient.Disconnect()
+
+		log.Info("Connected successfully")
+
+		// Create SSH executor
+		executor = diagnostics.NewSSHExecutor(sshClient)
 	}
-
-	if password != "" {
-		log.Warn("Using password from command line is not secure!")
-		sshClientConfig.SetPassword(password)
-	}
-
-	// Create SSH client
-	log.Debug("Creating SSH client")
-	sshClient, err := ssh.NewClient(sshClientConfig, log)
-	if err != nil {
-		return fmt.Errorf("failed to create SSH client: %w", err)
-	}
-
-	// Connect
-	log.Infof("Connecting to %s@%s:%d", username, hostname, port)
-	if err := sshClient.Connect(hostname, port, username); err != nil {
-		return fmt.Errorf("failed to connect: %w", err)
-	}
-	defer sshClient.Disconnect()
-
-	log.Info("Connected successfully")
-
-	// Create command executor
-	executor := diagnostics.NewSSHExecutor(sshClient)
 
 	// Create diagnostic runner
 	diagConfig := diagnostics.DefaultConfig()
@@ -165,6 +196,21 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("diagnostic run failed: %w", err)
 	}
 
+	// Run AI analysis if requested
+	var analysis *ai.AnalysisResponse
+	if enableAI || (cfg.AI.Enabled && cfg.AI.Provider != "") {
+		log.Info("Running AI-powered analysis...")
+
+		analysis, err = runAIAnalysis(cfg, report, hostname, focusAreas)
+		if err != nil {
+			log.Warnf("AI analysis failed: %v", err)
+			// Continue without AI analysis rather than failing completely
+		} else {
+			log.Infof("AI analysis complete (provider: %s, model: %s, duration: %v)",
+				analysis.Provider, analysis.Model, analysis.Duration)
+		}
+	}
+
 	// Format and display results
 	if format == "json" {
 		jsonOutput, err := report.ToJSON()
@@ -172,11 +218,27 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to format JSON: %w", err)
 		}
 		fmt.Println(jsonOutput)
+
+		// Display AI analysis separately for JSON format
+		if analysis != nil {
+			fmt.Println("\n--- AI ANALYSIS ---")
+			analysisJSON, err := formatAIAnalysisJSON(analysis)
+			if err != nil {
+				log.Warnf("Failed to format AI analysis: %v", err)
+			} else {
+				fmt.Println(analysisJSON)
+			}
+		}
 	} else {
 		// Text format
 		formatter := formatters.NewTextFormatter(!noColor, verbose)
 		output := formatter.FormatReport(report)
 		fmt.Println(output)
+
+		// Display AI analysis
+		if analysis != nil {
+			fmt.Println("\n" + formatAIAnalysisText(analysis, !noColor))
+		}
 	}
 
 	// Exit with error code if critical issues found
@@ -187,4 +249,230 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 
 	log.Info("Diagnostics completed successfully")
 	return nil
+}
+
+// runAIAnalysis performs AI-powered analysis of diagnostic results.
+func runAIAnalysis(cfg *config.Config, report *diagnostics.Report, hostname string, focusAreas []string) (*ai.AnalysisResponse, error) {
+	// Parse provider type
+	providerType, err := ai.ParseProviderType(cfg.AI.Provider)
+	if err != nil {
+		return nil, fmt.Errorf("invalid AI provider: %w", err)
+	}
+
+	// Build provider config
+	providerConfig := &ai.ProviderConfig{
+		Name:        string(providerType),
+		APIKey:      cfg.AI.GetAPIKeyForProvider(cfg.AI.Provider),
+		Model:       cfg.AI.GetModelForProvider(cfg.AI.Provider),
+		Endpoint:    cfg.AI.Endpoint,
+		Timeout:     cfg.AI.Timeout,
+		MaxRetries:  cfg.AI.MaxRetries,
+		Temperature: cfg.AI.Temperature,
+		MaxTokens:   cfg.AI.MaxTokens,
+	}
+
+	// Create provider
+	provider, err := ai.NewProvider(providerType, providerConfig, log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AI provider: %w", err)
+	}
+
+	// Check provider health
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := provider.Health(ctx); err != nil {
+		return nil, fmt.Errorf("AI provider health check failed: %w", err)
+	}
+
+	// Build analysis request
+	req := &ai.AnalysisRequest{
+		Report: report,
+		SystemInfo: ai.SystemInfo{
+			Hostname: hostname,
+		},
+		Focus: focusAreas,
+	}
+
+	// Run analysis
+	analysisCtx, analysisCancel := context.WithTimeout(context.Background(), cfg.AI.Timeout)
+	defer analysisCancel()
+
+	return provider.Analyze(analysisCtx, req)
+}
+
+// formatAIAnalysisText formats AI analysis for human-readable text output.
+func formatAIAnalysisText(analysis *ai.AnalysisResponse, color bool) string {
+	var sb strings.Builder
+
+	// Header
+	sb.WriteString("╔════════════════════════════════════════════════════════════════════════════════╗\n")
+	sb.WriteString("║                           AI-POWERED ANALYSIS                                  ║\n")
+	sb.WriteString("╚════════════════════════════════════════════════════════════════════════════════╝\n\n")
+
+	// Summary
+	sb.WriteString(fmt.Sprintf("📊 Overall Health: %s\n", formatHealthStatus(analysis.OverallHealth, color)))
+	sb.WriteString(fmt.Sprintf("🎯 Confidence: %.0f%%\n", analysis.Confidence*100))
+	sb.WriteString(fmt.Sprintf("🤖 Provider: %s (%s)\n", analysis.Provider, analysis.Model))
+	sb.WriteString(fmt.Sprintf("⏱️  Duration: %v\n", analysis.Duration))
+	if analysis.TokensUsed != nil {
+		sb.WriteString(fmt.Sprintf("💬 Tokens: %d\n", analysis.TokensUsed.TotalTokens))
+	}
+	sb.WriteString("\n")
+
+	// Summary text
+	sb.WriteString("📝 SUMMARY\n")
+	sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n")
+	sb.WriteString(analysis.Summary)
+	sb.WriteString("\n\n")
+
+	// Findings
+	if len(analysis.Findings) > 0 {
+		sb.WriteString(fmt.Sprintf("🔍 FINDINGS (%d)\n", len(analysis.Findings)))
+		sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n")
+		for i, finding := range analysis.Findings {
+			sb.WriteString(fmt.Sprintf("\n%d. [%s] %s\n", i+1, formatSeverity(finding.Severity, color), finding.Title))
+			sb.WriteString(fmt.Sprintf("   Category: %s\n", finding.Category))
+			sb.WriteString(fmt.Sprintf("   %s\n", finding.Description))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Recommendations
+	if len(analysis.Recommendations) > 0 {
+		sb.WriteString(fmt.Sprintf("💡 RECOMMENDATIONS (%d)\n", len(analysis.Recommendations)))
+		sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n")
+		for i, rec := range analysis.Recommendations {
+			sb.WriteString(fmt.Sprintf("\n%d. [%s] %s\n", i+1, formatPriority(rec.Priority, color), rec.Title))
+			sb.WriteString(fmt.Sprintf("   Risk: %s\n", formatRisk(rec.Risk, color)))
+			sb.WriteString(fmt.Sprintf("   %s\n", rec.Description))
+
+			if len(rec.Commands) > 0 {
+				sb.WriteString("   Commands:\n")
+				for _, cmd := range rec.Commands {
+					sb.WriteString(fmt.Sprintf("     $ %s\n", cmd))
+				}
+			}
+
+			if rec.EstimatedImpact != "" {
+				sb.WriteString(fmt.Sprintf("   Impact: %s\n", rec.EstimatedImpact))
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n")
+
+	return sb.String()
+}
+
+// formatAIAnalysisJSON formats AI analysis as JSON.
+func formatAIAnalysisJSON(analysis *ai.AnalysisResponse) (string, error) {
+	data, err := json.MarshalIndent(analysis, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// Helper formatting functions
+
+func formatHealthStatus(status ai.HealthStatus, color bool) string {
+	if !color {
+		return string(status)
+	}
+
+	switch status {
+	case ai.HealthHealthy:
+		return "\033[32m✓ HEALTHY\033[0m"
+	case ai.HealthDegraded:
+		return "\033[33m⚠ DEGRADED\033[0m"
+	case ai.HealthCritical:
+		return "\033[31m✗ CRITICAL\033[0m"
+	default:
+		return "\033[90m? UNKNOWN\033[0m"
+	}
+}
+
+func formatSeverity(severity diagnostics.Severity, color bool) string {
+	if !color {
+		return string(severity)
+	}
+
+	switch severity {
+	case diagnostics.SeverityInfo:
+		return "\033[36mINFO\033[0m"
+	case diagnostics.SeverityWarning:
+		return "\033[33mWARN\033[0m"
+	case diagnostics.SeverityError:
+		return "\033[31mERROR\033[0m"
+	case diagnostics.SeverityCritical:
+		return "\033[1;31mCRITICAL\033[0m"
+	default:
+		return string(severity)
+	}
+}
+
+func formatPriority(priority ai.Priority, color bool) string {
+	if !color {
+		return string(priority)
+	}
+
+	switch priority {
+	case ai.PriorityCritical:
+		return "\033[1;31mCRITICAL\033[0m"
+	case ai.PriorityHigh:
+		return "\033[31mHIGH\033[0m"
+	case ai.PriorityMedium:
+		return "\033[33mMEDIUM\033[0m"
+	case ai.PriorityLow:
+		return "\033[32mLOW\033[0m"
+	default:
+		return string(priority)
+	}
+}
+
+func formatRisk(risk ai.RiskLevel, color bool) string {
+	if !color {
+		return string(risk)
+	}
+
+	switch risk {
+	case ai.RiskSafe:
+		return "\033[32mSAFE\033[0m"
+	case ai.RiskLow:
+		return "\033[36mLOW\033[0m"
+	case ai.RiskModerate:
+		return "\033[33mMODERATE\033[0m"
+	case ai.RiskHigh:
+		return "\033[31mHIGH\033[0m"
+	case ai.RiskCritical:
+		return "\033[1;31mCRITICAL\033[0m"
+	default:
+		return string(risk)
+	}
+}
+
+// isLocalhost checks if the given hostname refers to the local machine.
+func isLocalhost(hostname string) bool {
+	// Normalize hostname to lowercase for comparison
+	hostname = strings.ToLower(strings.TrimSpace(hostname))
+
+	// Common localhost patterns
+	localhostPatterns := []string{
+		"localhost",
+		"127.0.0.1",
+		"::1",           // IPv6 localhost
+		"0.0.0.0",       // All interfaces (treated as local)
+		"",              // Empty hostname (treated as local)
+		"localhost.localdomain",
+	}
+
+	for _, pattern := range localhostPatterns {
+		if hostname == pattern {
+			return true
+		}
+	}
+
+	return false
 }

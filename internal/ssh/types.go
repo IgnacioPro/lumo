@@ -72,13 +72,13 @@ func (a AuthMethod) String() string {
 
 // ConnectionInfo contains metadata about an SSH connection
 type ConnectionInfo struct {
-	Host             string
-	Port             int
-	User             string
-	Status           ConnectionStatus
-	AuthMethodUsed   AuthMethod
-	ConnectedAt      time.Time
-	LastHealthCheck  time.Time
+	Host              string
+	Port              int
+	User              string
+	Status            ConnectionStatus
+	AuthMethodUsed    AuthMethod
+	ConnectedAt       time.Time
+	LastHealthCheck   time.Time
 	ReconnectAttempts int
 }
 

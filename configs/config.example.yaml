@@ -41,20 +41,45 @@ ssh:
 
 # AI Provider Configuration
 ai:
-  # Primary AI provider: anthropic, openai, or local
+  # Enable AI-powered analysis (set to false to disable)
+  enabled: true
+
+  # Primary AI provider: anthropic, openai, ollama, or gemini
   provider: anthropic
 
-  # Model names for each provider
+  # API key: DO NOT set here! Use environment variable instead:
+  #   export LUMO_AI_API_KEY=your-api-key
+  # (REQUIRED for anthropic/openai/gemini, not needed for ollama)
+
+  # Model to use (leave empty to use provider defaults)
+  # This overrides the provider-specific model from the models map
+  model: ""
+
+  # Model names for each provider (used when 'model' is empty)
   models:
     anthropic: claude-sonnet-4-5-20250929
-    openai: gpt-4
-    # local: llama-3-70b  # For self-hosted models
+    openai: gpt-4-turbo-preview
+    ollama: llama3.1:8b
+    gemini: gemini-2.0-flash-exp
+
+  # Custom API endpoint (optional, leave empty for defaults)
+  # Examples:
+  #   - Ollama: http://localhost:11434/api/chat
+  #   - Custom OpenAI: https://your-proxy.com/v1/chat/completions
+  endpoint: ""
 
   # Timeout for AI API calls
-  timeout: 60s
+  timeout: 120s
 
   # Maximum retry attempts for failed AI API calls
   max_retries: 3
+
+  # Temperature controls randomness (0.0 = deterministic, 1.0 = creative)
+  # Range: 0.0 to 1.0
+  temperature: 1.0
+
+  # Maximum tokens in AI response
+  max_tokens: 4096
 
 # Logging Configuration
 logging:
@@ -94,8 +119,28 @@ api:
   max_connections: 100
 
 # Environment variables can override these settings:
-# LUMO_SSH_PORT=2222
-# LUMO_SSH_STRICT_HOST_KEY_CHECKING=true
-# LUMO_SSH_DEFAULT_KEY_PATH=~/.ssh/id_ed25519
-# LUMO_AI_PROVIDER=openai
-# LUMO_LOGGING_LEVEL=debug
+# SSH:
+#   LUMO_SSH_PORT=2222
+#   LUMO_SSH_STRICT_HOST_KEY_CHECKING=true
+#   LUMO_SSH_DEFAULT_KEY_PATH=~/.ssh/id_ed25519
+#
+# AI - Provider-specific API keys (recommended - allows switching providers without changing keys):
+#   LUMO_ANTHROPIC_API_KEY=sk-ant-...   # Anthropic Claude API key
+#   LUMO_OPENAI_API_KEY=sk-...          # OpenAI GPT API key
+#   LUMO_GEMINI_API_KEY=...             # Google Gemini API key
+#   LUMO_OLLAMA_API_KEY=...             # Ollama API key (usually not needed for local)
+#
+# AI - Generic fallback (works but requires changing when switching providers):
+#   LUMO_AI_API_KEY=sk-...              # Generic API key (fallback if provider-specific not set)
+#
+# AI - Other settings:
+#   LUMO_AI_ENABLED=true                # Override enabled setting
+#   LUMO_AI_PROVIDER=openai             # Override provider
+#   LUMO_AI_MODEL=gpt-4                 # Override model
+#   LUMO_AI_ENDPOINT=http://...         # Override endpoint
+#   LUMO_AI_TEMPERATURE=0.7             # Override temperature
+#   LUMO_AI_MAX_TOKENS=2048             # Override max tokens
+#
+# Logging:
+#   LUMO_LOGGING_LEVEL=debug
+#   LUMO_LOGGING_FORMAT=json
