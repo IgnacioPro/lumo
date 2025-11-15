@@ -14,6 +14,7 @@ const (
 	ProviderAnthropic ProviderType = "anthropic"
 	ProviderOpenAI    ProviderType = "openai"
 	ProviderOllama    ProviderType = "ollama"
+	ProviderGemini    ProviderType = "gemini"
 )
 
 // NewProvider creates a new AI provider based on configuration.
@@ -37,6 +38,9 @@ func NewProvider(providerType ProviderType, config *ProviderConfig, log *logrus.
 	case ProviderOllama:
 		return NewOllamaProvider(config, log)
 
+	case ProviderGemini:
+		return NewGeminiProvider(config, log)
+
 	default:
 		return nil, fmt.Errorf("unsupported provider type: %s", providerType)
 	}
@@ -51,8 +55,10 @@ func ParseProviderType(s string) (ProviderType, error) {
 		return ProviderOpenAI, nil
 	case "ollama", "local":
 		return ProviderOllama, nil
+	case "gemini", "google":
+		return ProviderGemini, nil
 	default:
-		return "", fmt.Errorf("unknown provider type: %s (supported: anthropic, openai, ollama)", s)
+		return "", fmt.Errorf("unknown provider type: %s (supported: anthropic, openai, ollama, gemini)", s)
 	}
 }
 
@@ -68,6 +74,7 @@ func SupportedProviders() []ProviderType {
 		ProviderAnthropic,
 		ProviderOpenAI,
 		ProviderOllama,
+		ProviderGemini,
 	}
 }
 
@@ -80,6 +87,8 @@ func DefaultModelForProvider(providerType ProviderType) string {
 		return DefaultOpenAIModel
 	case ProviderOllama:
 		return DefaultOllamaModel
+	case ProviderGemini:
+		return DefaultGeminiModel
 	default:
 		return ""
 	}

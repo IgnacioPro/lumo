@@ -44,12 +44,12 @@ ai:
   # Enable AI-powered analysis (set to false to disable)
   enabled: true
 
-  # Primary AI provider: anthropic, openai, or ollama
+  # Primary AI provider: anthropic, openai, ollama, or gemini
   provider: anthropic
 
   # API key: DO NOT set here! Use environment variable instead:
   #   export LUMO_AI_API_KEY=your-api-key
-  # (REQUIRED for anthropic/openai, not needed for ollama)
+  # (REQUIRED for anthropic/openai/gemini, not needed for ollama)
 
   # Model to use (leave empty to use provider defaults)
   # This overrides the provider-specific model from the models map
@@ -60,6 +60,7 @@ ai:
     anthropic: claude-sonnet-4-5-20250929
     openai: gpt-4-turbo-preview
     ollama: llama3.1:8b
+    gemini: gemini-2.0-flash-exp
 
   # Custom API endpoint (optional, leave empty for defaults)
   # Examples:
