@@ -118,6 +118,43 @@ api:
   # Maximum number of concurrent connections
   max_connections: 100
 
+# Diagnostics Configuration
+diagnostics:
+  # Network diagnostic settings
+  network:
+    # Network targets to test connectivity to
+    # Each target will be tested from the diagnosed server
+    targets:
+      # ICMP ping test to Google DNS
+      - host: 8.8.8.8
+        port: 0           # Port 0 means ICMP-only (no TCP connection test)
+        protocol: icmp
+
+      # DNS resolution test
+      - host: google.com
+        port: 0
+        protocol: icmp
+
+      # Example: Test database connectivity
+      # - host: database.internal
+      #   port: 5432
+      #   protocol: tcp
+
+      # Example: Test API server connectivity
+      # - host: api.service.com
+      #   port: 443
+      #   protocol: tcp
+
+      # Example: Test Redis cache
+      # - host: cache.internal
+      #   port: 6379
+      #   protocol: tcp
+
+      # Example: Test custom service with DNS name
+      # - host: myservice.example.com
+      #   port: 8080
+      #   protocol: tcp
+
 # Environment variables can override these settings:
 # SSH:
 #   LUMO_SSH_PORT=2222

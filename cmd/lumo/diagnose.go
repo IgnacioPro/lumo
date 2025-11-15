@@ -183,7 +183,7 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 		checkers.NewDiskChecker(thresholds.Disk),
 		checkers.NewProcessChecker(thresholds.Process),
 		checkers.NewServiceChecker([]string{}), // Empty list = check all services
-		checkers.NewNetworkChecker(thresholds.Network),
+		checkers.NewNetworkChecker(thresholds.Network, cfg.Diagnostics.Network.Targets),
 	)
 
 	// Run diagnostics

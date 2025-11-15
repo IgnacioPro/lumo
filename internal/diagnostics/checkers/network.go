@@ -7,18 +7,28 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/diagnostics"
 )
 
 // NetworkChecker performs network-related checks
 type NetworkChecker struct {
 	thresholds diagnostics.NetworkThresholds
+	targets    []config.NetworkTarget
 }
 
 // NewNetworkChecker creates a new network checker
-func NewNetworkChecker(thresholds diagnostics.NetworkThresholds) *NetworkChecker {
+func NewNetworkChecker(thresholds diagnostics.NetworkThresholds, targets []config.NetworkTarget) *NetworkChecker {
+	// If no targets provided, use defaults
+	if len(targets) == 0 {
+		targets = []config.NetworkTarget{
+			{Host: "8.8.8.8", Port: 0, Protocol: "icmp"},
+			{Host: "google.com", Port: 0, Protocol: "icmp"},
+		}
+	}
 	return &NetworkChecker{
 		thresholds: thresholds,
+		targets:    targets,
 	}
 }
 
@@ -81,39 +91,42 @@ func (n *NetworkChecker) Run(ctx context.Context, executor diagnostics.CommandEx
 		})
 	}
 
-	// Test DNS resolution
-	dnsLatency, err := n.testDNS(ctx, executor)
-	if err != nil {
-		result.SetData("dns_warning", fmt.Sprintf("DNS test failed: %v", err))
-	} else {
-		result.SetData("dns_latency_ms", dnsLatency)
+	// Test configured network targets
+	targetResults := []TargetResult{}
+	for _, target := range n.targets {
+		targetResult := n.testTarget(ctx, executor, target)
+		targetResults = append(targetResults, targetResult)
 
-		// Add metric
-		result.AddMetric(diagnostics.Metric{
-			Name:          "dns_latency",
-			Value:         dnsLatency,
-			Unit:          "ms",
-			Threshold:     n.thresholds.DNSLatencyWarn,
-			ThresholdType: diagnostics.ThresholdTypeMax,
-		})
-	}
-
-	// Test connectivity (ping to common hosts)
-	connectivity, err := n.testConnectivity(ctx, executor)
-	if err != nil {
-		result.SetData("connectivity_warning", fmt.Sprintf("Connectivity test failed: %v", err))
-	} else {
-		result.SetData("connectivity", connectivity)
-		if connectivity.PacketLoss > 0 {
+		// Add metrics for this target
+		if !targetResult.Reachable {
 			result.AddMetric(diagnostics.Metric{
-				Name:          "packet_loss",
-				Value:         connectivity.PacketLoss,
+				Name:          fmt.Sprintf("%s_reachable", target.Host),
+				Value:         0,
+				Unit:          "boolean",
+				Threshold:     1,
+				ThresholdType: diagnostics.ThresholdTypeMin,
+			})
+		} else if targetResult.Latency > 0 {
+			result.AddMetric(diagnostics.Metric{
+				Name:          fmt.Sprintf("%s_latency", target.Host),
+				Value:         targetResult.Latency,
+				Unit:          "ms",
+				Threshold:     n.thresholds.DNSLatencyWarn, // Reuse DNS latency threshold
+				ThresholdType: diagnostics.ThresholdTypeMax,
+			})
+		}
+
+		if targetResult.PacketLoss > 0 {
+			result.AddMetric(diagnostics.Metric{
+				Name:          fmt.Sprintf("%s_packet_loss", target.Host),
+				Value:         targetResult.PacketLoss,
 				Unit:          "percent",
 				Threshold:     n.thresholds.PacketLossWarn,
 				ThresholdType: diagnostics.ThresholdTypeMax,
 			})
 		}
 	}
+	result.SetData("target_results", targetResults)
 
 	// Get network interface statistics
 	stats, err := n.getInterfaceStats(ctx, executor)
@@ -132,7 +145,7 @@ func (n *NetworkChecker) Run(ctx context.Context, executor diagnostics.CommandEx
 	result.Duration = time.Since(startTime)
 
 	// Generate message
-	result.Message = n.formatMessage(interfaces, connectionCount, dnsLatency, connectivity)
+	result.Message = n.formatMessage(interfaces, connectionCount, targetResults)
 
 	return result, nil
 }
@@ -153,6 +166,19 @@ type ConnectivityResult struct {
 	PacketLoss  float64 `json:"packet_loss_percent"`
 	PacketsSent int     `json:"packets_sent"`
 	PacketsRecv int     `json:"packets_received"`
+}
+
+// TargetResult holds the result of testing a single network target
+type TargetResult struct {
+	Host        string  `json:"host"`
+	Port        int     `json:"port"`
+	Protocol    string  `json:"protocol"`
+	Reachable   bool    `json:"reachable"`
+	Latency     float64 `json:"latency_ms"`
+	PacketLoss  float64 `json:"packet_loss_percent,omitempty"`
+	Error       string  `json:"error,omitempty"`
+	PacketsSent int     `json:"packets_sent,omitempty"`
+	PacketsRecv int     `json:"packets_received,omitempty"`
 }
 
 // InterfaceStats holds interface statistics
@@ -355,6 +381,138 @@ func (n *NetworkChecker) testConnectivity(ctx context.Context, executor diagnost
 	return result, nil
 }
 
+// testTarget tests connectivity to a specific network target
+func (n *NetworkChecker) testTarget(ctx context.Context, executor diagnostics.CommandExecutor, target config.NetworkTarget) TargetResult {
+	result := TargetResult{
+		Host:     target.Host,
+		Port:     target.Port,
+		Protocol: target.Protocol,
+	}
+
+	// Default to ICMP if protocol is empty
+	protocol := target.Protocol
+	if protocol == "" {
+		protocol = "icmp"
+	}
+
+	switch protocol {
+	case "tcp":
+		return n.testTCPTarget(ctx, executor, target)
+	case "icmp":
+		return n.testICMPTarget(ctx, executor, target)
+	default:
+		result.Error = fmt.Sprintf("unsupported protocol: %s", protocol)
+		return result
+	}
+}
+
+// testTCPTarget tests TCP connectivity to a target
+func (n *NetworkChecker) testTCPTarget(ctx context.Context, executor diagnostics.CommandExecutor, target config.NetworkTarget) TargetResult {
+	result := TargetResult{
+		Host:     target.Host,
+		Port:     target.Port,
+		Protocol: "tcp",
+	}
+
+	startTime := time.Now()
+
+	// Try different methods in order:
+	// 1. nc with -w flag for timeout (cross-platform)
+	// 2. Bash TCP redirection (works if bash supports it)
+	// 3. Perl one-liner (usually available)
+	cmd := fmt.Sprintf(
+		"nc -w 5 -zv %s %d 2>&1 || bash -c 'cat < /dev/null > /dev/tcp/%s/%d' 2>&1 || perl -MIO::Socket -e 'IO::Socket::INET->new(\"%s:%d\") or exit 1' 2>&1",
+		target.Host, target.Port, target.Host, target.Port, target.Host, target.Port,
+	)
+
+	stdout, stderr, exitCode, err := executor.ExecuteWithContext(ctx, cmd)
+	latency := time.Since(startTime).Milliseconds()
+
+	if err != nil || exitCode != 0 {
+		result.Reachable = false
+		result.Latency = float64(latency)
+		// Try to determine specific error
+		output := stdout + stderr
+		if strings.Contains(output, "Connection refused") || strings.Contains(output, "refused") {
+			result.Error = "connection_refused"
+		} else if strings.Contains(output, "Name or service not known") || strings.Contains(output, "could not resolve") || strings.Contains(output, "nodename nor servname provided") {
+			result.Error = "dns_failed"
+		} else if strings.Contains(output, "timed out") || strings.Contains(output, "Timeout") || strings.Contains(output, "timeout") {
+			result.Error = "timeout"
+		} else {
+			result.Error = "unreachable"
+		}
+		return result
+	}
+
+	result.Reachable = true
+	result.Latency = float64(latency)
+	return result
+}
+
+// testICMPTarget tests ICMP (ping) connectivity to a target
+func (n *NetworkChecker) testICMPTarget(ctx context.Context, executor diagnostics.CommandExecutor, target config.NetworkTarget) TargetResult {
+	result := TargetResult{
+		Host:     target.Host,
+		Port:     0,
+		Protocol: "icmp",
+	}
+
+	count := 4
+
+	// Ping command (cross-platform)
+	stdout, _, exitCode, err := executor.ExecuteWithContext(ctx,
+		fmt.Sprintf("ping -c %d -W 2 %s 2>/dev/null || ping -n %d -w 2000 %s", count, target.Host, count, target.Host))
+
+	result.PacketsSent = count
+
+	if err != nil || exitCode != 0 {
+		result.Reachable = false
+		result.PacketLoss = 100.0
+		result.Error = "unreachable"
+		return result
+	}
+
+	result.Reachable = true
+
+	// Parse ping output
+	lines := strings.Split(stdout, "\n")
+	for _, line := range lines {
+		// Look for packet loss line
+		if strings.Contains(line, "packet loss") || strings.Contains(line, "loss") {
+			fields := strings.Fields(line)
+			for i, field := range fields {
+				if strings.HasSuffix(field, "%") {
+					lossStr := strings.TrimSuffix(field, "%")
+					if loss, err := strconv.ParseFloat(lossStr, 64); err == nil {
+						result.PacketLoss = loss
+					}
+				}
+				if field == "received" && i > 0 {
+					if recv, err := strconv.Atoi(fields[i-1]); err == nil {
+						result.PacketsRecv = recv
+					}
+				}
+			}
+		}
+
+		// Look for avg latency (rtt min/avg/max format)
+		if strings.Contains(line, "avg") || strings.Contains(line, "Average") {
+			fields := strings.Split(line, "=")
+			if len(fields) > 1 {
+				values := strings.Split(strings.TrimSpace(fields[1]), "/")
+				if len(values) >= 2 {
+					if avg, err := strconv.ParseFloat(values[1], 64); err == nil {
+						result.Latency = avg
+					}
+				}
+			}
+		}
+	}
+
+	return result
+}
+
 // getInterfaceStats retrieves network interface statistics
 func (n *NetworkChecker) getInterfaceStats(ctx context.Context, executor diagnostics.CommandExecutor) (*InterfaceStats, error) {
 	// Try Linux /proc/net/dev first
@@ -436,7 +594,7 @@ func (n *NetworkChecker) parseNetstatStats(output string) (*InterfaceStats, erro
 }
 
 // formatMessage creates a human-readable message from network data
-func (n *NetworkChecker) formatMessage(interfaces []NetworkInterface, connections int, dnsLatency float64, connectivity *ConnectivityResult) string {
+func (n *NetworkChecker) formatMessage(interfaces []NetworkInterface, connections int, targetResults []TargetResult) string {
 	var parts []string
 
 	// Interface count
@@ -453,20 +611,22 @@ func (n *NetworkChecker) formatMessage(interfaces []NetworkInterface, connection
 		parts = append(parts, fmt.Sprintf("%d active connections", connections))
 	}
 
-	// DNS latency
-	if dnsLatency > 0 {
-		parts = append(parts, fmt.Sprintf("DNS: %.0fms", dnsLatency))
+	// Target results summary
+	reachableCount := 0
+	unreachableCount := 0
+	for _, target := range targetResults {
+		if target.Reachable {
+			reachableCount++
+		} else {
+			unreachableCount++
+		}
 	}
 
-	// Connectivity
-	if connectivity != nil {
-		if connectivity.Reachable {
-			parts = append(parts, fmt.Sprintf("Ping: %.1fms", connectivity.AvgLatency))
-			if connectivity.PacketLoss > 0 {
-				parts = append(parts, fmt.Sprintf("%.0f%% loss", connectivity.PacketLoss))
-			}
+	if len(targetResults) > 0 {
+		if unreachableCount == 0 {
+			parts = append(parts, fmt.Sprintf("%d/%d targets reachable", reachableCount, len(targetResults)))
 		} else {
-			parts = append(parts, "Connectivity: FAILED")
+			parts = append(parts, fmt.Sprintf("%d/%d targets reachable (%d FAILED)", reachableCount, len(targetResults), unreachableCount))
 		}
 	}
 

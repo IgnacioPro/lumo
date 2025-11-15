@@ -125,10 +125,11 @@ export LUMO_LOGGING_LEVEL=debug
 
 ```go
 type Config struct {
-    SSH     SSHConfig     // timeout, port, keepalive, retries
-    AI      AIConfig      // provider, models, timeout, temperature
-    Logging LoggingConfig // level, format, output
-    API     APIConfig     // port, host, TLS settings
+    SSH         SSHConfig         // timeout, port, keepalive, retries
+    AI          AIConfig          // provider, models, timeout, temperature
+    Logging     LoggingConfig     // level, format, output
+    API         APIConfig         // port, host, TLS settings
+    Diagnostics DiagnosticsConfig // network targets, thresholds
 }
 ```
 
@@ -141,6 +142,14 @@ type Config struct {
 **API Key Security:** NEVER in config file, ONLY via environment variables:
 - **Recommended:** Provider-specific env vars (`LUMO_ANTHROPIC_API_KEY`, `LUMO_OPENAI_API_KEY`, etc.)
 - **Fallback:** Generic `LUMO_AI_API_KEY` (requires changing when switching providers)
+
+**Diagnostics Configuration:**
+- `network.targets`: List of network endpoints to test connectivity
+  - Each target specifies: `host`, `port`, `protocol` (tcp/icmp)
+  - Port 0 = ICMP-only (ping test)
+  - TCP targets test port connectivity with latency measurement
+  - Defaults: 8.8.8.8 and google.com via ICMP if no targets configured
+  - Example use cases: Test database connectivity, API availability, DNS resolution
 
 ### Loading Configuration
 
@@ -367,7 +376,7 @@ chmod 600 /etc/lumo/key.pem
 | `disk.go` | Space usage %, inode usage %, multi-filesystem |
 | `process.go` | Process count, zombies, top consumers |
 | `service.go` | Failed services, systemd/init/launchd support |
-| `network.go` | Interfaces, connectivity, DNS, statistics |
+| `network.go` | Interfaces, connectivity (ICMP/TCP), configurable targets, latency, error classification |
 
 ### AI Providers (All 4 Complete)
 

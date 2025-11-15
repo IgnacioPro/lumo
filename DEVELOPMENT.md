@@ -86,11 +86,12 @@ type DatabaseConfig struct {
 }
 
 type Config struct {
-    SSH      SSHConfig      `mapstructure:"ssh"`
-    AI       AIConfig       `mapstructure:"ai"`
-    Logging  LoggingConfig  `mapstructure:"logging"`
-    API      APIConfig      `mapstructure:"api"`
-    Database DatabaseConfig `mapstructure:"database"`  // New!
+    SSH         SSHConfig         `mapstructure:"ssh"`
+    AI          AIConfig          `mapstructure:"ai"`
+    Logging     LoggingConfig     `mapstructure:"logging"`
+    API         APIConfig         `mapstructure:"api"`
+    Diagnostics DiagnosticsConfig `mapstructure:"diagnostics"` // Already exists!
+    Database    DatabaseConfig    `mapstructure:"database"`    // New!
 }
 ```
 
@@ -600,6 +601,105 @@ func (f *CustomFormatter) formatResult(result *diagnostics.CheckResult) string {
     return fmt.Sprintf("%s %s: %s", status, result.Name, result.Message)
 }
 ```
+
+---
+
+### Task 9: Configuring Network Targets for Connectivity Testing
+
+**Goal:** Configure custom network targets to test connectivity to your infrastructure (databases, APIs, internal services)
+
+**Steps:**
+
+1. **Create or edit your config file:**
+
+```bash
+# Copy example config if you don't have one
+cp configs/config.example.yaml ~/.lumo/config.yaml
+
+# Edit the diagnostics section
+vim ~/.lumo/config.yaml
+```
+
+2. **Add network targets in config:**
+
+```yaml
+diagnostics:
+  network:
+    targets:
+      # ICMP ping test (port 0 means ICMP-only)
+      - host: 8.8.8.8
+        port: 0
+        protocol: icmp
+
+      # Test database connectivity (TCP)
+      - host: database.internal
+        port: 5432
+        protocol: tcp
+
+      # Test API endpoint
+      - host: api.myservice.com
+        port: 443
+        protocol: tcp
+
+      # Test Redis cache
+      - host: cache.internal
+        port: 6379
+        protocol: tcp
+```
+
+3. **Run network diagnostics:**
+
+```bash
+# Test all configured targets
+lumo diagnose localhost --checks network
+
+# Test on a remote server (targets are tested FROM that server)
+lumo diagnose user@server --checks network
+
+# Get detailed JSON output
+lumo diagnose localhost --checks network --format json | jq '.results[0].data.target_results'
+```
+
+4. **Understand the results:**
+
+Each target result includes:
+- `reachable`: boolean - whether connection succeeded
+- `latency_ms`: float - connection latency in milliseconds
+- `error`: string - error classification (if failed):
+  - `connection_refused`: Port is closed/nothing listening
+  - `dns_failed`: Hostname couldn't be resolved
+  - `timeout`: Connection timed out (host/port unreachable)
+  - `unreachable`: General network unreachability
+
+**Example JSON output:**
+```json
+{
+  "target_results": [
+    {
+      "host": "database.internal",
+      "port": 5432,
+      "protocol": "tcp",
+      "reachable": true,
+      "latency_ms": 2.5
+    },
+    {
+      "host": "api.myservice.com",
+      "port": 443,
+      "protocol": "tcp",
+      "reachable": false,
+      "latency_ms": 5001,
+      "error": "timeout"
+    }
+  ]
+}
+```
+
+**Use cases:**
+- Monitor connectivity to critical infrastructure
+- Test database accessibility before deployments
+- Verify API endpoints are reachable
+- Detect network isolation issues
+- Measure network latency to services
 
 ---
 

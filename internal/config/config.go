@@ -9,10 +9,11 @@ import (
 
 // Config represents the complete Lumo configuration
 type Config struct {
-	SSH     SSHConfig     `mapstructure:"ssh"`
-	AI      AIConfig      `mapstructure:"ai"`
-	Logging LoggingConfig `mapstructure:"logging"`
-	API     APIConfig     `mapstructure:"api"`
+	SSH         SSHConfig         `mapstructure:"ssh"`
+	AI          AIConfig          `mapstructure:"ai"`
+	Logging     LoggingConfig     `mapstructure:"logging"`
+	API         APIConfig         `mapstructure:"api"`
+	Diagnostics DiagnosticsConfig `mapstructure:"diagnostics"`
 }
 
 // SSHConfig contains SSH connection settings
@@ -62,6 +63,23 @@ type APIConfig struct {
 	MaxConnections int           `mapstructure:"max_connections"`
 }
 
+// DiagnosticsConfig contains diagnostic settings
+type DiagnosticsConfig struct {
+	Network NetworkConfig `mapstructure:"network"`
+}
+
+// NetworkConfig contains network diagnostic settings
+type NetworkConfig struct {
+	Targets []NetworkTarget `mapstructure:"targets"`
+}
+
+// NetworkTarget represents a network endpoint to test connectivity to
+type NetworkTarget struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`     // Port number (0 for ICMP-only)
+	Protocol string `mapstructure:"protocol"` // "tcp" or "icmp"
+}
+
 // DefaultConfig returns a Config with sensible defaults
 func DefaultConfig() *Config {
 	return &Config{
@@ -106,6 +124,22 @@ func DefaultConfig() *Config {
 			ReadTimeout:    15 * time.Second,
 			WriteTimeout:   15 * time.Second,
 			MaxConnections: 100,
+		},
+		Diagnostics: DiagnosticsConfig{
+			Network: NetworkConfig{
+				Targets: []NetworkTarget{
+					{
+						Host:     "8.8.8.8",
+						Port:     0,
+						Protocol: "icmp",
+					},
+					{
+						Host:     "google.com",
+						Port:     0,
+						Protocol: "icmp",
+					},
+				},
+			},
 		},
 	}
 }
@@ -200,6 +234,33 @@ func (c *Config) Validate() error {
 	}
 	if c.API.TLS && (c.API.CertFile == "" || c.API.KeyFile == "") {
 		return fmt.Errorf("TLS enabled but cert_file or key_file not specified")
+	}
+
+	// Diagnostics validation
+	for i, target := range c.Diagnostics.Network.Targets {
+		if target.Host == "" {
+			return fmt.Errorf("diagnostics.network.targets[%d]: host cannot be empty", i)
+		}
+
+		// Validate protocol
+		validProtocols := map[string]bool{
+			"tcp":  true,
+			"icmp": true,
+			"":     true, // Empty defaults to icmp
+		}
+		if !validProtocols[target.Protocol] {
+			return fmt.Errorf("diagnostics.network.targets[%d]: invalid protocol %q (must be tcp or icmp)", i, target.Protocol)
+		}
+
+		// Validate port
+		if target.Port < 0 || target.Port > 65535 {
+			return fmt.Errorf("diagnostics.network.targets[%d]: invalid port %d (must be 0-65535)", i, target.Port)
+		}
+
+		// TCP targets must have a port
+		if target.Protocol == "tcp" && target.Port == 0 {
+			return fmt.Errorf("diagnostics.network.targets[%d]: TCP targets must specify a port", i)
+		}
 	}
 
 	return nil
