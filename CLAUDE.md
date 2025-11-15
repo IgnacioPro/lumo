@@ -1,8 +1,8 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-14
-> **Project Version:** 0.4.0
-> **Current Phase:** Phase 3 Complete (All Six Core Diagnostic Checkers Complete)
+> **Last Updated:** 2025-11-15
+> **Project Version:** 0.5.0
+> **Current Phase:** Phase 4 Complete (AI Integration with 3 Providers)
 
 This document provides comprehensive guidance for AI assistants (like Claude) working on the Lumo codebase. It covers architecture, conventions, workflows, and best practices to ensure consistent, high-quality contributions.
 
@@ -45,7 +45,7 @@ This document provides comprehensive guidance for AI assistants (like Claude) wo
 - **Language:** Go 1.25.4
 - **Module Path:** `github.com/ignacio/lumo`
 - **Architecture:** Modular CLI with pluggable backends
-- **Current Status:** Phase 3 complete (SSH + All Six Core Diagnostic Checkers)
+- **Current Status:** Phase 4 complete (SSH + Diagnostics + AI Analysis with 3 Providers)
 - **License:** MIT
 
 ---
@@ -78,20 +78,29 @@ lumo/
 │   │   ├── client.go             # Main SSH client (368 lines)
 │   │   └── session.go            # Session & command execution (879 lines)
 │   │
-│   └── diagnostics/               # Diagnostic system ✅ Phase 3.1, 3.2, & 3.3
-│       ├── diagnostics.go        # Core runner & interfaces (353 lines)
-│       ├── result.go             # Result types & reporting (320 lines)
-│       ├── severity.go           # Severity & thresholds (354 lines)
-│       ├── executor.go           # SSH command executor (51 lines)
-│       ├── checkers/             # Diagnostic checkers
-│       │   ├── cpu.go            # CPU diagnostics (200 lines) ✅
-│       │   ├── memory.go         # Memory diagnostics (338 lines) ✅
-│       │   ├── disk.go           # Disk diagnostics (366 lines) ✅
-│       │   ├── process.go        # Process diagnostics (298 lines) ✅
-│       │   ├── service.go        # Service diagnostics (344 lines) ✅
-│       │   └── network.go        # Network diagnostics (474 lines) ✅
-│       └── formatters/           # Output formatters
-│           └── text.go           # Text formatter (265 lines) ✅
+│   ├── diagnostics/               # Diagnostic system ✅ Phase 3.1, 3.2, & 3.3
+│   │   ├── diagnostics.go        # Core runner & interfaces (353 lines)
+│   │   ├── result.go             # Result types & reporting (320 lines)
+│   │   ├── severity.go           # Severity & thresholds (354 lines)
+│   │   ├── executor.go           # SSH command executor (51 lines)
+│   │   ├── checkers/             # Diagnostic checkers
+│   │   │   ├── cpu.go            # CPU diagnostics (200 lines) ✅
+│   │   │   ├── memory.go         # Memory diagnostics (338 lines) ✅
+│   │   │   ├── disk.go           # Disk diagnostics (366 lines) ✅
+│   │   │   ├── process.go        # Process diagnostics (298 lines) ✅
+│   │   │   ├── service.go        # Service diagnostics (344 lines) ✅
+│   │   │   └── network.go        # Network diagnostics (474 lines) ✅
+│   │   └── formatters/           # Output formatters
+│   │       └── text.go           # Text formatter (265 lines) ✅
+│   │
+│   └── ai/                        # AI Integration ✅ Phase 4
+│       ├── types.go               # Core types & interfaces (150 lines)
+│       ├── provider.go            # Provider factory (65 lines)
+│       ├── anthropic.go           # Anthropic Claude provider (416 lines)
+│       ├── openai.go              # OpenAI GPT provider (426 lines)
+│       ├── ollama.go              # Ollama local model provider (370 lines)
+│       ├── prompts.go             # Prompt engineering & parsing (323 lines)
+│       └── prompts_test.go        # Unit tests for prompts (214 lines)
 │
 ├── configs/                       # Configuration templates
 │   └── config.example.yaml        # Example configuration file
@@ -102,9 +111,10 @@ lumo/
 ├── CLAUDE.md                      # AI assistant guide (this file)
 └── README.md                      # User-facing documentation
 
-Total: 30 Go files, ~8,500 lines of code
+Total: 37 Go files, ~10,600 lines of code
 Phase 2 (SSH): 8 files, 2,410 lines
 Phase 3 (Diagnostics): 12 files, 3,835 lines
+Phase 4 (AI Integration): 7 files, 1,964 lines (includes 214 lines of tests)
 ```
 
 ### Directory Purposes
@@ -118,6 +128,7 @@ Phase 3 (Diagnostics): 12 files, 3,835 lines
 | `internal/diagnostics/` | Diagnostic system core (runner, results, severity) | Private |
 | `internal/diagnostics/checkers/` | Individual diagnostic check implementations | Private |
 | `internal/diagnostics/formatters/` | Output formatters (text, JSON, etc.) | Private |
+| `internal/ai/` | AI provider integrations (Anthropic, OpenAI, Ollama) | Private |
 | `configs/` | Example/template configuration files | Public (documentation) |
 
 ---
@@ -141,9 +152,13 @@ Phase 3 (Diagnostics): 12 files, 3,835 lines
 - `golang.org/x/crypto/ssh` (Phase 2) - SSH client implementation
 - `github.com/cenkalti/backoff/v4` (Phase 2) - Exponential backoff retry logic
 
+### Phase 4 Dependencies (AI Integration) ✅
+
+- **Custom HTTP clients** for AI provider APIs (no external SDKs required)
+- Uses standard library `net/http` and `encoding/json`
+
 ### Planned Dependencies (Future Phases)
 
-- **Phase 4 (AI):** Anthropic/OpenAI SDKs or custom HTTP clients
 - **Phase 7 (API):** `gin-gonic/gin` or `labstack/echo` for REST API
 
 ---
@@ -1436,18 +1451,32 @@ cp configs/config.example.yaml ~/.lumo/config.yaml
 - ⏳ YAML output formatter
 - ⏳ Enhanced platform-specific optimizations
 
-### Phase 4: AI Integration Layer
+### Phase 4: AI Integration ✅ COMPLETE
 
-**Status:** Planned
-**Target Package:** `internal/ai/`
-**Dependencies:** Anthropic/OpenAI SDKs
-**Tasks:**
-- Provider abstraction (interface)
-- Anthropic Claude integration
-- OpenAI GPT integration
-- Local model support (ollama/llama.cpp)
-- Prompt engineering for diagnostics analysis
-- Response parsing and structured output
+**Status:** Complete (2025-11-15)
+**Package:** `internal/ai/`
+**Deliverables:** 7 files, 1,964 lines (including 214 lines of tests)
+
+**Features Implemented:**
+- ✅ Provider abstraction with unified `Provider` interface
+- ✅ Anthropic Claude integration (claude-sonnet-4-5-20250929)
+- ✅ OpenAI GPT integration (gpt-4-turbo-preview)
+- ✅ Ollama local model support (llama3.1:8b, self-hosted)
+- ✅ Streaming and non-streaming analysis support
+- ✅ Prompt engineering system for SRE diagnostics
+- ✅ JSON response parsing with error handling
+- ✅ Token usage tracking across all providers
+- ✅ CLI integration with `--analyze` flag in diagnose command
+- ✅ Configuration integration with environment variable support
+- ✅ Temperature defaults standardized to 1.0 across providers
+- ✅ Unit tests for prompt parsing and formatting
+
+**Key Files:**
+- `types.go` - Core interfaces and types
+- `provider.go` - Provider factory
+- `anthropic.go`, `openai.go`, `ollama.go` - Provider implementations
+- `prompts.go` - Prompt engineering and response parsing
+- `prompts_test.go` - Unit tests
 
 ### Phase 5: Auto-Remediation & Approval
 

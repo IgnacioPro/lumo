@@ -184,9 +184,9 @@ func (p *AnthropicProvider) Health(ctx context.Context) error {
 	_, _, err := p.callAPI(ctx, req)
 	if err != nil {
 		return &Error{
-			Op:       "health_check",
-			Provider: p.Name(),
-			Err:      err,
+			Op:        "health_check",
+			Provider:  p.Name(),
+			Err:       err,
 			Retryable: true,
 		}
 	}
@@ -376,12 +376,12 @@ func (p *AnthropicProvider) setHeaders(req *http.Request) {
 // Anthropic API request/response types
 
 type anthropicRequest struct {
-	Model       string              `json:"model"`
-	MaxTokens   int                 `json:"max_tokens"`
-	Temperature float64             `json:"temperature,omitempty"`
-	System      string              `json:"system,omitempty"`
-	Messages    []anthropicMessage  `json:"messages"`
-	Stream      bool                `json:"stream,omitempty"`
+	Model       string             `json:"model"`
+	MaxTokens   int                `json:"max_tokens"`
+	Temperature float64            `json:"temperature,omitempty"`
+	System      string             `json:"system,omitempty"`
+	Messages    []anthropicMessage `json:"messages"`
+	Stream      bool               `json:"stream,omitempty"`
 }
 
 type anthropicMessage struct {

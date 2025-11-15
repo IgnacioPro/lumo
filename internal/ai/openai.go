@@ -48,7 +48,8 @@ func NewOpenAIProvider(config *ProviderConfig, log *logrus.Logger) (*OpenAIProvi
 	}
 
 	if config.Temperature == 0 {
-		config.Temperature = 0.7
+		// Default to 1.0 for consistency with Anthropic and more creative responses
+		config.Temperature = 1.0
 	}
 
 	if config.Endpoint == "" {
@@ -171,8 +172,8 @@ func (p *OpenAIProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest
 func (p *OpenAIProvider) Health(ctx context.Context) error {
 	// Simple health check: send a minimal request
 	req := &openaiRequest{
-		Model:      p.config.Model,
-		MaxTokens:  10,
+		Model:     p.config.Model,
+		MaxTokens: 10,
 		Messages: []openaiMessage{
 			{Role: "user", Content: "test"},
 		},
@@ -181,9 +182,9 @@ func (p *OpenAIProvider) Health(ctx context.Context) error {
 	_, _, err := p.callAPI(ctx, req)
 	if err != nil {
 		return &Error{
-			Op:       "health_check",
-			Provider: p.Name(),
-			Err:      err,
+			Op:        "health_check",
+			Provider:  p.Name(),
+			Err:       err,
 			Retryable: true,
 		}
 	}
