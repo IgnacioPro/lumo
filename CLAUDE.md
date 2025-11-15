@@ -1,8 +1,8 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-15
+> **Last Updated:** 2025-11-15 (Network targets & AI improvements)
 > **Project Version:** 0.4.0
-> **Current Phase:** Phase 4 Complete (AI Integration with 4 Providers)
+> **Current Phase:** Phase 4 Complete + Enhancements
 
 This document provides comprehensive guidance for AI assistants working on the Lumo codebase.
 
@@ -157,6 +157,7 @@ type Config struct {
 - Active connection counting (Linux: `ss`, macOS/BSD: `netstat`)
 - Per-target latency and reachability
 - Interface statistics: RX/TX bytes, packets, errors
+- Dynamic AI analysis: Only analyzes selected checks, avoids false warnings
 
 ### Loading Configuration
 
