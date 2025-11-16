@@ -65,8 +65,9 @@ type APIConfig struct {
 
 // DiagnosticsConfig contains diagnostic settings
 type DiagnosticsConfig struct {
-	Network  NetworkConfig  `mapstructure:"network"`
-	Security SecurityConfig `mapstructure:"security"`
+	Network    NetworkConfig    `mapstructure:"network"`
+	Security   SecurityConfig   `mapstructure:"security"`
+	Kubernetes KubernetesConfig `mapstructure:"kubernetes"`
 }
 
 // NetworkConfig contains network diagnostic settings
@@ -96,6 +97,23 @@ type PortCheckConfig struct {
 type AuthFailureCheckConfig struct {
 	LookbackHours    int `mapstructure:"lookback_hours"`
 	FailureThreshold int `mapstructure:"failure_threshold"`
+}
+
+// KubernetesConfig contains Kubernetes diagnostic settings
+type KubernetesConfig struct {
+	Enabled           bool     `mapstructure:"enabled"`             // Enable Kubernetes diagnostics
+	KubeconfigPath    string   `mapstructure:"kubeconfig_path"`     // Path to kubeconfig file (empty = default)
+	Context           string   `mapstructure:"context"`             // Kubernetes context to use (empty = current)
+	Namespaces        []string `mapstructure:"namespaces"`          // Namespaces to check (empty = all)
+	CheckNodes        bool     `mapstructure:"check_nodes"`         // Check node health
+	CheckPods         bool     `mapstructure:"check_pods"`          // Check pod status
+	CheckDeployments  bool     `mapstructure:"check_deployments"`   // Check deployment health
+	CheckStatefulSets bool     `mapstructure:"check_statefulsets"`  // Check StatefulSet health
+	CheckDaemonSets   bool     `mapstructure:"check_daemonsets"`    // Check DaemonSet health
+	CheckServices     bool     `mapstructure:"check_services"`      // Check service endpoints
+	CheckPVCs         bool     `mapstructure:"check_pvcs"`          // Check PersistentVolumeClaims
+	CheckEvents       bool     `mapstructure:"check_events"`        // Check recent events
+	EventLookbackMins int      `mapstructure:"event_lookback_mins"` // How far back to look for events
 }
 
 // DefaultConfig returns a Config with sensible defaults
@@ -166,6 +184,21 @@ func DefaultConfig() *Config {
 					LookbackHours:    1,
 					FailureThreshold: 20,
 				},
+			},
+			Kubernetes: KubernetesConfig{
+				Enabled:           false, // Disabled by default, enable via config or --checks kubernetes
+				KubeconfigPath:    "",    // Use default ~/.kube/config
+				Context:           "",    // Use current context
+				Namespaces:        []string{}, // All namespaces
+				CheckNodes:        true,
+				CheckPods:         true,
+				CheckDeployments:  true,
+				CheckStatefulSets: true,
+				CheckDaemonSets:   true,
+				CheckServices:     true,
+				CheckPVCs:         true,
+				CheckEvents:       true,
+				EventLookbackMins: 30, // Look back 30 minutes for events
 			},
 		},
 	}
