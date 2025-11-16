@@ -5,6 +5,7 @@ go 1.24.0
 toolchain go1.24.7
 
 require (
+	github.com/alpkeskin/gotoon v0.1.1
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.10.1

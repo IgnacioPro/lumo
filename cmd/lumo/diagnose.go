@@ -63,7 +63,7 @@ func init() {
 	// Diagnostic flags
 	diagnoseCmd.Flags().StringSliceP("checks", "c", []string{}, "Specific checks to run (cpu, memory, disk, process, service, network)")
 	diagnoseCmd.Flags().BoolP("all", "a", true, "Run all available diagnostic checks")
-	diagnoseCmd.Flags().StringP("format", "f", "text", "Output format (text, json)")
+	diagnoseCmd.Flags().StringP("format", "f", "text", "Output format (text, json, toon)")
 	diagnoseCmd.Flags().BoolP("no-color", "n", false, "Disable colored output")
 
 	// AI analysis flags
@@ -209,7 +209,8 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 	}
 
 	// Format and display results
-	if format == "json" {
+	switch format {
+	case "json":
 		jsonOutput, err := report.ToJSON()
 		if err != nil {
 			return fmt.Errorf("failed to format JSON: %w", err)
@@ -226,8 +227,27 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 				fmt.Println(analysisJSON)
 			}
 		}
-	} else {
-		// Text format
+
+	case "toon":
+		// TOON format - optimized for LLM consumption (30-60% token reduction vs JSON)
+		toonFormatter := formatters.NewToonFormatter()
+		output := toonFormatter.FormatReport(report)
+		fmt.Println(output)
+
+		// Display AI analysis in TOON format too
+		if analysis != nil {
+			fmt.Println("\n--- AI ANALYSIS ---")
+			// For AI analysis, use JSON since it's not a uniform data structure
+			analysisJSON, err := formatAIAnalysisJSON(analysis)
+			if err != nil {
+				log.Warnf("Failed to format AI analysis: %v", err)
+			} else {
+				fmt.Println(analysisJSON)
+			}
+		}
+
+	default:
+		// Text format (default)
 		formatter := formatters.NewTextFormatter(!noColor, verbose)
 		output := formatter.FormatReport(report)
 		fmt.Println(output)
