@@ -172,15 +172,24 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 	thresholds := diagnostics.DefaultThresholds()
 	runner := diagnostics.NewRunner(diagConfig, thresholds, executor, log)
 
-	// Register checkers (Phase 3.3 Complete: All 6 core checkers)
+	// Register checkers (Phase 5 Complete: 6 core + 4 security checkers)
 	log.Debug("Registering diagnostic checkers")
 	runner.RegisterCheckers(
+		// Core system checkers
 		checkers.NewCPUChecker(thresholds.CPU),
 		checkers.NewMemoryChecker(thresholds.Memory),
 		checkers.NewDiskChecker(thresholds.Disk),
 		checkers.NewProcessChecker(thresholds.Process),
 		checkers.NewServiceChecker([]string{}), // Empty list = check all services
 		checkers.NewNetworkChecker(thresholds.Network, cfg.Diagnostics.Network.Targets),
+		// Security checkers (Phase 5)
+		checkers.NewPatchChecker(),
+		checkers.NewPortsChecker(cfg.Diagnostics.Security.PortCheck.WhitelistedPorts),
+		checkers.NewSSHSecurityChecker(),
+		checkers.NewAuthFailuresChecker(
+			cfg.Diagnostics.Security.AuthFailureCheck.LookbackHours,
+			cfg.Diagnostics.Security.AuthFailureCheck.FailureThreshold,
+		),
 	)
 
 	// Run diagnostics
