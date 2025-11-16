@@ -172,7 +172,7 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 	thresholds := diagnostics.DefaultThresholds()
 	runner := diagnostics.NewRunner(diagConfig, thresholds, executor, log)
 
-	// Register checkers (Phase 5 Complete: 6 core + 4 security checkers)
+	// Register checkers (Phase 5 Complete: 6 core + 4 security + 1 virtualization checker)
 	log.Debug("Registering diagnostic checkers")
 	runner.RegisterCheckers(
 		// Core system checkers
@@ -190,6 +190,8 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 			cfg.Diagnostics.Security.AuthFailureCheck.LookbackHours,
 			cfg.Diagnostics.Security.AuthFailureCheck.FailureThreshold,
 		),
+		// Virtualization checkers
+		checkers.NewProxmoxChecker(false, false, false, false, false, false, false), // All checks enabled
 	)
 
 	// Run diagnostics
