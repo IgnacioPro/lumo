@@ -48,6 +48,11 @@ func NewOllamaProvider(config *ProviderConfig, log *logrus.Logger) (*OllamaProvi
 		config.Endpoint = DefaultOllamaURL
 	}
 
+	// Validate endpoint for security (allow localhost since Ollama runs locally)
+	if err := ValidateEndpoint(config.Endpoint, true); err != nil {
+		return nil, fmt.Errorf("invalid endpoint: %w", err)
+	}
+
 	return &OllamaProvider{
 		config: config,
 		client: &http.Client{

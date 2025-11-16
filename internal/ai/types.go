@@ -5,6 +5,9 @@ package ai
 
 import (
 	"context"
+	"fmt"
+	"net"
+	"net/url"
 	"time"
 
 	"github.com/ignacio/lumo/internal/diagnostics"
@@ -253,6 +256,58 @@ type ProviderConfig struct {
 
 	// CustomHeaders for API requests
 	CustomHeaders map[string]string
+}
+
+// ValidateEndpoint validates an AI provider endpoint URL for security
+func ValidateEndpoint(endpoint string, allowLocalhost bool) error {
+	if endpoint == "" {
+		return nil // Empty endpoint will use default
+	}
+
+	// Parse the URL
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return fmt.Errorf("invalid endpoint URL: %w", err)
+	}
+
+	// Require HTTPS for cloud endpoints (localhost can use HTTP for local testing)
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return fmt.Errorf("endpoint must use HTTP or HTTPS, got: %s", u.Scheme)
+	}
+
+	// Warn if using HTTP (insecure)
+	if u.Scheme == "http" && !allowLocalhost {
+		return fmt.Errorf("endpoint must use HTTPS (HTTP is insecure)")
+	}
+
+	// Extract hostname
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("endpoint must have a valid hostname")
+	}
+
+	// Block localhost and loopback addresses unless explicitly allowed
+	if !allowLocalhost {
+		if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "0.0.0.0" {
+			return fmt.Errorf("localhost endpoints not allowed (use allowLocalhost=true for local testing)")
+		}
+
+		// Check for private IP ranges
+		if ip := net.ParseIP(host); ip != nil {
+			if ip.IsLoopback() {
+				return fmt.Errorf("loopback addresses not allowed")
+			}
+			if ip.IsPrivate() {
+				return fmt.Errorf("private IP addresses not allowed (use allowLocalhost=true for internal networks)")
+			}
+			// Block cloud metadata services
+			if ip.String() == "169.254.169.254" {
+				return fmt.Errorf("cloud metadata service access not allowed")
+			}
+		}
+	}
+
+	return nil
 }
 
 // Error types for AI operations.

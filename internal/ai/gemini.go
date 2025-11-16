@@ -56,6 +56,11 @@ func NewGeminiProvider(config *ProviderConfig, log *logrus.Logger) (*GeminiProvi
 		config.Endpoint = GeminiAPIURL
 	}
 
+	// Validate endpoint for security (allow localhost for testing)
+	if err := ValidateEndpoint(config.Endpoint, false); err != nil {
+		return nil, fmt.Errorf("invalid endpoint: %w", err)
+	}
+
 	return &GeminiProvider{
 		config: config,
 		client: &http.Client{

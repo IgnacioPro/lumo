@@ -56,6 +56,11 @@ func NewOpenAIProvider(config *ProviderConfig, log *logrus.Logger) (*OpenAIProvi
 		config.Endpoint = OpenAIAPIURL
 	}
 
+	// Validate endpoint for security (allow localhost for testing)
+	if err := ValidateEndpoint(config.Endpoint, false); err != nil {
+		return nil, fmt.Errorf("invalid endpoint: %w", err)
+	}
+
 	return &OpenAIProvider{
 		config: config,
 		client: &http.Client{
