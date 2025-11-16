@@ -1,36 +1,50 @@
 # Lumo
 
-**Lumo** is an intelligent SRE/DevOps agent that automates system diagnostics and remediation tasks. It SSH into remote machines, runs diagnostic commands, uses AI to analyze issues, and performs auto-remediation with human-in-the-loop approval for critical operations.
+**Lumo** is an intelligent SRE/DevOps automation tool that connects to remote servers via SSH, runs comprehensive system diagnostics, and uses AI to analyze issues and suggest fixes. It supports multiple AI providers (Anthropic Claude, OpenAI GPT-4, Ollama, Google Gemini) and works on both remote servers and localhost.
 
 ## Features
 
-- **SSH Connection Management**: Connect to multiple remote servers securely
-- **Intelligent Diagnostics**: Automated system health checks (CPU, memory, disk, processes, logs, network)
-- **AI-Powered Analysis**: Uses AI to analyze diagnostic results and suggest fixes
-- **Auto-Remediation**: Automatically fix common issues with smart approval workflows
-- **Human-in-the-Loop**: Critical operations require human approval before execution
-- **Multi-Provider AI Support**: Works with Anthropic Claude, OpenAI GPT, and local models
-- **Dual Mode**: Works as both a CLI tool and API server
-- **Detailed Reporting**: Generate comprehensive reports in markdown, JSON, or YAML
+### ✅ Implemented
+- **SSH Connection Management**: 4 auth methods (agent, key, password, keyboard-interactive) with retry logic and auto-reconnect
+- **Intelligent Diagnostics**: 6 automated health checks (CPU, memory, disk, processes, services, network)
+- **AI-Powered Analysis**: Multi-provider support (Anthropic Claude, OpenAI GPT-4, Ollama, Google Gemini)
+- **Localhost Execution**: Run diagnostics on local machine without SSH overhead
+- **Cross-Platform Support**: Linux, macOS, BSD compatibility
+
+### 🚧 Planned
+- **Auto-Remediation**: Automatically fix common issues with smart approval workflows (Phase 5)
+- **Detailed Reporting**: Generate comprehensive reports in markdown, JSON, or YAML (Phase 6)
+- **API Server**: REST API with WebSocket support (Phase 7)
 
 ## Architecture
 
 ```
-┌─────────────┐
-│   CLI/API   │  User interface (cobra + gin/echo)
-└──────┬──────┘
-       │
-┌──────▼──────┐
-│   Agent     │  AI orchestration & decision-making
-└──────┬──────┘
-       │
-┌──────▼──────┐
-│    SSH      │  Connection management & command execution
-└──────┬──────┘
-       │
-┌──────▼──────────────┐
-│  Remote Servers     │  Target systems
-└─────────────────────┘
+┌─────────────────┐
+│   CLI Interface │  Commands: connect, diagnose
+└────────┬────────┘
+         │
+    ┌────▼────┐
+    │ Config  │  YAML + Environment Variables
+    └────┬────┘
+         │
+┌────────▼─────────┐
+│  Diagnostics     │  6 Health Checkers
+│  Runner          │  (CPU, Memory, Disk, etc.)
+└────┬─────────┬───┘
+     │         │
+┌────▼────┐ ┌──▼──────────┐
+│  Local  │ │ SSH Executor│  4 Auth Methods
+│ Executor│ │             │  Auto-Reconnect
+└─────────┘ └──────┬──────┘
+                   │
+            ┌──────▼──────────┐
+            │ Remote Servers  │
+            └─────────────────┘
+                   │
+            ┌──────▼──────────┐
+            │  AI Analysis    │  4 Providers
+            │  (Optional)     │  Streaming Support
+            └─────────────────┘
 ```
 
 ## Installation
@@ -98,41 +112,25 @@ lumo connect user@example.com --test=false
 ### 3. Run Diagnostics
 
 ```bash
-# Run all diagnostic checks
-lumo diagnose
+# Diagnose localhost (no SSH required)
+lumo diagnose localhost
 
-# Run specific checks
-lumo diagnose --checks cpu,memory,disk
-```
+# Diagnose remote server
+lumo diagnose user@example.com
 
-### 4. Auto-Remediation
+# Run specific checks only
+lumo diagnose user@example.com --checks cpu,memory,disk
 
-```bash
-# Run auto-remediation with approval prompts
-lumo fix
+# Get AI-powered analysis (requires API key)
+export LUMO_ANTHROPIC_API_KEY=sk-ant-...
+lumo diagnose localhost --analyze
 
-# Auto-approve safe operations
-lumo fix --auto-approve
-```
+# Use different AI provider
+export LUMO_OPENAI_API_KEY=sk-...
+lumo diagnose localhost --analyze --ai-provider openai
 
-### 5. Generate Reports
-
-```bash
-# Generate markdown report
-lumo report
-
-# Export as JSON
-lumo report --format json --output report.json
-```
-
-### 6. Start API Server
-
-```bash
-# Start API server on default port (8080)
-lumo serve
-
-# Start with custom port and TLS
-lumo serve --port 443 --tls --cert cert.pem --key key.pem
+# Output in JSON format
+lumo diagnose localhost --format json
 ```
 
 ## Configuration
@@ -166,12 +164,15 @@ ssh:
   default_key_path: ""  # Auto-discovers in ~/.ssh/
 
 ai:
-  provider: anthropic
+  provider: anthropic  # Options: anthropic, openai, ollama, gemini
   models:
     anthropic: claude-sonnet-4-5-20250929
-    openai: gpt-4
+    openai: gpt-4-turbo-preview
+    ollama: llama3.1:8b
+    gemini: gemini-2.0-flash-exp
   timeout: 60s
   max_retries: 3
+  temperature: 1.0
 
 logging:
   level: info
@@ -189,10 +190,24 @@ api:
 Override configuration with environment variables using the `LUMO_` prefix:
 
 ```bash
+# SSH Configuration
 export LUMO_SSH_PORT=2222
 export LUMO_SSH_STRICT_HOST_KEY_CHECKING=true
 export LUMO_SSH_DEFAULT_KEY_PATH=~/.ssh/id_ed25519
+
+# AI Configuration
 export LUMO_AI_PROVIDER=openai
+
+# AI API Keys (Provider-Specific - Recommended)
+export LUMO_ANTHROPIC_API_KEY=sk-ant-...   # For Anthropic Claude
+export LUMO_OPENAI_API_KEY=sk-...          # For OpenAI GPT
+export LUMO_GEMINI_API_KEY=...             # For Google Gemini
+export LUMO_OLLAMA_API_KEY=...             # For Ollama (usually not needed)
+
+# AI API Key (Generic Fallback - works but not recommended)
+export LUMO_AI_API_KEY=sk-...              # Fallback if provider-specific not set
+
+# Logging
 export LUMO_LOGGING_LEVEL=debug
 ```
 
@@ -281,22 +296,29 @@ ssh:
 
 ## Usage Examples
 
-### Dry Run Mode
-
-Test operations without making changes:
-
-```bash
-lumo diagnose --dry-run
-lumo fix --dry-run
-```
-
 ### Verbose Logging
 
 Enable detailed logging for debugging:
 
 ```bash
 lumo --verbose connect user@example.com
-lumo -v diagnose
+lumo --verbose diagnose localhost
+lumo -v diagnose user@example.com --analyze
+```
+
+### Multiple Checks
+
+Run specific diagnostic checks:
+
+```bash
+# Single check
+lumo diagnose localhost --checks cpu
+
+# Multiple checks
+lumo diagnose user@example.com --checks cpu,memory,disk
+
+# All checks (default)
+lumo diagnose localhost
 ```
 
 ### Custom Configuration
@@ -307,9 +329,9 @@ Use a specific configuration file:
 lumo --config /path/to/config.yaml diagnose
 ```
 
-## API Endpoints
+## API Endpoints (Planned - Phase 7)
 
-When running in server mode (`lumo serve`), the following endpoints are available:
+When the API server is implemented (`lumo serve`), the following endpoints will be available:
 
 - `POST /connect` - Establish SSH connection
 - `POST /diagnose` - Run diagnostics
@@ -321,21 +343,53 @@ When running in server mode (`lumo serve`), the following endpoints are availabl
 ## Development Roadmap
 
 - [x] **Phase 1**: Foundation & Project Setup
-- [x] **Phase 2**: SSH & Connection Management
-- [ ] **Phase 3**: Diagnostic System
-- [ ] **Phase 4**: AI Integration Layer
-- [ ] **Phase 5**: Auto-Remediation & Approval
-- [ ] **Phase 6**: Reporting & Logging
-- [ ] **Phase 7**: API Server
-- [ ] **Phase 8**: Testing & Documentation
+- [x] **Phase 2**: SSH & Connection Management (4 auth methods, retry logic, auto-reconnect)
+- [x] **Phase 3**: Diagnostic System (6 checkers: CPU, Memory, Disk, Process, Service, Network)
+- [x] **Phase 4**: AI Integration (4 providers: Anthropic, OpenAI, Ollama, Gemini)
+- [x] **Phase 8**: Testing & Documentation (37.1% coverage, 15 test files, 5,917 lines)
+- [ ] **Phase 5**: Auto-Remediation & Approval (Planned)
+- [ ] **Phase 6**: Reporting & Logging (Planned)
+- [ ] **Phase 7**: API Server (Planned)
+
+## Testing
+
+**Overall Coverage**: 37.1% (5,917 lines of test code across 15 test files)
+
+### Coverage by Package
+
+| Package | Coverage | Status |
+|---------|----------|--------|
+| internal/diagnostics/formatters | 100.0% | ✅ Complete |
+| internal/config | 68.8% | ✅ Good |
+| internal/diagnostics/checkers | 61.2% | ✅ Good |
+| internal/diagnostics | 54.1% | ✅ Solid |
+| internal/ai | 27.0% | ⚠️ In Progress |
+| internal/ssh | 16.3% | ⚠️ In Progress |
+
+### Run Tests
+
+```bash
+# All tests
+go test ./...
+
+# With coverage report
+go test -cover ./...
+
+# Specific package
+go test -v ./internal/diagnostics
+
+# HTML coverage report
+go test -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out
+```
 
 ## Security Considerations
 
-- SSH keys should be stored securely with appropriate permissions (600)
-- Never commit `config.yaml` with API keys or credentials to version control
-- Use environment variables for sensitive configuration in production
-- Enable TLS for API server in production environments
-- Review all remediation actions before approval
+- **SSH Keys**: Store with proper permissions (`chmod 600 ~/.ssh/id_rsa`)
+- **API Keys**: Use provider-specific environment variables (LUMO_ANTHROPIC_API_KEY, LUMO_OPENAI_API_KEY, etc.)
+- **Configuration**: Never commit `config.yaml` with secrets to version control
+- **Credentials**: Use environment variables for all sensitive data in production
+- **Localhost**: Commands run with your user permissions when using localhost execution
 
 ## License
 
