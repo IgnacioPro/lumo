@@ -199,3 +199,146 @@ func TestNetworkChecker_GetConnectionCount(t *testing.T) {
 }
 
 // classifyConnectivityError is private, testing behavior via Run() instead
+
+func TestNetworkChecker_ParseIfconfig(t *testing.T) {
+	tests := []struct {
+		name      string
+		output    string
+		wantCount int
+		wantIface map[string]struct {
+			ipAddr string
+			state  string
+			status string
+		}
+	}{
+		{
+			name: "macOS format - active interface",
+			output: `en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+	inet 192.168.1.100 netmask 0xffffff00 broadcast 192.168.1.255
+	status: active`,
+			wantCount: 1,
+			wantIface: map[string]struct {
+				ipAddr string
+				state  string
+				status string
+			}{
+				"en0": {ipAddr: "192.168.1.100", state: "up", status: "active"},
+			},
+		},
+		{
+			name: "macOS format - inactive interface",
+			output: `en1: flags=8822<BROADCAST,SMART,SIMPLEX,MULTICAST> mtu 1500
+	status: inactive`,
+			wantCount: 1,
+			wantIface: map[string]struct {
+				ipAddr string
+				state  string
+				status string
+			}{
+				"en1": {ipAddr: "", state: "down", status: "inactive"},
+			},
+		},
+		{
+			name: "multiple interfaces",
+			output: `lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
+	inet 127.0.0.1 netmask 0xff000000
+	status: active
+en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+	inet 192.168.1.100 netmask 0xffffff00
+	status: active`,
+			wantCount: 2,
+			wantIface: map[string]struct {
+				ipAddr string
+				state  string
+				status string
+			}{
+				"lo0": {ipAddr: "127.0.0.1", state: "up", status: "active"},
+				"en0": {ipAddr: "192.168.1.100", state: "up", status: "active"},
+			},
+		},
+		{
+			name: "interface without IP",
+			output: `en1: flags=8822<BROADCAST,SMART,SIMPLEX,MULTICAST> mtu 1500
+	status: inactive`,
+			wantCount: 1,
+			wantIface: map[string]struct {
+				ipAddr string
+				state  string
+				status string
+			}{
+				"en1": {ipAddr: "", state: "down", status: "inactive"},
+			},
+		},
+		{
+			name: "interface with status but no flags",
+			output: `eth0: mtu 1500
+	inet 10.0.0.1 netmask 255.255.255.0
+	status: active`,
+			wantCount: 1,
+			wantIface: map[string]struct {
+				ipAddr string
+				state  string
+				status string
+			}{
+				"eth0": {ipAddr: "10.0.0.1", state: "up", status: "active"},
+			},
+		},
+		{
+			name:      "empty output",
+			output:    "",
+			wantCount: 0,
+			wantIface: map[string]struct {
+				ipAddr string
+				state  string
+				status string
+			}{},
+		},
+		{
+			name: "only whitespace",
+			output: `
+
+`,
+			wantCount: 0,
+			wantIface: map[string]struct {
+				ipAddr string
+				state  string
+				status string
+			}{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			checker := NewNetworkChecker(diagnostics.NetworkThresholds{}, nil)
+			interfaces, err := checker.parseIfconfig(tt.output)
+
+			if err != nil {
+				t.Fatalf("parseIfconfig() error = %v", err)
+			}
+
+			if len(interfaces) != tt.wantCount {
+				t.Errorf("parseIfconfig() returned %d interfaces, want %d", len(interfaces), tt.wantCount)
+			}
+
+			for _, iface := range interfaces {
+				want, ok := tt.wantIface[iface.Name]
+				if !ok {
+					t.Errorf("Unexpected interface: %s", iface.Name)
+					continue
+				}
+
+				if iface.IPAddress != want.ipAddr {
+					t.Errorf("Interface %s: IPAddress = %q, want %q", iface.Name, iface.IPAddress, want.ipAddr)
+				}
+
+				if iface.State != want.state {
+					t.Errorf("Interface %s: State = %q, want %q", iface.Name, iface.State, want.state)
+				}
+
+				if iface.Status != want.status {
+					t.Errorf("Interface %s: Status = %q, want %q", iface.Name, iface.Status, want.status)
+				}
+			}
+		})
+	}
+}
