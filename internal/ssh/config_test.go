@@ -398,6 +398,8 @@ func TestClientConfig_ValidateKeyFile(t *testing.T) {
 			clientConfig.PreferredAuthMethods = []AuthMethod{AuthMethodKey}
 			clientConfig.CommandTimeout = 5 * time.Minute
 			clientConfig.OutputBufferSize = 1024 * 1024
+			// Disable strict host key checking for this test since we're testing key file validation
+			clientConfig.StrictHostKeyChecking = false
 
 			err := clientConfig.Validate()
 			if (err != nil) != tt.wantErr {
