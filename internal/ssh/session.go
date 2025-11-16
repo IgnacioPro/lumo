@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -135,7 +136,12 @@ func (s *Session) executeCommand(command string, options *CommandOptions, result
 
 	// Change working directory if specified
 	if options.WorkingDir != "" {
-		command = fmt.Sprintf("cd %s && %s", options.WorkingDir, command)
+		cleanDir, err := sanitizeWorkingDir(options.WorkingDir)
+		if err != nil {
+			return fmt.Errorf("invalid working directory: %w", err)
+		}
+		// Use shell quoting for additional safety
+		command = fmt.Sprintf("cd %s && %s", shellQuote(cleanDir), command)
 	}
 
 	// Execute the command
@@ -243,7 +249,12 @@ func (s *Session) executeStreamCommand(command string, stdout, stderr io.Writer,
 
 	// Change working directory if specified
 	if options.WorkingDir != "" {
-		command = fmt.Sprintf("cd %s && %s", options.WorkingDir, command)
+		cleanDir, err := sanitizeWorkingDir(options.WorkingDir)
+		if err != nil {
+			return fmt.Errorf("invalid working directory: %w", err)
+		}
+		// Use shell quoting for additional safety
+		command = fmt.Sprintf("cd %s && %s", shellQuote(cleanDir), command)
 	}
 
 	// Execute the command
@@ -376,11 +387,62 @@ func (s *Session) executeCommandWithInput(command string, input io.Reader, optio
 	return nil
 }
 
-// Helper function to quote shell arguments
+// shellQuote safely quotes a string for use in POSIX shell commands
+// This prevents command injection by escaping all special characters.
+//
+// Algorithm:
+// 1. Wrap the entire string in single quotes
+// 2. Replace any single quotes with: '\''  (end quote, escaped quote, start quote)
+//
+// This is the POSIX-standard way to quote shell arguments and handles all edge cases.
+// Examples:
+//   shellQuote("hello")           → 'hello'
+//   shellQuote("hello world")     → 'hello world'
+//   shellQuote("it's")            → 'it'\''s'
+//   shellQuote("a'b'c")           → 'a'\''b'\''c'
+//   shellQuote("$HOME")           → '$HOME'  (literal, not expanded)
+//   shellQuote("`whoami`")        → '`whoami`'  (literal, not executed)
 func shellQuote(s string) string {
-	// Simple shell quoting - wrap in single quotes and escape existing single quotes
-	s = strings.ReplaceAll(s, "'", "'\"'\"'")
+	// Handle empty string
+	if s == "" {
+		return "''"
+	}
+
+	// POSIX shell quoting: wrap in single quotes and escape existing single quotes
+	// Replace ' with '\'' which:
+	//   1. Ends the current single-quoted string (')
+	//   2. Adds an escaped single quote (\')
+	//   3. Starts a new single-quoted string (')
+	s = strings.ReplaceAll(s, "'", `'\''`)
 	return "'" + s + "'"
+}
+
+// sanitizeWorkingDir validates and sanitizes a working directory path to prevent command injection
+func sanitizeWorkingDir(dir string) (string, error) {
+	if dir == "" {
+		return "", nil
+	}
+
+	// Reject paths with shell metacharacters that could be used for command injection
+	dangerousChars := ";|&$`<>(){}[]!*?~\n\r"
+	if strings.ContainsAny(dir, dangerousChars) {
+		return "", fmt.Errorf("invalid characters in working directory path: path contains shell metacharacters")
+	}
+
+	// Check for null bytes
+	if strings.Contains(dir, "\x00") {
+		return "", fmt.Errorf("invalid characters in working directory path: null byte detected")
+	}
+
+	// Ensure it's an absolute path (relative paths could be manipulated)
+	if !filepath.IsAbs(dir) {
+		return "", fmt.Errorf("working directory must be an absolute path, got: %s", dir)
+	}
+
+	// Clean the path to remove any .. or . components
+	cleanPath := filepath.Clean(dir)
+
+	return cleanPath, nil
 }
 
 // GetCommandOutput is a convenience function to just get command output as a string

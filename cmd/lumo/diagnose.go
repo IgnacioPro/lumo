@@ -57,7 +57,7 @@ func init() {
 	// SSH connection flags
 	diagnoseCmd.Flags().IntP("port", "p", 22, "SSH port")
 	diagnoseCmd.Flags().StringP("identity", "i", "", "SSH private key file")
-	diagnoseCmd.Flags().StringP("password", "P", "", "SSH password (not recommended, use key-based auth)")
+	// NOTE: Password flag removed for security - password prompt will be used if needed
 	diagnoseCmd.Flags().DurationP("timeout", "t", 30*time.Second, "Connection timeout")
 
 	// Diagnostic flags
@@ -91,7 +91,6 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 	// Get flags
 	port, _ := cmd.Flags().GetInt("port")
 	identityFile, _ := cmd.Flags().GetString("identity")
-	password, _ := cmd.Flags().GetString("password")
 	checksFilter, _ := cmd.Flags().GetStringSlice("checks")
 	format, _ := cmd.Flags().GetString("format")
 	noColor, _ := cmd.Flags().GetBool("no-color")
@@ -140,10 +139,8 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		if password != "" {
-			log.Warn("Using password from command line is not secure!")
-			sshClientConfig.SetPassword(password)
-		}
+		// Password authentication will use secure prompting via SSH auth methods
+		// No password flag for security - prevents exposure in process lists and history
 
 		// Create SSH client
 		log.Debug("Creating SSH client")

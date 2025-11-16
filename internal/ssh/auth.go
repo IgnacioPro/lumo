@@ -231,11 +231,13 @@ func promptForPassphrase(keyPath, user, host string) (string, error) {
 func getHostKeyCallback(config *ClientConfig) (ssh.HostKeyCallback, error) {
 	// If strict host key checking is disabled, use insecure callback
 	if !config.StrictHostKeyChecking {
+		fmt.Fprintf(os.Stderr, "⚠️  WARNING: SSH host key verification is DISABLED. Connections are vulnerable to MITM attacks!\n")
 		return ssh.InsecureIgnoreHostKey(), nil
 	}
 
 	// If known_hosts path is not set, use insecure callback
 	if config.KnownHostsPath == "" {
+		fmt.Fprintf(os.Stderr, "⚠️  WARNING: No known_hosts file configured. Falling back to insecure mode!\n")
 		return ssh.InsecureIgnoreHostKey(), nil
 	}
 
@@ -285,10 +287,10 @@ func validateKeyFile(keyPath string) error {
 		return fmt.Errorf("failed to stat key file: %w", err)
 	}
 
-	// Check permissions (should be 600 or 400)
+	// Check permissions - must be exactly 600 or 400 (no group/world access)
 	perm := info.Mode().Perm()
-	if perm&0077 != 0 {
-		return fmt.Errorf("key file %s has insecure permissions %o (should be 600 or 400)", keyPath, perm)
+	if perm != 0600 && perm != 0400 {
+		return fmt.Errorf("key file %s has insecure permissions %o (must be exactly 0600 or 0400)", keyPath, perm)
 	}
 
 	return nil

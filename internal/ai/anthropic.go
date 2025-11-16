@@ -58,6 +58,11 @@ func NewAnthropicProvider(config *ProviderConfig, log *logrus.Logger) (*Anthropi
 		config.Endpoint = AnthropicAPIURL
 	}
 
+	// Validate endpoint for security (allow localhost for testing)
+	if err := ValidateEndpoint(config.Endpoint, false); err != nil {
+		return nil, fmt.Errorf("invalid endpoint: %w", err)
+	}
+
 	return &AnthropicProvider{
 		config: config,
 		client: &http.Client{

@@ -55,7 +55,7 @@ func NewClientConfig(baseConfig config.SSHConfig) *ClientConfig {
 		KnownHostsPath:        getDefaultKnownHostsPath(),
 		CommandTimeout:        DefaultCommandTimeout,
 		OutputBufferSize:      MaxOutputBufferSize,
-		StrictHostKeyChecking: false, // Default to false for easier development
+		StrictHostKeyChecking: true, // SECURE DEFAULT - changed from false
 		MaxConnectionsPerHost: 10,
 	}
 }
@@ -86,15 +86,15 @@ func (c *ClientConfig) Validate() error {
 			return fmt.Errorf("SSH key file not found: %s", c.KeyPath)
 		}
 
-		// Check key file permissions (should be 600 or 400)
+		// Check key file permissions - must be exactly 600 or 400 (no group/world access)
 		info, err := os.Stat(c.KeyPath)
 		if err != nil {
 			return fmt.Errorf("failed to check key file permissions: %w", err)
 		}
 
 		perm := info.Mode().Perm()
-		if perm&0077 != 0 {
-			return fmt.Errorf("key file %s has insecure permissions %o (should be 600 or 400)", c.KeyPath, perm)
+		if perm != 0600 && perm != 0400 {
+			return fmt.Errorf("key file %s has insecure permissions %o (must be exactly 0600 or 0400)", c.KeyPath, perm)
 		}
 	}
 
@@ -153,7 +153,11 @@ func (c *ClientConfig) SetPassphrase(passphrase string) {
 }
 
 // EnableStrictHostKeyChecking enables or disables strict host key checking
+// WARNING: Disabling strict host key checking makes connections vulnerable to MITM attacks
 func (c *ClientConfig) EnableStrictHostKeyChecking(enable bool) {
+	if !enable {
+		fmt.Fprintf(os.Stderr, "⚠️  WARNING: SSH host key verification is DISABLED. Connections are vulnerable to MITM attacks!\n")
+	}
 	c.StrictHostKeyChecking = enable
 }
 

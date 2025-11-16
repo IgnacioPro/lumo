@@ -1,8 +1,8 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-15 (Test coverage expansion)
+> **Last Updated:** 2025-11-16 (Critical security fixes)
 > **Project Version:** 0.4.0
-> **Current Phase:** Phase 4 Complete + Phase 8 In Progress (Testing)
+> **Current Phase:** Phase 4 Complete + Phase 8 In Progress (Testing + Security)
 
 This document provides comprehensive guidance for AI assistants working on the Lumo codebase.
 
@@ -369,6 +369,10 @@ go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out  # 
 
 ## Security Considerations
 
+**Security Audit Status**: ✅ All CRITICAL issues resolved (2025-11-16)
+- See `REPORTS/security-fixes-2025-11-16.md` for details
+- See `REPORTS/security-audit-2025-11-15.md` for full audit
+
 **Never Commit (.gitignore protects):**
 - `config.yaml` - May contain secrets
 - `*.pem`, `*.key` - Certificates/keys
@@ -378,8 +382,16 @@ go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out  # 
 **Credential Handling:**
 - AI API keys: Use provider-specific env vars (`LUMO_ANTHROPIC_API_KEY`, `LUMO_OPENAI_API_KEY`, `LUMO_GEMINI_API_KEY`)
 - Fallback: Generic `LUMO_AI_API_KEY` (not recommended, requires changing when switching)
-- SSH passwords: Avoid, use key-based auth
+- SSH passwords: **NEVER use CLI flags** - use secure prompting or key-based auth only
+- Password flag removed for security (prevents exposure in process lists/history)
 - TLS: Config validation enforces cert+key requirement
+
+**SSH Security (Enhanced 2025-11-16):**
+- ✅ Host key verification **enabled by default** (StrictHostKeyChecking: true)
+- ✅ Known_hosts auto-configured to `~/.ssh/known_hosts`
+- ✅ Warnings displayed when disabling verification
+- ✅ Command injection protection via WorkingDir sanitization
+- ✅ Shell metacharacter filtering and path validation
 
 **File Permissions:**
 ```bash

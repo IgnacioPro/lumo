@@ -40,8 +40,9 @@ func TestNewClientConfig(t *testing.T) {
 		t.Errorf("OutputBufferSize = %d, want %d", clientConfig.OutputBufferSize, MaxOutputBufferSize)
 	}
 
-	if clientConfig.StrictHostKeyChecking {
-		t.Error("StrictHostKeyChecking = true, want false")
+	// After security fix: StrictHostKeyChecking should default to true (secure default)
+	if !clientConfig.StrictHostKeyChecking {
+		t.Error("StrictHostKeyChecking = false, want true (secure default)")
 	}
 }
 
