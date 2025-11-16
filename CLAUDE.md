@@ -440,11 +440,11 @@ chmod 600 /etc/lumo/key.pem
 | `ssh_security.go` | SSH key permissions, sshd_config security validation |
 | `auth_failures.go` | Failed login attempts, brute force detection, suspicious IPs |
 
-#### Virtualization Checkers (1 Complete)
+#### Virtualization Checkers (1 Complete - Enhanced)
 
 | Checker | Key Metrics |
 |---------|-------------|
-| `proxmox.go` | Cluster status (quorum, nodes), VMs/containers (running/stopped), storage (usage, health), replication jobs, backup status, HA services, Proxmox daemon health |
+| `proxmox.go` | **Core:** Cluster status (quorum, nodes), VMs/containers (running/stopped), storage (usage, health), replication jobs, backup status, HA services, Proxmox daemon health<br>**Enhanced:** Subscription validation, update detection, task history, per-VM/CT performance metrics, boot configuration (OnBoot settings), network interface statistics |
 
 ### AI Providers (All 4 Complete)
 
