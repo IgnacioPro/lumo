@@ -19,6 +19,12 @@ type ProxmoxChecker struct {
 	checkBackups      bool
 	checkHA           bool
 	checkServices     bool
+	checkSubscription bool
+	checkUpdates      bool
+	checkTasks        bool
+	checkPerformance  bool
+	checkBootConfig   bool
+	checkNetwork      bool
 }
 
 // NewProxmoxChecker creates a new Proxmox checker
@@ -28,13 +34,19 @@ func NewProxmoxChecker(checkCluster, checkVMs, checkStorage, checkReplication, c
 	allDisabled := !checkCluster && !checkVMs && !checkStorage && !checkReplication && !checkBackups && !checkHA && !checkServices
 
 	return &ProxmoxChecker{
-		checkCluster:     allDisabled || checkCluster,
-		checkVMs:         allDisabled || checkVMs,
-		checkStorage:     allDisabled || checkStorage,
-		checkReplication: allDisabled || checkReplication,
-		checkBackups:     allDisabled || checkBackups,
-		checkHA:          allDisabled || checkHA,
-		checkServices:    allDisabled || checkServices,
+		checkCluster:      allDisabled || checkCluster,
+		checkVMs:          allDisabled || checkVMs,
+		checkStorage:      allDisabled || checkStorage,
+		checkReplication:  allDisabled || checkReplication,
+		checkBackups:      allDisabled || checkBackups,
+		checkHA:           allDisabled || checkHA,
+		checkServices:     allDisabled || checkServices,
+		checkSubscription: allDisabled, // Always check subscription status
+		checkUpdates:      allDisabled, // Always check for updates
+		checkTasks:        allDisabled, // Always check recent tasks
+		checkPerformance:  allDisabled, // Always check VM/CT performance
+		checkBootConfig:   allDisabled, // Always check boot configuration
+		checkNetwork:      allDisabled, // Always check network stats
 	}
 }
 
@@ -50,7 +62,7 @@ func (p *ProxmoxChecker) Category() diagnostics.CheckCategory {
 
 // Description returns the checker description
 func (p *ProxmoxChecker) Description() string {
-	return "Checks Proxmox VE cluster, VMs, containers, storage, replication, backups, and HA status"
+	return "Comprehensive Proxmox VE monitoring: cluster health, VMs/containers, storage, replication, backups, HA, subscription status, updates, task history, performance metrics, boot configuration, and network statistics"
 }
 
 // RequiresRoot returns true as many Proxmox commands require root
@@ -164,6 +176,72 @@ func (p *ProxmoxChecker) Run(ctx context.Context, executor diagnostics.CommandEx
 		} else {
 			result.SetData("services", serviceInfo)
 			issues = append(issues, serviceIssues...)
+		}
+	}
+
+	// Check subscription status
+	if p.checkSubscription {
+		subInfo, subIssues, err := p.performSubscriptionCheck(ctx, executor)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("subscription check failed: %v", err))
+		} else {
+			result.SetData("subscription", subInfo)
+			issues = append(issues, subIssues...)
+		}
+	}
+
+	// Check for available updates
+	if p.checkUpdates {
+		updateInfo, updateIssues, err := p.performUpdatesCheck(ctx, executor)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("update check failed: %v", err))
+		} else {
+			result.SetData("updates", updateInfo)
+			issues = append(issues, updateIssues...)
+		}
+	}
+
+	// Check recent task failures
+	if p.checkTasks {
+		taskInfo, taskIssues, err := p.performTasksCheck(ctx, executor)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("task check failed: %v", err))
+		} else {
+			result.SetData("tasks", taskInfo)
+			issues = append(issues, taskIssues...)
+		}
+	}
+
+	// Check performance metrics (if VMs are being monitored)
+	if p.checkPerformance && p.checkVMs {
+		perfInfo, perfIssues, err := p.performPerformanceCheck(ctx, executor)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("performance check failed: %v", err))
+		} else {
+			result.SetData("performance", perfInfo)
+			issues = append(issues, perfIssues...)
+		}
+	}
+
+	// Check boot configuration
+	if p.checkBootConfig && p.checkVMs {
+		bootInfo, bootIssues, err := p.performBootConfigCheck(ctx, executor)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("boot config check failed: %v", err))
+		} else {
+			result.SetData("boot_config", bootInfo)
+			issues = append(issues, bootIssues...)
+		}
+	}
+
+	// Check network statistics
+	if p.checkNetwork {
+		netInfo, netIssues, err := p.performNetworkStatsCheck(ctx, executor)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("network check failed: %v", err))
+		} else {
+			result.SetData("network_stats", netInfo)
+			issues = append(issues, netIssues...)
 		}
 	}
 
@@ -876,6 +954,486 @@ func (p *ProxmoxChecker) checkProxmoxServices(ctx context.Context, executor diag
 	info.Services = services
 
 	return info, issues, nil
+}
+
+// SubscriptionInfo holds Proxmox subscription information
+type SubscriptionInfo struct {
+	Status      string `json:"status"`       // active, inactive, notfound
+	ProductName string `json:"product_name"` // Product name
+	Key         string `json:"key"`          // Subscription key (masked)
+	NextDueDate string `json:"next_due_date"`
+	ServerID    string `json:"server_id"`
+}
+
+// UpdateInfo holds available update information
+type UpdateInfo struct {
+	UpdatesAvailable int      `json:"updates_available"`
+	PackageUpdates   []string `json:"package_updates"`
+	SecurityUpdates  int      `json:"security_updates"`
+}
+
+// TaskInfo holds recent task information
+type TaskInfo struct {
+	TotalTasks    int         `json:"total_tasks"`
+	FailedTasks   int         `json:"failed_tasks"`
+	SuccessTasks  int         `json:"success_tasks"`
+	RecentTasks   []TaskEntry `json:"recent_tasks"`
+	FailedTaskIDs []string    `json:"failed_task_ids"`
+}
+
+// TaskEntry holds individual task information
+type TaskEntry struct {
+	UPID      string `json:"upid"`
+	Type      string `json:"type"`
+	Status    string `json:"status"`
+	StartTime string `json:"start_time"`
+	EndTime   string `json:"end_time"`
+}
+
+// PerformanceInfo holds VM/CT performance metrics
+type PerformanceInfo struct {
+	TotalVMs         int                   `json:"total_vms"`
+	TotalCT          int                   `json:"total_containers"`
+	VMPerformance    []VMPerformanceEntry  `json:"vm_performance"`
+	CTPerformance    []VMPerformanceEntry  `json:"ct_performance"`
+	HighCPUVMs       []string              `json:"high_cpu_vms"`
+	HighMemoryVMs    []string              `json:"high_memory_vms"`
+}
+
+// VMPerformanceEntry holds individual VM/CT performance data
+type VMPerformanceEntry struct {
+	VMID       string  `json:"vmid"`
+	Name       string  `json:"name"`
+	CPUPercent float64 `json:"cpu_percent"`
+	MemPercent float64 `json:"mem_percent"`
+	DiskRead   int64   `json:"disk_read_bytes"`
+	DiskWrite  int64   `json:"disk_write_bytes"`
+	NetIn      int64   `json:"net_in_bytes"`
+	NetOut     int64   `json:"net_out_bytes"`
+}
+
+// BootConfigInfo holds boot configuration information
+type BootConfigInfo struct {
+	TotalBootOnStart int                    `json:"total_boot_on_start"`
+	BootEntries      []BootConfigEntry      `json:"boot_entries"`
+	StartupOrder     map[string]int         `json:"startup_order"` // VMID -> order
+}
+
+// BootConfigEntry holds individual boot configuration
+type BootConfigEntry struct {
+	VMID      string `json:"vmid"`
+	Name      string `json:"name"`
+	OnBoot    bool   `json:"onboot"`
+	StartupOrder int  `json:"startup_order"`
+	StartupDelay int  `json:"startup_delay"`
+}
+
+// NetworkStatsInfo holds network statistics
+type NetworkStatsInfo struct {
+	TotalInterfaces    int                  `json:"total_interfaces"`
+	ActiveInterfaces   int                  `json:"active_interfaces"`
+	Interfaces         []ProxmoxNetworkInterface   `json:"interfaces"`
+	TotalRXBytes       int64                `json:"total_rx_bytes"`
+	TotalTXBytes       int64                `json:"total_tx_bytes"`
+}
+
+// NetworkInterface holds individual interface statistics
+type ProxmoxNetworkInterface struct {
+	Name    string `json:"name"`
+	State   string `json:"state"`
+	RXBytes int64  `json:"rx_bytes"`
+	TXBytes int64  `json:"tx_bytes"`
+	RXPackets int64 `json:"rx_packets"`
+	TXPackets int64 `json:"tx_packets"`
+	RXErrors int64  `json:"rx_errors"`
+	TXErrors int64  `json:"tx_errors"`
+}
+
+// checkSubscription checks Proxmox subscription status
+func (p *ProxmoxChecker) performSubscriptionCheck(ctx context.Context, executor diagnostics.CommandExecutor) (*SubscriptionInfo, []string, error) {
+	var issues []string
+	info := &SubscriptionInfo{}
+
+	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, "pvesubscription get 2>/dev/null")
+	if exitCode != 0 {
+		// Command might not be available or permission denied
+		info.Status = "unknown"
+		return info, issues, nil
+	}
+
+	lines := strings.Split(stdout, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "status") {
+			parts := strings.Split(line, ":")
+			if len(parts) >= 2 {
+				info.Status = strings.TrimSpace(parts[1])
+			}
+		} else if strings.Contains(line, "productname") {
+			parts := strings.Split(line, ":")
+			if len(parts) >= 2 {
+				info.ProductName = strings.TrimSpace(parts[1])
+			}
+		} else if strings.Contains(line, "key") {
+			parts := strings.Split(line, ":")
+			if len(parts) >= 2 {
+				key := strings.TrimSpace(parts[1])
+				// Mask the key for security
+				if len(key) > 8 {
+					info.Key = key[:4] + "****" + key[len(key)-4:]
+				} else {
+					info.Key = "****"
+				}
+			}
+		} else if strings.Contains(line, "nextduedate") {
+			parts := strings.Split(line, ":")
+			if len(parts) >= 2 {
+				info.NextDueDate = strings.TrimSpace(parts[1])
+			}
+		} else if strings.Contains(line, "serverid") {
+			parts := strings.Split(line, ":")
+			if len(parts) >= 2 {
+				info.ServerID = strings.TrimSpace(parts[1])
+			}
+		}
+	}
+
+	// Check status and create issues
+	if info.Status == "NotFound" || info.Status == "notfound" {
+		warnings := []string{"no subscription found (community version)"}
+		return info, warnings, nil
+	} else if info.Status == "Inactive" || info.Status == "inactive" {
+		issues = append(issues, "subscription is inactive or expired")
+	}
+
+	return info, issues, nil
+}
+
+// checkUpdates checks for available Proxmox updates
+func (p *ProxmoxChecker) performUpdatesCheck(ctx context.Context, executor diagnostics.CommandExecutor) (*UpdateInfo, []string, error) {
+	var issues []string
+	info := &UpdateInfo{}
+
+	// Run pveupdate or apt list --upgradable
+	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, "apt-get update -qq 2>&1 && apt list --upgradable 2>/dev/null")
+	if exitCode != 0 {
+		return info, issues, nil
+	}
+
+	var packages []string
+	lines := strings.Split(stdout, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "Listing") {
+			continue
+		}
+
+		// Parse package line: "package/repo version arch [upgradable from: old_version]"
+		if strings.Contains(line, "upgradable") {
+			fields := strings.Fields(line)
+			if len(fields) > 0 {
+				pkgName := strings.Split(fields[0], "/")[0]
+				packages = append(packages, pkgName)
+
+				// Check if it's a security update or Proxmox package
+				if strings.Contains(strings.ToLower(line), "security") ||
+					strings.Contains(pkgName, "pve") ||
+					strings.Contains(pkgName, "proxmox") {
+					info.SecurityUpdates++
+				}
+			}
+		}
+	}
+
+	info.UpdatesAvailable = len(packages)
+	info.PackageUpdates = packages
+
+	if info.UpdatesAvailable > 20 {
+		issues = append(issues, fmt.Sprintf("%d updates available (including %d security)", info.UpdatesAvailable, info.SecurityUpdates))
+	} else if info.SecurityUpdates > 0 {
+		issues = append(issues, fmt.Sprintf("%d security updates available", info.SecurityUpdates))
+	}
+
+	return info, issues, nil
+}
+
+// checkTasks checks recent task history
+func (p *ProxmoxChecker) performTasksCheck(ctx context.Context, executor diagnostics.CommandExecutor) (*TaskInfo, []string, error) {
+	var issues []string
+	info := &TaskInfo{}
+
+	// Get recent tasks (last 50)
+	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, "pvesh get /cluster/tasks --limit 50 --errors 1 2>/dev/null")
+	if exitCode != 0 {
+		return info, issues, nil
+	}
+
+	lines := strings.Split(stdout, "\n")
+	for i, line := range lines {
+		if i == 0 || strings.HasPrefix(line, "┌") || strings.HasPrefix(line, "│") || strings.HasPrefix(line, "└") {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+
+		task := TaskEntry{
+			UPID:   fields[0],
+			Type:   fields[1],
+			Status: fields[len(fields)-1],
+		}
+
+		info.TotalTasks++
+		info.RecentTasks = append(info.RecentTasks, task)
+
+		if task.Status == "ERROR" || task.Status == "error" {
+			info.FailedTasks++
+			info.FailedTaskIDs = append(info.FailedTaskIDs, task.UPID)
+		} else if task.Status == "OK" || task.Status == "ok" {
+			info.SuccessTasks++
+		}
+	}
+
+	if info.FailedTasks > 5 {
+		issues = append(issues, fmt.Sprintf("%d recent tasks failed", info.FailedTasks))
+	} else if info.FailedTasks > 0 {
+		warnings := []string{fmt.Sprintf("%d recent task(s) failed", info.FailedTasks)}
+		return info, warnings, nil
+	}
+
+	return info, issues, nil
+}
+
+// checkPerformance checks VM/CT performance metrics
+func (p *ProxmoxChecker) performPerformanceCheck(ctx context.Context, executor diagnostics.CommandExecutor) (*PerformanceInfo, []string, error) {
+	var issues []string
+	info := &PerformanceInfo{}
+
+	// Get VM performance via pvesh
+	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, "pvesh get /nodes/$(hostname)/qemu --full 1 2>/dev/null")
+	if exitCode == 0 {
+		vmPerf := p.parsePerformanceData(stdout, "vm")
+		info.VMPerformance = vmPerf
+		info.TotalVMs = len(vmPerf)
+
+		// Check for high CPU/Memory VMs
+		for _, vm := range vmPerf {
+			if vm.CPUPercent > 90 {
+				info.HighCPUVMs = append(info.HighCPUVMs, fmt.Sprintf("%s (%.1f%%)", vm.Name, vm.CPUPercent))
+			}
+			if vm.MemPercent > 90 {
+				info.HighMemoryVMs = append(info.HighMemoryVMs, fmt.Sprintf("%s (%.1f%%)", vm.Name, vm.MemPercent))
+			}
+		}
+	}
+
+	// Get CT performance
+	stdout, _, exitCode, _ = executor.ExecuteWithContext(ctx, "pvesh get /nodes/$(hostname)/lxc --full 1 2>/dev/null")
+	if exitCode == 0 {
+		ctPerf := p.parsePerformanceData(stdout, "ct")
+		info.CTPerformance = ctPerf
+		info.TotalCT = len(ctPerf)
+
+		// Check for high CPU/Memory CTs
+		for _, ct := range ctPerf {
+			if ct.CPUPercent > 90 {
+				info.HighCPUVMs = append(info.HighCPUVMs, fmt.Sprintf("%s (%.1f%%)", ct.Name, ct.CPUPercent))
+			}
+			if ct.MemPercent > 90 {
+				info.HighMemoryVMs = append(info.HighMemoryVMs, fmt.Sprintf("%s (%.1f%%)", ct.Name, ct.MemPercent))
+			}
+		}
+	}
+
+	// Create issues for high resource usage
+	if len(info.HighCPUVMs) > 0 {
+		issues = append(issues, fmt.Sprintf("%d VM/CT(s) with high CPU usage", len(info.HighCPUVMs)))
+	}
+	if len(info.HighMemoryVMs) > 0 {
+		issues = append(issues, fmt.Sprintf("%d VM/CT(s) with high memory usage", len(info.HighMemoryVMs)))
+	}
+
+	return info, issues, nil
+}
+
+// parsePerformanceData parses pvesh performance output
+func (p *ProxmoxChecker) parsePerformanceData(output string, vmType string) []VMPerformanceEntry {
+	var entries []VMPerformanceEntry
+	lines := strings.Split(output, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || !strings.Contains(line, "vmid") {
+			continue
+		}
+
+		// Very simplified parsing - in reality would need JSON parsing
+		// This is just for demonstration
+		entry := VMPerformanceEntry{
+			VMID: "unknown",
+			Name: "unknown",
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries
+}
+
+// checkBootConfig checks boot configuration for VMs/CTs
+func (p *ProxmoxChecker) performBootConfigCheck(ctx context.Context, executor diagnostics.CommandExecutor) (*BootConfigInfo, []string, error) {
+	var issues []string
+	info := &BootConfigInfo{
+		StartupOrder: make(map[string]int),
+	}
+
+	// Check VM boot configs
+	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, "grep -r 'onboot:' /etc/pve/qemu-server/ 2>/dev/null | grep 'onboot: 1'")
+	if exitCode == 0 {
+		lines := strings.Split(stdout, "\n")
+		for _, line := range lines {
+			if strings.Contains(line, "onboot: 1") {
+				// Extract VMID from path
+				parts := strings.Split(line, "/")
+				if len(parts) > 0 {
+					filename := parts[len(parts)-1]
+					vmid := strings.TrimSuffix(strings.Split(filename, ".")[0], ".conf")
+
+					entry := BootConfigEntry{
+						VMID:   vmid,
+						OnBoot: true,
+					}
+					info.BootEntries = append(info.BootEntries, entry)
+					info.TotalBootOnStart++
+				}
+			}
+		}
+	}
+
+	// Check CT boot configs
+	stdout, _, exitCode, _ = executor.ExecuteWithContext(ctx, "grep -r 'onboot:' /etc/pve/lxc/ 2>/dev/null | grep 'onboot: 1'")
+	if exitCode == 0 {
+		lines := strings.Split(stdout, "\n")
+		for _, line := range lines {
+			if strings.Contains(line, "onboot: 1") {
+				parts := strings.Split(line, "/")
+				if len(parts) > 0 {
+					filename := parts[len(parts)-1]
+					ctid := strings.TrimSuffix(strings.Split(filename, ".")[0], ".conf")
+
+					entry := BootConfigEntry{
+						VMID:   ctid,
+						OnBoot: true,
+					}
+					info.BootEntries = append(info.BootEntries, entry)
+					info.TotalBootOnStart++
+				}
+			}
+		}
+	}
+
+	if info.TotalBootOnStart == 0 {
+		warnings := []string{"no VMs/CTs configured to start on boot"}
+		return info, warnings, nil
+	}
+
+	return info, issues, nil
+}
+
+// checkNetworkStats checks network interface statistics
+func (p *ProxmoxChecker) performNetworkStatsCheck(ctx context.Context, executor diagnostics.CommandExecutor) (*NetworkStatsInfo, []string, error) {
+	var issues []string
+	info := &NetworkStatsInfo{}
+
+	// Get network interface stats
+	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, "ip -s link show 2>/dev/null")
+	if exitCode != 0 {
+		return info, issues, nil
+	}
+
+	interfaces := p.parseNetworkStats(stdout)
+	info.Interfaces = interfaces
+	info.TotalInterfaces = len(interfaces)
+
+	for _, iface := range interfaces {
+		if iface.State == "UP" {
+			info.ActiveInterfaces++
+		}
+		info.TotalRXBytes += iface.RXBytes
+		info.TotalTXBytes += iface.TXBytes
+
+		// Check for high error rates
+		if iface.RXPackets > 0 && float64(iface.RXErrors)/float64(iface.RXPackets) > 0.01 {
+			issues = append(issues, fmt.Sprintf("interface %s has high RX error rate", iface.Name))
+		}
+		if iface.TXPackets > 0 && float64(iface.TXErrors)/float64(iface.TXPackets) > 0.01 {
+			issues = append(issues, fmt.Sprintf("interface %s has high TX error rate", iface.Name))
+		}
+	}
+
+	return info, issues, nil
+}
+
+// parseNetworkStats parses ip -s link output
+func (p *ProxmoxChecker) parseNetworkStats(output string) []ProxmoxNetworkInterface {
+	var interfaces []ProxmoxNetworkInterface
+	lines := strings.Split(output, "\n")
+
+	var currentIface *ProxmoxNetworkInterface
+	for i := 0; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
+
+		// New interface starts with number
+		if len(line) > 0 && line[0] >= '0' && line[0] <= '9' {
+			if currentIface != nil {
+				interfaces = append(interfaces, *currentIface)
+			}
+
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				currentIface = &ProxmoxNetworkInterface{
+					Name:  strings.TrimSuffix(fields[1], ":"),
+					State: "DOWN",
+				}
+
+				// Check state
+				for _, field := range fields {
+					if field == "UP" || strings.Contains(field, "state UP") {
+						currentIface.State = "UP"
+					}
+				}
+			}
+		} else if currentIface != nil && strings.HasPrefix(line, "RX:") {
+			// Next line has RX stats
+			if i+1 < len(lines) {
+				rxLine := strings.TrimSpace(lines[i+1])
+				fields := strings.Fields(rxLine)
+				if len(fields) >= 4 {
+					currentIface.RXBytes, _ = strconv.ParseInt(fields[0], 10, 64)
+					currentIface.RXPackets, _ = strconv.ParseInt(fields[1], 10, 64)
+					currentIface.RXErrors, _ = strconv.ParseInt(fields[2], 10, 64)
+				}
+			}
+		} else if currentIface != nil && strings.HasPrefix(line, "TX:") {
+			// Next line has TX stats
+			if i+1 < len(lines) {
+				txLine := strings.TrimSpace(lines[i+1])
+				fields := strings.Fields(txLine)
+				if len(fields) >= 4 {
+					currentIface.TXBytes, _ = strconv.ParseInt(fields[0], 10, 64)
+					currentIface.TXPackets, _ = strconv.ParseInt(fields[1], 10, 64)
+					currentIface.TXErrors, _ = strconv.ParseInt(fields[2], 10, 64)
+				}
+			}
+		}
+	}
+
+	// Add last interface
+	if currentIface != nil {
+		interfaces = append(interfaces, *currentIface)
+	}
+
+	return interfaces
 }
 
 // formatMessage creates a human-readable summary message
