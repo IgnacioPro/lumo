@@ -65,7 +65,8 @@ type APIConfig struct {
 
 // DiagnosticsConfig contains diagnostic settings
 type DiagnosticsConfig struct {
-	Network NetworkConfig `mapstructure:"network"`
+	Network  NetworkConfig  `mapstructure:"network"`
+	Security SecurityConfig `mapstructure:"security"`
 }
 
 // NetworkConfig contains network diagnostic settings
@@ -78,6 +79,23 @@ type NetworkTarget struct {
 	Host     string `mapstructure:"host"`
 	Port     int    `mapstructure:"port"`     // Port number (0 for ICMP-only)
 	Protocol string `mapstructure:"protocol"` // "tcp" or "icmp"
+}
+
+// SecurityConfig contains security diagnostic settings
+type SecurityConfig struct {
+	PortCheck        PortCheckConfig        `mapstructure:"port_check"`
+	AuthFailureCheck AuthFailureCheckConfig `mapstructure:"auth_failure_check"`
+}
+
+// PortCheckConfig contains port scanning configuration
+type PortCheckConfig struct {
+	WhitelistedPorts []int `mapstructure:"whitelisted_ports"`
+}
+
+// AuthFailureCheckConfig contains auth failure checking configuration
+type AuthFailureCheckConfig struct {
+	LookbackHours    int `mapstructure:"lookback_hours"`
+	FailureThreshold int `mapstructure:"failure_threshold"`
 }
 
 // DefaultConfig returns a Config with sensible defaults
@@ -138,6 +156,15 @@ func DefaultConfig() *Config {
 						Port:     0,
 						Protocol: "icmp",
 					},
+				},
+			},
+			Security: SecurityConfig{
+				PortCheck: PortCheckConfig{
+					WhitelistedPorts: []int{22, 80, 443, 3000, 8080},
+				},
+				AuthFailureCheck: AuthFailureCheckConfig{
+					LookbackHours:    1,
+					FailureThreshold: 20,
 				},
 			},
 		},
