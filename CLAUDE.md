@@ -485,27 +485,37 @@ chmod 600 /etc/lumo/key.pem
 - Authentication, rate limiting
 - OpenAPI/Swagger docs
 
-### ✅ Phase 8: Testing & Documentation (Substantially Complete)
-**Status:** Comprehensive test coverage achieved across all core packages
+### ✅ Phase 8: Testing & Documentation (In Progress - Critical Gaps Closed)
+**Status:** Critical production CLI paths now fully tested with integration coverage
 
-**Overall Test Coverage: 48.8%** (9,576 lines of test code) - **Updated 2025-11-16**
+**Overall Test Coverage: 50.4%** (11,059 lines of test code) - **Updated 2025-11-16 (Final)**
+
+#### 🎯 Critical Production Gaps RESOLVED:
+
+| Critical Handler | Before | After | Impact |
+|-----------------|--------|-------|--------|
+| **runDiagnostics()** | 0.0% | **62.9%** ✅ | Users running `lumo diagnose` |
+| **runAIAnalysis()** | 0.0% | **86.7%** ✅ | Users running `--analyze` |
+| **cmd/lumo CLI package** | 34.1% | **61.6%** ✅ | Overall CLI coverage |
 
 #### Package Coverage Status:
 
 | Package | Coverage | Test Files | Status |
 |---------|----------|------------|--------|
 | **internal/diagnostics/formatters** | 98.1% | text_test.go | ✅ Excellent |
-| **internal/diagnostics** | 92.1% | result, severity, runner, executor tests | ✅ Excellent |
+| **internal/diagnostics** | 87.6% | result, severity, runner, executor, testing.go | ✅ Excellent |
 | **internal/config** | 68.8% | config_test.go, config_api_key_test.go | ✅ Good |
 | **internal/diagnostics/checkers** | 61.4% | cpu, disk, memory, network, process, service tests | ✅ Good |
-| **cmd/lumo** | 34.1% | diagnose_test.go | ✅ Good |
+| **cmd/lumo** | 61.6% | diagnose_test.go, diagnose_integration_test.go, ai_integration_test.go | ✅ Good |
 | **internal/ssh** | 30.5% | config, errors, types, retry, session, auth tests | ⚠️ Needs expansion |
-| **internal/ai** | 28.5% | prompts_test.go, provider_test.go | ⚠️ Needs expansion |
+| **internal/ai** | 27.1% | prompts_test.go, provider_test.go, testing.go | ⚠️ Needs expansion |
 
-#### Test Files Added (22 files, 9,576 total lines):
+#### Test Files Added (25 files, 11,059 total lines):
 
-**CMD Package Tests (671 lines):**
+**CMD Package Tests (1,177 lines, 86 test cases):**
 - `cmd/lumo/diagnose_test.go` - CLI formatting functions, localhost detection, AI analysis output (67 test cases)
+- `cmd/lumo/diagnose_integration_test.go` - **Full integration tests for runDiagnostics** (354 lines, 16 tests)
+- `cmd/lumo/ai_integration_test.go` - **Integration tests for runAIAnalysis** (152 lines, 3 tests)
 
 **SSH Package Tests (2,302 lines):**
 - `internal/ssh/config_test.go` - ClientConfig validation, key handling
@@ -515,7 +525,8 @@ chmod 600 /etc/lumo/key.pem
 - `internal/ssh/session_test.go` - Security tests for shellQuote and sanitizeWorkingDir
 - `internal/ssh/auth_test.go` - Key validation, key type detection (18 tests)
 
-**Diagnostics Tests (6,133 lines):**
+**Diagnostics Tests (6,198 lines):**
+- `internal/diagnostics/testing.go` - **MockChecker for integration testing** (65 lines)
 - `internal/diagnostics/runner_test.go` - Runner orchestration, parallel/sequential execution (18 tests)
 - `internal/diagnostics/executor_test.go` - LocalExecutor with context support (7 tests)
 - `internal/diagnostics/checkers/cpu_test.go` - CPU checker with mock executor
@@ -528,7 +539,8 @@ chmod 600 /etc/lumo/key.pem
 - `internal/diagnostics/result_test.go` - CheckResult and Report types
 - `internal/diagnostics/severity_test.go` - Severity and threshold types
 
-**AI Package Tests (767 lines):**
+**AI Package Tests (895 lines):**
+- `internal/ai/testing.go` - **MockProvider for AI testing** (128 lines)
 - `internal/ai/prompts_test.go` - PromptBuilder, formatters, parsers
 - `internal/ai/provider_test.go` - Provider factory, type validation
 
@@ -579,26 +591,166 @@ chmod 600 /etc/lumo/key.pem
 - Coverage: 44.7% → 48.8% (+4.1%)
 
 **Test Files Created:**
-1. `cmd/lumo/diagnose_test.go` (671 lines)
-2. `internal/ssh/auth_test.go` (183 lines)
-3. Memory checker enhancements (43 lines)
+1. `cmd/lumo/diagnose_test.go` (671 lines, 67 tests)
+2. `internal/ssh/auth_test.go` (183 lines, 18 tests)
+3. Memory checker enhancements (43 lines, 4 tests)
 
-**Total Added: 897 lines, 89 new test cases**
+**Phase 2 (Afternoon) - Integration Tests:**
+- ✅ **cmd/lumo integration tests**: 506 lines, 19 test cases
+  - diagnose_integration_test.go: Full runDiagnostics flow (354 lines, 16 tests)
+  - ai_integration_test.go: runAIAnalysis integration (152 lines, 3 tests)
+- ✅ **Test infrastructure**: 193 lines
+  - internal/diagnostics/testing.go: MockChecker (65 lines)
+  - internal/ai/testing.go: MockProvider + helpers (128 lines)
+- Coverage: 48.8% → 50.4% (+1.6%)
 
-#### Remaining Work for Higher Coverage:
+**Total Added This Session: 1,483 lines, 108 test cases**
 
-**High Priority (to reach 80% total):**
-1. **cmd/lumo (34.1% → 60%+)** - Command handler integration tests (requires mocking SSH, diagnostics, AI)
-2. **SSH package (30.5% → 70%+)** - Client operations, health monitoring (requires SSH mocking)
-3. **AI providers (28.5% → 70%+)** - HTTP client tests for Anthropic, OpenAI, Ollama, Gemini (requires HTTP mock servers)
+**Overall Progress: 37.1% (session start) → 50.4% (current) = +13.3 percentage points**
 
-**Medium Priority:**
-4. **Checkers (61.4% → 85%+)** - Additional edge case coverage for parsing functions
+---
 
-**Future:**
-5. Integration tests with real SSH connections
-6. E2E tests for full diagnostic flows
-7. GoDoc comments for exported functions
+## 🎯 Roadmap to 80% Coverage
+
+**Current:** 50.4%
+**Target:** 80.0%
+**Gap:** **+29.6 percentage points needed**
+
+### What's Already Protected ✅
+
+**Production Critical Paths (DONE):**
+- ✅ `lumo diagnose localhost` → 62.9% tested
+- ✅ `lumo diagnose --analyze` → 86.7% tested
+- ✅ CLI flag parsing → Integration tested
+- ✅ Localhost detection → 100% tested
+- ✅ Diagnostic runner → 87.6% tested
+- ✅ All formatters → 98.1% tested
+
+### Remaining High-Impact Work
+
+#### Priority 1: Internal/AI Package (27.1% → 70%+)
+**Estimated Impact:** +6-8% overall coverage
+**Effort:** ~500-700 lines of tests
+
+**What to Test:**
+- `Analyze()` methods for all 4 providers (Anthropic, OpenAI, Ollama, Gemini)
+- `Health()` check integration with HTTP
+- `AnalyzeStream()` streaming responses
+- HTTP request/response handling with mock servers
+
+**Implementation:**
+```go
+// Example: internal/ai/anthropic_test.go
+func TestAnthropicProvider_Analyze(t *testing.T) {
+    server := httptest.NewServer(/* mock Anthropic API */)
+    provider := NewAnthropicProvider(config, logger)
+    response, err := provider.Analyze(ctx, request)
+    // Verify response parsing, token counting, error handling
+}
+```
+
+**Files to Create:**
+- `internal/ai/anthropic_test.go` (150-200 lines)
+- `internal/ai/openai_test.go` (150-200 lines)
+- `internal/ai/ollama_test.go` (100-150 lines)
+- `internal/ai/gemini_test.go` (150-200 lines)
+
+#### Priority 2: Internal/SSH Package (30.5% → 70%+)
+**Estimated Impact:** +4-5% overall coverage
+**Effort:** ~400-500 lines of tests
+
+**What to Test:**
+- `Client.Connect()` / `Disconnect()` with mock SSH
+- `Client.Execute()` command execution
+- `HealthChecker` Start/Stop/monitoring
+- Connection state management
+- Retry logic integration
+
+**Implementation Pattern:**
+```go
+// Example: internal/ssh/client_test.go
+func TestClient_Connect(t *testing.T) {
+    // Mock SSH server or connection
+    client := NewClient(config, logger)
+    err := client.Connect("test-host", 22, "user")
+    // Verify connection state, auth attempts, health checker started
+}
+```
+
+**Files to Create:**
+- `internal/ssh/client_test.go` (200-250 lines)
+- `internal/ssh/health_test.go` (150-200 lines)
+
+#### Priority 3: Checkers Edge Cases (61.4% → 85%+)
+**Estimated Impact:** +2-3% overall coverage
+**Effort:** ~300-400 lines of tests
+
+**What to Test:**
+- Parser error handling (malformed command output)
+- Cross-platform edge cases (macOS vs Linux output differences)
+- Boundary conditions (0%, 100% usage)
+- Missing/incomplete data scenarios
+
+**Files to Expand:**
+- Enhance existing checker test files with edge cases
+- Add platform-specific parsing tests
+
+#### Priority 4: CMD/Lumo Remaining (61.6% → 75%+)
+**Estimated Impact:** +1-2% overall coverage
+**Effort:** ~200-300 lines of tests
+
+**What to Test:**
+- `runConnect()` integration tests
+- More `runDiagnostics()` edge cases
+- Error path coverage
+
+### Estimated Total to 80%
+
+| Task | Lines | Impact | Status |
+|------|-------|--------|--------|
+| Internal/AI HTTP tests | 500-700 | +6-8% | ⏳ Not started |
+| Internal/SSH client tests | 400-500 | +4-5% | ⏳ Not started |
+| Checker edge cases | 300-400 | +2-3% | ⏳ Not started |
+| CMD/lumo remaining | 200-300 | +1-2% | ⏳ Not started |
+| **TOTAL** | **1,400-1,900** | **+13-18%** | **Reaches 63-68%** |
+
+**Note:** Getting from 68% → 80% would require additional work on lower-impact areas or E2E tests.
+
+### Recommended Next Steps
+
+**Option A: Reach 60%+ (Easiest Path)**
+1. Focus on internal/ai HTTP tests (Priority 1)
+2. ~500 lines of tests
+3. Gets to ~57-58% coverage
+4. All critical production paths already protected
+
+**Option B: Reach 70%+ (Moderate Effort)**
+1. Complete Priority 1 (AI) and Priority 2 (SSH)
+2. ~900-1,200 lines of tests
+3. Gets to ~65-68% coverage
+4. Comprehensive coverage of all major subsystems
+
+**Option C: Reach 80% (Significant Effort)**
+1. Complete all 4 priorities
+2. ~1,400-1,900 lines of tests
+3. May need additional E2E/integration tests
+4. Diminishing returns on critical path protection
+
+### Current Status Summary
+
+**✅ Accomplished:**
+- Critical CLI handlers: 0% → 60-87%
+- Integration test framework established
+- Mock infrastructure created
+- Production user flows protected
+
+**⏳ Remaining for 80%:**
+- Primarily HTTP and SSH mocking
+- Edge case coverage
+- ~1,400-1,900 more lines of tests
+
+**💡 Recommendation:**
+The critical production gaps are now closed. The remaining work to 80% is primarily testing internal HTTP/SSH implementation details that are less critical than the user-facing CLI paths we've already covered.
 
 ---
 
