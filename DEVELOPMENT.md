@@ -724,7 +724,7 @@ var (
 var rootCmd = &cobra.Command{
     Use:     "lumo",
     Short:   "Intelligent SRE/DevOps Agent",
-    Version: "0.4.0",
+    Version: "0.4.1",
 }
 
 // Execute is the entry point

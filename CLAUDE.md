@@ -1,7 +1,7 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
 > **Last Updated:** 2025-11-16 (Critical security fixes)
-> **Project Version:** 0.4.0
+> **Project Version:** 0.4.1
 > **Current Phase:** Phase 4 Complete + Phase 8 In Progress (Testing + Security)
 
 This document provides comprehensive guidance for AI assistants working on the Lumo codebase.

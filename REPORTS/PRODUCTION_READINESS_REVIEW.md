@@ -2,7 +2,7 @@
 
 **Reviewer:** Senior Staff Engineer
 **Date:** 2025-11-15
-**Project:** Lumo v0.4.0 (SRE/DevOps Automation Agent)
+**Project:** Lumo v0.4.1 (SRE/DevOps Automation Agent)
 **Codebase:** ~10,600 lines production code, 37.1% test coverage
 
 ---
