@@ -27,6 +27,8 @@ type ProxmoxChecker struct {
 	checkNetwork      bool
 	checkCertificates bool
 	checkCeph         bool
+	checkPools        bool
+	checkNodeSummary  bool
 }
 
 // NewProxmoxChecker creates a new Proxmox checker
@@ -51,6 +53,8 @@ func NewProxmoxChecker(checkCluster, checkVMs, checkStorage, checkReplication, c
 		checkNetwork:      allDisabled, // Always check network stats
 		checkCertificates: allDisabled, // Always check SSL certificates
 		checkCeph:         allDisabled, // Always check Ceph if installed
+		checkPools:        allDisabled, // Always check resource pools
+		checkNodeSummary:  allDisabled, // Always check node summary
 	}
 }
 
@@ -66,7 +70,7 @@ func (p *ProxmoxChecker) Category() diagnostics.CheckCategory {
 
 // Description returns the checker description
 func (p *ProxmoxChecker) Description() string {
-	return "Comprehensive Proxmox VE monitoring: cluster health, VMs/containers, storage, replication, backups, HA, subscription status, updates, task history, performance metrics, boot configuration, network statistics, SSL certificate expiry, and Ceph integration"
+	return "Comprehensive Proxmox VE monitoring: cluster health, VMs/containers, storage, replication, backups, HA, subscription status, updates, task history, performance metrics, boot configuration, network statistics, SSL certificate expiry, Ceph integration, resource pools, and node summary dashboard"
 }
 
 // RequiresRoot returns true as many Proxmox commands require root
@@ -268,6 +272,28 @@ func (p *ProxmoxChecker) Run(ctx context.Context, executor diagnostics.CommandEx
 		} else {
 			result.SetData("ceph", cephInfo)
 			issues = append(issues, cephIssues...)
+		}
+	}
+
+	// Check resource pools
+	if p.checkPools {
+		poolInfo, poolIssues, err := p.performPoolsCheck(ctx, executor)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("pool check failed: %v", err))
+		} else {
+			result.SetData("pools", poolInfo)
+			issues = append(issues, poolIssues...)
+		}
+	}
+
+	// Check node summary
+	if p.checkNodeSummary {
+		nodeSummary, nodeIssues, err := p.performNodeSummaryCheck(ctx, executor)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("node summary check failed: %v", err))
+		} else {
+			result.SetData("node_summary", nodeSummary)
+			issues = append(issues, nodeIssues...)
 		}
 	}
 
@@ -1124,6 +1150,49 @@ type CephPool struct {
 	Objects      int64   `json:"objects"`
 }
 
+// PoolInfo holds resource pool information
+type PoolInfo struct {
+	TotalPools   int         `json:"total_pools"`
+	Pools        []PoolEntry `json:"pools"`
+}
+
+// PoolEntry holds individual pool information
+type PoolEntry struct {
+	PoolID      string   `json:"poolid"`
+	Comment     string   `json:"comment"`
+	Members     int      `json:"members"`      // Total VMs/CTs in pool
+	VMIDs       []string `json:"vmids"`        // List of VM/CT IDs
+	StorageIDs  []string `json:"storage_ids"`  // Storage assigned to pool
+}
+
+// NodeSummaryInfo holds cluster-wide node summary
+type NodeSummaryInfo struct {
+	TotalNodes      int                 `json:"total_nodes"`
+	OnlineNodes     int                 `json:"online_nodes"`
+	OfflineNodes    int                 `json:"offline_nodes"`
+	Nodes           []NodeSummaryEntry  `json:"nodes"`
+	ClusterCPUUsage float64             `json:"cluster_cpu_usage"`
+	ClusterMemUsage float64             `json:"cluster_mem_usage"`
+	TotalCPUs       int                 `json:"total_cpus"`
+	TotalMemoryBytes int64              `json:"total_memory_bytes"`
+	UsedMemoryBytes  int64              `json:"used_memory_bytes"`
+}
+
+// NodeSummaryEntry holds individual node summary
+type NodeSummaryEntry struct {
+	Node         string  `json:"node"`
+	Status       string  `json:"status"`       // online/offline
+	CPUUsage     float64 `json:"cpu_usage"`    // 0-100
+	MemUsage     float64 `json:"mem_usage"`    // 0-100
+	DiskUsage    float64 `json:"disk_usage"`   // 0-100
+	CPUCount     int     `json:"cpu_count"`
+	TotalMemBytes int64  `json:"total_mem_bytes"`
+	UsedMemBytes  int64  `json:"used_mem_bytes"`
+	TotalDiskBytes int64 `json:"total_disk_bytes"`
+	UsedDiskBytes  int64 `json:"used_disk_bytes"`
+	Uptime       int64   `json:"uptime_seconds"`
+}
+
 // checkSubscription checks Proxmox subscription status
 func (p *ProxmoxChecker) performSubscriptionCheck(ctx context.Context, executor diagnostics.CommandExecutor) (*SubscriptionInfo, []string, error) {
 	var issues []string
@@ -1812,6 +1881,389 @@ func (p *ProxmoxChecker) parseCephPools(output string) []CephPool {
 	}
 
 	return pools
+}
+
+// performPoolsCheck checks resource pool configurations
+func (p *ProxmoxChecker) performPoolsCheck(ctx context.Context, executor diagnostics.CommandExecutor) (*PoolInfo, []string, error) {
+	var issues []string
+	info := &PoolInfo{}
+
+	// Get pool list using pvesh
+	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, "pvesh get /pools --output-format json 2>/dev/null")
+	if exitCode != 0 {
+		// Pools might not be configured - not an error
+		return info, issues, nil
+	}
+
+	pools := p.parsePools(stdout)
+	info.Pools = pools
+	info.TotalPools = len(pools)
+
+	// Get detailed information for each pool
+	for i := range info.Pools {
+		pool := &info.Pools[i]
+
+		// Get pool members (VMs/CTs)
+		stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx,
+			fmt.Sprintf("pvesh get /pools/%s --output-format json 2>/dev/null", pool.PoolID))
+
+		if exitCode == 0 {
+			p.parsePoolMembers(stdout, pool)
+		}
+	}
+
+	return info, issues, nil
+}
+
+// parsePools parses pvesh get /pools output
+func (p *ProxmoxChecker) parsePools(output string) []PoolEntry {
+	var pools []PoolEntry
+
+	// Try to parse as JSON first
+	output = strings.TrimSpace(output)
+	if !strings.HasPrefix(output, "[") && !strings.HasPrefix(output, "{") {
+		// Fallback to text parsing if not JSON
+		lines := strings.Split(output, "\n")
+		for i, line := range lines {
+			if i == 0 || strings.TrimSpace(line) == "" {
+				continue
+			}
+
+			fields := strings.Fields(line)
+			if len(fields) >= 1 {
+				pool := PoolEntry{
+					PoolID: fields[0],
+				}
+				if len(fields) >= 2 {
+					pool.Comment = strings.Join(fields[1:], " ")
+				}
+				pools = append(pools, pool)
+			}
+		}
+		return pools
+	}
+
+	// JSON parsing - simplified
+	// Format: [{"poolid":"pool1","comment":"description"}]
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.Contains(line, "poolid") {
+			pool := PoolEntry{}
+
+			// Extract poolid
+			if idx := strings.Index(line, "\"poolid\""); idx != -1 {
+				rest := line[idx+9:]
+				if idx2 := strings.Index(rest, "\""); idx2 != -1 {
+					rest = rest[idx2+1:]
+					if idx3 := strings.Index(rest, "\""); idx3 != -1 {
+						pool.PoolID = rest[:idx3]
+					}
+				}
+			}
+
+			// Extract comment
+			if idx := strings.Index(line, "\"comment\""); idx != -1 {
+				rest := line[idx+10:]
+				if idx2 := strings.Index(rest, "\""); idx2 != -1 {
+					rest = rest[idx2+1:]
+					if idx3 := strings.Index(rest, "\""); idx3 != -1 {
+						pool.Comment = rest[:idx3]
+					}
+				}
+			}
+
+			if pool.PoolID != "" {
+				pools = append(pools, pool)
+			}
+		}
+	}
+
+	return pools
+}
+
+// parsePoolMembers parses pool member details
+func (p *ProxmoxChecker) parsePoolMembers(output string, pool *PoolEntry) {
+	// Look for members in JSON output
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// Look for VM/CT IDs in members section
+		if strings.Contains(line, "\"members\"") || strings.Contains(line, "\"vmid\"") {
+			// Extract VMIDs
+			fields := strings.Fields(line)
+			for _, field := range fields {
+				// Look for numeric IDs
+				field = strings.Trim(field, ",:\"}{[]")
+				if _, err := strconv.Atoi(field); err == nil && len(field) >= 3 {
+					pool.VMIDs = append(pool.VMIDs, field)
+				}
+			}
+		}
+
+		// Look for storage IDs
+		if strings.Contains(line, "\"storage\"") {
+			// Extract storage names
+			if idx := strings.Index(line, "\"storage\""); idx != -1 {
+				rest := line[idx+10:]
+				if idx2 := strings.Index(rest, "\""); idx2 != -1 {
+					rest = rest[idx2+1:]
+					if idx3 := strings.Index(rest, "\""); idx3 != -1 {
+						storage := rest[:idx3]
+						if storage != "" {
+							pool.StorageIDs = append(pool.StorageIDs, storage)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	pool.Members = len(pool.VMIDs)
+}
+
+// performNodeSummaryCheck checks node status and aggregates cluster metrics
+func (p *ProxmoxChecker) performNodeSummaryCheck(ctx context.Context, executor diagnostics.CommandExecutor) (*NodeSummaryInfo, []string, error) {
+	var issues []string
+	info := &NodeSummaryInfo{}
+
+	// Get list of nodes
+	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, "pvesh get /nodes --output-format json 2>/dev/null")
+	if exitCode != 0 {
+		// Fallback to pvecm nodes if pvesh fails
+		stdout, _, exitCode, _ = executor.ExecuteWithContext(ctx, "pvecm nodes 2>/dev/null")
+		if exitCode != 0 {
+			// Single node system
+			stdout, _, _, _ := executor.ExecuteWithContext(ctx, "hostname")
+			nodeName := strings.TrimSpace(stdout)
+			if nodeName != "" {
+				return p.getSingleNodeSummary(ctx, executor, nodeName, info, &issues)
+			}
+			return info, issues, nil
+		}
+
+		// Parse pvecm nodes output
+		nodeNames := p.parseNodeNames(stdout)
+		for _, nodeName := range nodeNames {
+			entry, nodeIssues := p.getNodeStatus(ctx, executor, nodeName)
+			if entry != nil {
+				info.Nodes = append(info.Nodes, *entry)
+				issues = append(issues, nodeIssues...)
+			}
+		}
+	} else {
+		// Parse JSON output from pvesh
+		nodes := p.parseNodesJSON(stdout)
+		for _, nodeName := range nodes {
+			entry, nodeIssues := p.getNodeStatus(ctx, executor, nodeName)
+			if entry != nil {
+				info.Nodes = append(info.Nodes, *entry)
+				issues = append(issues, nodeIssues...)
+			}
+		}
+	}
+
+	// Aggregate cluster metrics
+	info.TotalNodes = len(info.Nodes)
+	var totalCPUUsage, totalMemUsage float64
+
+	for _, node := range info.Nodes {
+		if node.Status == "online" {
+			info.OnlineNodes++
+		} else {
+			info.OfflineNodes++
+		}
+
+		info.TotalCPUs += node.CPUCount
+		info.TotalMemoryBytes += node.TotalMemBytes
+		info.UsedMemoryBytes += node.UsedMemBytes
+
+		totalCPUUsage += node.CPUUsage
+		totalMemUsage += node.MemUsage
+	}
+
+	if info.TotalNodes > 0 {
+		info.ClusterCPUUsage = totalCPUUsage / float64(info.TotalNodes)
+		info.ClusterMemUsage = totalMemUsage / float64(info.TotalNodes)
+	}
+
+	// Check for issues
+	if info.OfflineNodes > 0 {
+		issues = append(issues, fmt.Sprintf("%d node(s) are offline", info.OfflineNodes))
+	}
+
+	if info.ClusterCPUUsage > 90 {
+		issues = append(issues, fmt.Sprintf("cluster CPU usage is high: %.1f%%", info.ClusterCPUUsage))
+	}
+
+	if info.ClusterMemUsage > 90 {
+		issues = append(issues, fmt.Sprintf("cluster memory usage is high: %.1f%%", info.ClusterMemUsage))
+	}
+
+	return info, issues, nil
+}
+
+// parseNodeNames extracts node names from pvecm nodes output
+func (p *ProxmoxChecker) parseNodeNames(output string) []string {
+	var names []string
+	lines := strings.Split(output, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "Nodeid") || strings.Contains(line, "---") {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) >= 3 {
+			nodeName := fields[2]
+			nodeName = strings.TrimSpace(strings.Replace(nodeName, "(local)", "", 1))
+			if nodeName != "" {
+				names = append(names, nodeName)
+			}
+		}
+	}
+
+	return names
+}
+
+// parseNodesJSON parses pvesh get /nodes JSON output
+func (p *ProxmoxChecker) parseNodesJSON(output string) []string {
+	var names []string
+	lines := strings.Split(output, "\n")
+
+	for _, line := range lines {
+		if strings.Contains(line, "\"node\"") {
+			// Extract node name
+			if idx := strings.Index(line, "\"node\""); idx != -1 {
+				rest := line[idx+7:]
+				if idx2 := strings.Index(rest, "\""); idx2 != -1 {
+					rest = rest[idx2+1:]
+					if idx3 := strings.Index(rest, "\""); idx3 != -1 {
+						nodeName := rest[:idx3]
+						if nodeName != "" {
+							names = append(names, nodeName)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return names
+}
+
+// getNodeStatus retrieves detailed node status
+func (p *ProxmoxChecker) getNodeStatus(ctx context.Context, executor diagnostics.CommandExecutor, nodeName string) (*NodeSummaryEntry, []string) {
+	var issues []string
+	entry := &NodeSummaryEntry{
+		Node:   nodeName,
+		Status: "unknown",
+	}
+
+	// Get node status
+	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx,
+		fmt.Sprintf("pvesh get /nodes/%s/status --output-format json 2>/dev/null", nodeName))
+
+	if exitCode != 0 {
+		entry.Status = "offline"
+		return entry, issues
+	}
+
+	entry.Status = "online"
+
+	// Parse status output
+	lines := strings.Split(stdout, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// CPU usage
+		if strings.Contains(line, "\"cpu\"") {
+			if idx := strings.Index(line, ":"); idx != -1 {
+				valStr := strings.TrimSpace(line[idx+1:])
+				valStr = strings.Trim(valStr, ",")
+				if val, err := strconv.ParseFloat(valStr, 64); err == nil {
+					entry.CPUUsage = val * 100
+				}
+			}
+		}
+
+		// CPU count
+		if strings.Contains(line, "\"cpuinfo\"") || strings.Contains(line, "\"cpus\"") {
+			if idx := strings.Index(line, ":"); idx != -1 {
+				valStr := strings.TrimSpace(line[idx+1:])
+				valStr = strings.Trim(valStr, ",")
+				if val, err := strconv.Atoi(valStr); err == nil {
+					entry.CPUCount = val
+				}
+			}
+		}
+
+		// Memory
+		if strings.Contains(line, "\"memory\"") && strings.Contains(line, "\"total\"") {
+			// Total memory
+			if idx := strings.Index(line, ":"); idx != -1 {
+				valStr := strings.TrimSpace(line[idx+1:])
+				valStr = strings.Trim(valStr, ",")
+				if val, err := strconv.ParseInt(valStr, 10, 64); err == nil {
+					entry.TotalMemBytes = val
+				}
+			}
+		}
+
+		if strings.Contains(line, "\"memory\"") && strings.Contains(line, "\"used\"") {
+			// Used memory
+			if idx := strings.Index(line, ":"); idx != -1 {
+				valStr := strings.TrimSpace(line[idx+1:])
+				valStr = strings.Trim(valStr, ",")
+				if val, err := strconv.ParseInt(valStr, 10, 64); err == nil {
+					entry.UsedMemBytes = val
+				}
+			}
+		}
+
+		// Uptime
+		if strings.Contains(line, "\"uptime\"") {
+			if idx := strings.Index(line, ":"); idx != -1 {
+				valStr := strings.TrimSpace(line[idx+1:])
+				valStr = strings.Trim(valStr, ",")
+				if val, err := strconv.ParseInt(valStr, 10, 64); err == nil {
+					entry.Uptime = val
+				}
+			}
+		}
+	}
+
+	// Calculate memory usage percentage
+	if entry.TotalMemBytes > 0 {
+		entry.MemUsage = float64(entry.UsedMemBytes) / float64(entry.TotalMemBytes) * 100
+	}
+
+	return entry, issues
+}
+
+// getSingleNodeSummary gets summary for a single standalone node
+func (p *ProxmoxChecker) getSingleNodeSummary(ctx context.Context, executor diagnostics.CommandExecutor, nodeName string, info *NodeSummaryInfo, issues *[]string) (*NodeSummaryInfo, []string, error) {
+	entry, nodeIssues := p.getNodeStatus(ctx, executor, nodeName)
+	if entry != nil {
+		info.Nodes = append(info.Nodes, *entry)
+		*issues = append(*issues, nodeIssues...)
+
+		info.TotalNodes = 1
+		if entry.Status == "online" {
+			info.OnlineNodes = 1
+		} else {
+			info.OfflineNodes = 1
+		}
+		info.TotalCPUs = entry.CPUCount
+		info.TotalMemoryBytes = entry.TotalMemBytes
+		info.UsedMemoryBytes = entry.UsedMemBytes
+		info.ClusterCPUUsage = entry.CPUUsage
+		info.ClusterMemUsage = entry.MemUsage
+	}
+
+	return info, *issues, nil
 }
 
 // formatMessage creates a human-readable summary message

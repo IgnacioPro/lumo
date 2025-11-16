@@ -961,3 +961,104 @@ TOTAL    USED     AVAIL    RAW USED     %RAW USED
 		})
 	}
 }
+
+func TestProxmoxChecker_ParsePools(t *testing.T) {
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+
+	tests := []struct {
+		name          string
+		input         string
+		expectedCount int
+		expectedIDs   []string
+	}{
+		{
+			name: "JSON format with two pools",
+			input: `[
+{"poolid":"production","comment":"Production VMs"},
+{"poolid":"development","comment":"Dev environment"}
+]`,
+			expectedCount: 2,
+			expectedIDs:   []string{"production", "development"},
+		},
+		{
+			name: "text format",
+			input: `POOLID     COMMENT
+production Production VMs
+development Dev environment`,
+			expectedCount: 2,
+			expectedIDs:   []string{"production", "development"},
+		},
+		{
+			name:          "empty output",
+			input:         "",
+			expectedCount: 0,
+			expectedIDs:   []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pools := checker.parsePools(tt.input)
+
+			if len(pools) != tt.expectedCount {
+				t.Errorf("expected %d pools, got %d", tt.expectedCount, len(pools))
+			}
+
+			for i, expectedID := range tt.expectedIDs {
+				if i >= len(pools) {
+					t.Errorf("expected pool ID %q but not enough pools returned", expectedID)
+					continue
+				}
+
+				if pools[i].PoolID != expectedID {
+					t.Errorf("pool %d: expected ID %q, got %q", i, expectedID, pools[i].PoolID)
+				}
+			}
+		})
+	}
+}
+
+func TestProxmoxChecker_ParseNodeNames(t *testing.T) {
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+
+	input := `Nodeid      Votes Name
+         1          1 pve01 (local)
+         2          1 pve02
+         3          1 pve03`
+
+	names := checker.parseNodeNames(input)
+
+	if len(names) != 3 {
+		t.Fatalf("expected 3 node names, got %d", len(names))
+	}
+
+	expectedNames := []string{"pve01", "pve02", "pve03"}
+	for i, expected := range expectedNames {
+		if names[i] != expected {
+			t.Errorf("node %d: expected name %q, got %q", i, expected, names[i])
+		}
+	}
+}
+
+func TestProxmoxChecker_ParseNodesJSON(t *testing.T) {
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+
+	input := `[
+{"node":"pve01","status":"online"},
+{"node":"pve02","status":"online"},
+{"node":"pve03","status":"offline"}
+]`
+
+	names := checker.parseNodesJSON(input)
+
+	if len(names) != 3 {
+		t.Fatalf("expected 3 node names, got %d", len(names))
+	}
+
+	expectedNames := []string{"pve01", "pve02", "pve03"}
+	for i, expected := range expectedNames {
+		if names[i] != expected {
+			t.Errorf("node %d: expected name %q, got %q", i, expected, names[i])
+		}
+	}
+}
