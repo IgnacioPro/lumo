@@ -111,3 +111,155 @@ func TestDiskChecker_Run(t *testing.T) {
 		t.Error("Expected non-empty message")
 	}
 }
+
+func TestDiskChecker_ShouldMonitorFilesystem(t *testing.T) {
+	tests := []struct {
+		name       string
+		mountPoint string
+		want       bool
+	}{
+		{
+			name:       "root filesystem",
+			mountPoint: "/",
+			want:       true,
+		},
+		{
+			name:       "home directory",
+			mountPoint: "/home",
+			want:       true,
+		},
+		{
+			name:       "var directory",
+			mountPoint: "/var",
+			want:       true,
+		},
+		{
+			name:       "tmp directory",
+			mountPoint: "/tmp",
+			want:       true,
+		},
+		{
+			name:       "skip /dev (not exact)",
+			mountPoint: "/dev/shm",
+			want:       false,
+		},
+		{
+			name:       "skip /sys",
+			mountPoint: "/sys/kernel",
+			want:       false,
+		},
+		{
+			name:       "skip /proc",
+			mountPoint: "/proc/sys",
+			want:       false,
+		},
+		{
+			name:       "skip /run",
+			mountPoint: "/run/user",
+			want:       false,
+		},
+		{
+			name:       "skip /snap",
+			mountPoint: "/snap/core",
+			want:       false,
+		},
+		{
+			name:       "skip /boot/efi",
+			mountPoint: "/boot/efi",
+			want:       false,
+		},
+		{
+			name:       "allow /boot (not /boot/efi)",
+			mountPoint: "/boot",
+			want:       true,
+		},
+		{
+			name:       "skip loop devices",
+			mountPoint: "/var/lib/snapd/loop1",
+			want:       false,
+		},
+		{
+			name:       "skip tmpfs (non-root)",
+			mountPoint: "/run/tmpfs",
+			want:       false,
+		},
+		{
+			name:       "custom mount point",
+			mountPoint: "/mnt/data",
+			want:       true,
+		},
+		{
+			name:       "opt directory",
+			mountPoint: "/opt",
+			want:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			checker := NewDiskChecker(diagnostics.DiskThresholds{})
+			got := checker.shouldMonitorFilesystem(tt.mountPoint)
+			if got != tt.want {
+				t.Errorf("shouldMonitorFilesystem(%q) = %v, want %v", tt.mountPoint, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDiskChecker_SanitizeMountPoint(t *testing.T) {
+	tests := []struct {
+		name       string
+		mountPoint string
+		want       string
+	}{
+		{
+			name:       "root filesystem",
+			mountPoint: "/",
+			want:       "root",
+		},
+		{
+			name:       "home directory",
+			mountPoint: "/home",
+			want:       "home",
+		},
+		{
+			name:       "nested path",
+			mountPoint: "/var/lib/docker",
+			want:       "var_lib_docker",
+		},
+		{
+			name:       "mnt path",
+			mountPoint: "/mnt/data",
+			want:       "mnt_data",
+		},
+		{
+			name:       "multiple levels",
+			mountPoint: "/mnt/backup/daily",
+			want:       "mnt_backup_daily",
+		},
+		{
+			name:       "trailing slash",
+			mountPoint: "/opt/",
+			want:       "opt",
+		},
+		{
+			name:       "multiple trailing slashes",
+			mountPoint: "/usr/local//",
+			want:       "usr_local",
+		},
+		{
+			name:       "single level",
+			mountPoint: "/tmp",
+			want:       "tmp",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sanitizeMountPoint(tt.mountPoint)
+			if got != tt.want {
+				t.Errorf("sanitizeMountPoint(%q) = %q, want %q", tt.mountPoint, got, tt.want)
+			}
+		})
+	}
+}

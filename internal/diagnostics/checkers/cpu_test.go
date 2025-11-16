@@ -202,6 +202,34 @@ func TestCPUChecker_GetCPUCount(t *testing.T) {
 			want:     12,
 			wantErr:  false,
 		},
+		{
+			name:     "macOS sysctl fallback",
+			stdout:   "4\n",
+			exitCode: 0,
+			want:     4,
+			wantErr:  false,
+		},
+		{
+			name:     "very high core count",
+			stdout:   "128\n",
+			exitCode: 0,
+			want:     128,
+			wantErr:  false,
+		},
+		{
+			name:     "invalid output - non-numeric",
+			stdout:   "invalid\n",
+			exitCode: 0,
+			want:     1,
+			wantErr:  true,
+		},
+		{
+			name:     "empty output",
+			stdout:   "\n",
+			exitCode: 0,
+			want:     1,
+			wantErr:  true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -268,8 +296,41 @@ func TestCPUChecker_GetLoadAverage(t *testing.T) {
 			wantErr:    false,
 		},
 		{
+			name:       "zero load",
+			stdout:     "0.00 0.00 0.00\n",
+			exitCode:   0,
+			wantLoad1:  0.00,
+			wantLoad5:  0.00,
+			wantLoad15: 0.00,
+			wantErr:    false,
+		},
+		{
 			name:     "invalid format - too few fields",
 			stdout:   "1.23 1.45\n",
+			exitCode: 0,
+			wantErr:  true,
+		},
+		{
+			name:     "invalid format - non-numeric load1",
+			stdout:   "abc 1.45 1.67\n",
+			exitCode: 0,
+			wantErr:  true,
+		},
+		{
+			name:     "invalid format - non-numeric load5",
+			stdout:   "1.23 xyz 1.67\n",
+			exitCode: 0,
+			wantErr:  true,
+		},
+		{
+			name:     "invalid format - non-numeric load15",
+			stdout:   "1.23 1.45 def\n",
+			exitCode: 0,
+			wantErr:  true,
+		},
+		{
+			name:     "empty output",
+			stdout:   "",
 			exitCode: 0,
 			wantErr:  true,
 		},
@@ -304,6 +365,98 @@ func TestCPUChecker_GetLoadAverage(t *testing.T) {
 				if load15 != tt.wantLoad15 {
 					t.Errorf("load15 = %v, want %v", load15, tt.wantLoad15)
 				}
+			}
+		})
+	}
+}
+
+func TestCPUChecker_GetCPUUsage(t *testing.T) {
+	tests := []struct {
+		name     string
+		stdout   string
+		exitCode int
+		want     float64
+		wantErr  bool
+	}{
+		{
+			name:     "Linux top format",
+			stdout:   "45.2\n",
+			exitCode: 0,
+			want:     45.2,
+			wantErr:  false,
+		},
+		{
+			name:     "macOS top format",
+			stdout:   "23.5\n",
+			exitCode: 0,
+			want:     23.5,
+			wantErr:  false,
+		},
+		{
+			name:     "high usage",
+			stdout:   "98.7\n",
+			exitCode: 0,
+			want:     98.7,
+			wantErr:  false,
+		},
+		{
+			name:     "low usage",
+			stdout:   "1.2\n",
+			exitCode: 0,
+			want:     1.2,
+			wantErr:  false,
+		},
+		{
+			name:     "zero usage",
+			stdout:   "0.0\n",
+			exitCode: 0,
+			want:     0.0,
+			wantErr:  false,
+		},
+		{
+			name:     "with whitespace",
+			stdout:   "  56.3  \n",
+			exitCode: 0,
+			want:     56.3,
+			wantErr:  false,
+		},
+		{
+			name:     "command failure - returns 0",
+			stdout:   "",
+			exitCode: 1,
+			want:     0.0,
+			wantErr:  false,
+		},
+		{
+			name:     "invalid number - returns 0",
+			stdout:   "invalid\n",
+			exitCode: 0,
+			want:     0.0,
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			executor := &mockExecutor{
+				responses: map[string]mockResponse{
+					"top": {
+						stdout:   tt.stdout,
+						exitCode: tt.exitCode,
+					},
+				},
+			}
+
+			checker := NewCPUChecker(diagnostics.CPUThresholds{})
+			got, err := checker.getCPUUsage(context.Background(), executor)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("getCPUUsage() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if got != tt.want {
+				t.Errorf("getCPUUsage() = %v, want %v", got, tt.want)
 			}
 		})
 	}
