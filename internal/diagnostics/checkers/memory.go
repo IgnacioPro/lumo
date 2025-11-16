@@ -73,6 +73,39 @@ func (m *MemoryChecker) Run(ctx context.Context, executor diagnostics.CommandExe
 	result.SetData("swap_used_bytes", memStats.SwapUsedBytes)
 	result.SetData("swap_used_percent", memStats.SwapUsedPercent)
 
+	// Page fault tracking
+	result.SetData("page_faults", memStats.PageFaults)
+	result.SetData("major_page_faults", memStats.MajorPageFaults)
+	result.SetData("minor_page_faults", memStats.MinorPageFaults)
+
+	// Memory pressure indicators
+	if memStats.PagesThrottled > 0 {
+		result.SetData("pages_throttled", memStats.PagesThrottled)
+	}
+	if memStats.Compressions > 0 {
+		result.SetData("compressions", memStats.Compressions)
+		result.SetData("decompressions", memStats.Decompressions)
+		result.SetData("compressed_pages", memStats.CompressedPages)
+	}
+	if memStats.Swapins > 0 || memStats.Swapouts > 0 {
+		result.SetData("swapins", memStats.Swapins)
+		result.SetData("swapouts", memStats.Swapouts)
+	}
+	if memStats.PagesPurged > 0 {
+		result.SetData("pages_purged", memStats.PagesPurged)
+	}
+
+	// Additional metrics
+	if memStats.FileBackedPages > 0 || memStats.AnonPages > 0 {
+		result.SetData("file_backed_pages", memStats.FileBackedPages)
+		result.SetData("anonymous_pages", memStats.AnonPages)
+	}
+	if memStats.ActiveBytes > 0 {
+		result.SetData("active_bytes", memStats.ActiveBytes)
+		result.SetData("inactive_bytes", memStats.InactiveBytes)
+		result.SetData("wired_bytes", memStats.WiredBytes)
+	}
+
 	// Get top memory consumers
 	topConsumers, err := m.getTopMemoryConsumers(ctx, executor, memStats.TotalBytes)
 	if err != nil {
@@ -122,6 +155,27 @@ type MemoryStats struct {
 	SwapUsedBytes   uint64
 	SwapUsedPercent float64
 	TopConsumers    []MemoryConsumer
+
+	// Page fault tracking
+	PageFaults      uint64 // Total page faults (Linux: pgfault, macOS: Translation faults)
+	MajorPageFaults uint64 // Major page faults requiring disk I/O (Linux: pgmajfault, macOS: Pageins)
+	MinorPageFaults uint64 // Minor page faults (calculated: PageFaults - MajorPageFaults)
+
+	// Memory pressure indicators
+	PagesThrottled     uint64 // Processes throttled due to memory pressure (macOS only)
+	Compressions       uint64 // Memory compression events (macOS only)
+	Decompressions     uint64 // Memory decompression events (macOS only)
+	CompressedPages    uint64 // Pages stored in compressor (macOS only)
+	Swapins            uint64 // Swap-in operations
+	Swapouts           uint64 // Swap-out operations
+	PagesPurged        uint64 // Pages purged from memory (macOS only)
+
+	// Additional metrics
+	FileBackedPages uint64 // File-backed pages (macOS only)
+	AnonPages       uint64 // Anonymous (non-file-backed) pages (macOS only)
+	ActiveBytes     uint64 // Active memory bytes
+	InactiveBytes   uint64 // Inactive memory bytes
+	WiredBytes      uint64 // Wired (kernel) memory bytes (macOS) or Unevictable (Linux)
 }
 
 // MemoryConsumer represents a process consuming memory
@@ -142,13 +196,62 @@ func (m *MemoryChecker) getMemoryStats(ctx context.Context, executor diagnostics
 		return m.getMemoryStatsMacOS(ctx, executor)
 	}
 
+	var stats *MemoryStats
 	// Check if output looks like /proc/meminfo (contains colons)
 	if strings.Contains(stdout, ":") {
-		return m.parseMeminfo(stdout)
+		stats, err = m.parseMeminfo(stdout)
+	} else {
+		// Otherwise assume it's free command output
+		stats, err = m.parseFreeCommand(stdout)
 	}
 
-	// Otherwise assume it's free command output
-	return m.parseFreeCommand(stdout)
+	if err != nil {
+		return nil, err
+	}
+
+	// On Linux, also try to get page fault statistics from /proc/vmstat
+	vmstatOut, _, exitCode, _ := executor.ExecuteWithContext(ctx, "cat /proc/vmstat 2>/dev/null")
+	if exitCode == 0 && vmstatOut != "" {
+		m.parseVMStat(vmstatOut, stats)
+	}
+
+	return stats, nil
+}
+
+// parseVMStat parses /proc/vmstat output and adds page fault statistics to stats
+func (m *MemoryChecker) parseVMStat(output string, stats *MemoryStats) {
+	lines := strings.Split(output, "\n")
+	values := make(map[string]uint64)
+
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+
+		key := fields[0]
+		value, err := strconv.ParseUint(fields[1], 10, 64)
+		if err != nil {
+			continue
+		}
+
+		values[key] = value
+	}
+
+	// Page fault tracking
+	stats.PageFaults = values["pgfault"]
+	stats.MajorPageFaults = values["pgmajfault"]
+	if stats.PageFaults > stats.MajorPageFaults {
+		stats.MinorPageFaults = stats.PageFaults - stats.MajorPageFaults
+	}
+
+	// Memory pressure indicators (Linux-specific)
+	stats.Swapins = values["pswpin"]
+	stats.Swapouts = values["pswpout"]
+
+	// Additional Linux memory stats
+	// Note: These are cumulative counters, not current state
+	// but useful for understanding memory activity patterns
 }
 
 // parseMeminfo parses /proc/meminfo output
@@ -195,6 +298,13 @@ func (m *MemoryChecker) parseMeminfo(output string) (*MemoryStats, error) {
 	if stats.SwapTotalBytes > 0 {
 		stats.SwapUsedPercent = float64(stats.SwapUsedBytes) / float64(stats.SwapTotalBytes) * 100.0
 	}
+
+	// Additional memory breakdown (Linux)
+	stats.ActiveBytes = values["Active"]
+	stats.InactiveBytes = values["Inactive"]
+	stats.WiredBytes = values["Unevictable"] // Closest Linux equivalent to macOS wired memory
+	stats.AnonPages = values["AnonPages"]
+	stats.FileBackedPages = values["Mapped"] // Mapped pages are file-backed
 
 	return stats, nil
 }
@@ -297,6 +407,7 @@ func (m *MemoryChecker) getMemoryStatsMacOS(ctx context.Context, executor diagno
 	// Parse vm_stat output
 	lines := strings.Split(vmStatOut, "\n")
 	values := make(map[string]uint64)
+	rawValues := make(map[string]uint64) // Store raw values (page counts) for some metrics
 
 	for _, line := range lines {
 		if !strings.Contains(line, ":") {
@@ -309,13 +420,16 @@ func (m *MemoryChecker) getMemoryStatsMacOS(ctx context.Context, executor diagno
 		}
 
 		key := strings.TrimSpace(parts[0])
+		// Remove quotes and periods from key
+		key = strings.Trim(key, "\"")
 		valueStr := strings.TrimSpace(strings.TrimSuffix(parts[1], "."))
 		value, err := strconv.ParseUint(valueStr, 10, 64)
 		if err != nil {
 			continue
 		}
 
-		values[key] = value * pageSize
+		rawValues[key] = value          // Store raw page count
+		values[key] = value * pageSize  // Store byte value
 	}
 
 	// Calculate used memory (active + wired + compressed)
@@ -341,6 +455,29 @@ func (m *MemoryChecker) getMemoryStatsMacOS(ctx context.Context, executor diagno
 	if stats.SwapTotalBytes > 0 {
 		stats.SwapUsedPercent = float64(stats.SwapUsedBytes) / float64(stats.SwapTotalBytes) * 100.0
 	}
+
+	// Page fault tracking
+	stats.PageFaults = rawValues["Translation faults"]
+	stats.MajorPageFaults = rawValues["Pageins"] // Pageins require disk I/O
+	if stats.PageFaults > stats.MajorPageFaults {
+		stats.MinorPageFaults = stats.PageFaults - stats.MajorPageFaults
+	}
+
+	// Memory pressure indicators
+	stats.PagesThrottled = rawValues["Pages throttled"]
+	stats.Compressions = rawValues["Compressions"]
+	stats.Decompressions = rawValues["Decompressions"]
+	stats.CompressedPages = rawValues["Pages stored in compressor"]
+	stats.Swapins = rawValues["Swapins"]
+	stats.Swapouts = rawValues["Swapouts"]
+	stats.PagesPurged = rawValues["Pages purged"]
+
+	// Additional metrics
+	stats.FileBackedPages = rawValues["File-backed pages"]
+	stats.AnonPages = rawValues["Anonymous pages"]
+	stats.ActiveBytes = values["Pages active"]
+	stats.InactiveBytes = values["Pages inactive"]
+	stats.WiredBytes = values["Pages wired down"]
 
 	return stats, nil
 }
@@ -518,6 +655,26 @@ func (m *MemoryChecker) formatMessage(stats *MemoryStats) string {
 	if len(stats.TopConsumers) > 0 {
 		top := stats.TopConsumers[0]
 		msg += fmt.Sprintf(", Top: %s (%.0f MB)", top.Command, top.MemoryMB)
+	}
+
+	// Add memory pressure indicators if significant
+	pressureWarnings := []string{}
+
+	if stats.PagesThrottled > 0 {
+		pressureWarnings = append(pressureWarnings, fmt.Sprintf("%d pages throttled", stats.PagesThrottled))
+	}
+
+	if stats.CompressedPages > 1000 { // Only show if significant compression
+		compressedMB := float64(stats.CompressedPages*16384) / 1024 / 1024 // Assuming 16KB page size
+		pressureWarnings = append(pressureWarnings, fmt.Sprintf("%.0f MB compressed", compressedMB))
+	}
+
+	if stats.Swapouts > 10000 { // Only show if significant swap activity
+		pressureWarnings = append(pressureWarnings, fmt.Sprintf("%d swapouts", stats.Swapouts))
+	}
+
+	if len(pressureWarnings) > 0 {
+		msg += fmt.Sprintf(" [Pressure: %s]", strings.Join(pressureWarnings, ", "))
 	}
 
 	return msg

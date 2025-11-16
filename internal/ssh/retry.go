@@ -3,6 +3,7 @@ package ssh
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -244,9 +245,14 @@ func powFloat(base, exp float64) float64 {
 }
 
 // Simple random float generator (for jitter)
-var randomSeed = time.Now().UnixNano()
+var (
+	randomSeed  = time.Now().UnixNano()
+	randomMutex sync.Mutex
+)
 
 func randomFloat() float64 {
+	randomMutex.Lock()
+	defer randomMutex.Unlock()
 	randomSeed = (randomSeed*1103515245 + 12345) & 0x7fffffff
 	return float64(randomSeed) / float64(0x7fffffff)
 }
