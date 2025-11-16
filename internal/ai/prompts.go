@@ -6,18 +6,22 @@ import (
 	"strings"
 
 	"github.com/ignacio/lumo/internal/diagnostics"
+	"github.com/ignacio/lumo/internal/diagnostics/formatters"
 )
 
 // PromptBuilder constructs prompts for AI analysis of diagnostic results.
 type PromptBuilder struct {
 	includeThinking bool
 	focusAreas      []string
+	useTOON         bool // Use TOON format for diagnostic data (30-60% token reduction)
 }
 
 // NewPromptBuilder creates a new prompt builder.
+// By default, uses TOON format for 30-60% token reduction.
 func NewPromptBuilder() *PromptBuilder {
 	return &PromptBuilder{
 		includeThinking: true,
+		useTOON:         true, // Default to TOON for token efficiency
 	}
 }
 
@@ -33,9 +37,16 @@ func (pb *PromptBuilder) WithFocus(areas ...string) *PromptBuilder {
 	return pb
 }
 
+// WithTOON controls whether to use TOON format for diagnostic data.
+// TOON achieves 30-60% token reduction compared to JSON/Markdown.
+func (pb *PromptBuilder) WithTOON(use bool) *PromptBuilder {
+	pb.useTOON = use
+	return pb
+}
+
 // BuildSystemPrompt creates the system prompt that defines the AI's role.
 func (pb *PromptBuilder) BuildSystemPrompt() string {
-	return `You are an expert SRE/DevOps engineer analyzing system diagnostics. Your role is to:
+	basePrompt := `You are an expert SRE/DevOps engineer analyzing system diagnostics. Your role is to:
 
 1. Analyze diagnostic data from remote systems
 2. Identify performance issues, resource constraints, and potential failures
@@ -80,6 +91,29 @@ Provide your analysis in JSON format with this structure:
     }
   ]
 }`
+
+	// Add TOON format explanation if enabled
+	if pb.useTOON {
+		basePrompt += `
+
+Data Format:
+Diagnostic data is provided in TOON (Token-Oriented Object Notation) format for efficiency.
+TOON is similar to YAML but optimized for LLMs:
+- Uniform arrays use tabular notation: array_name[count]{field1,field2,...}:
+- Each row is comma-separated values
+- Non-uniform data uses YAML-like key: value format
+- This format reduces tokens by 30-60% while maintaining clarity
+
+Example TOON:
+metrics[3]{name,value,unit}:
+  cpu_usage,45.5,percent
+  memory_usage,71.2,percent
+  disk_usage,82.0,percent
+
+You can parse and analyze TOON data naturally - treat arrays as tables and key-value pairs as structured data.`
+	}
+
+	return basePrompt
 }
 
 // BuildAnalysisPrompt creates the user prompt with diagnostic data.
@@ -109,9 +143,19 @@ func (pb *PromptBuilder) BuildAnalysisPrompt(req *AnalysisRequest) (string, erro
 
 	// Add detailed results
 	sb.WriteString("# Detailed Results\n\n")
-	for _, result := range req.Report.Results {
-		sb.WriteString(pb.formatCheckResult(result))
-		sb.WriteString("\n")
+	if pb.useTOON {
+		// Use TOON format for token efficiency (30-60% reduction)
+		sb.WriteString("```toon\n")
+		toonFormatter := formatters.NewToonFormatter()
+		toonOutput := toonFormatter.FormatReport(req.Report)
+		sb.WriteString(toonOutput)
+		sb.WriteString("\n```\n")
+	} else {
+		// Traditional markdown format
+		for _, result := range req.Report.Results {
+			sb.WriteString(pb.formatCheckResult(result))
+			sb.WriteString("\n")
+		}
 	}
 
 	// Add focus areas if specified
