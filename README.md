@@ -6,10 +6,15 @@
 
 ### ✅ Implemented
 - **SSH Connection Management**: 4 auth methods (agent, key, password, keyboard-interactive) with retry logic and auto-reconnect
-- **Intelligent Diagnostics**: 6 automated health checks (CPU, memory, disk, processes, services, network)
+- **Intelligent Diagnostics**:
+  - 10 automated health checks (6 core + 4 security)
+  - Core: CPU, memory, disk, processes, services, network
+  - Security: Patch status, open ports, SSH security, auth failures
+  - Kubernetes: Native cluster diagnostics (nodes, pods, deployments, services, etc.)
 - **AI-Powered Analysis**: Multi-provider support (Anthropic Claude, OpenAI GPT-4, Ollama, Google Gemini)
 - **Localhost Execution**: Run diagnostics on local machine without SSH overhead
 - **Cross-Platform Support**: Linux, macOS, BSD compatibility
+- **Kubernetes Support**: Native diagnostics using k8s.io/client-go (no kubectl required)
 
 ### 🚧 Planned
 - **Auto-Remediation**: Automatically fix common issues with smart approval workflows (Phase 5)
@@ -27,19 +32,22 @@
     │ Config  │  YAML + Environment Variables
     └────┬────┘
          │
-┌────────▼─────────┐
-│  Diagnostics     │  6 Health Checkers
-│  Runner          │  (CPU, Memory, Disk, etc.)
-└────┬─────────┬───┘
-     │         │
-┌────▼────┐ ┌──▼──────────┐
-│  Local  │ │ SSH Executor│  4 Auth Methods
-│ Executor│ │             │  Auto-Reconnect
-└─────────┘ └──────┬──────┘
-                   │
-            ┌──────▼──────────┐
-            │ Remote Servers  │
-            └─────────────────┘
+┌────────▼──────────────┐
+│  Diagnostics Runner   │  11 Health Checkers:
+│                       │  • 6 Core (CPU, Memory, Disk, Process, Service, Network)
+│                       │  • 4 Security (Patches, Ports, SSH, Auth)
+│                       │  • 1 Kubernetes (Cluster Health)
+└────┬─────────┬────┬───┘
+     │         │    │
+┌────▼────┐ ┌──▼────────┐ ┌──▼──────────┐
+│  Local  │ │    SSH    │ │ Kubernetes  │
+│ Executor│ │  Executor │ │   Client    │
+└─────────┘ └──────┬────┘ └──────┬──────┘
+                   │             │
+            ┌──────▼──────┐ ┌────▼─────────┐
+            │   Remote    │ │  K8s Cluster │
+            │   Servers   │ │  (via API)   │
+            └─────────────┘ └──────────────┘
                    │
             ┌──────▼──────────┐
             │  AI Analysis    │  4 Providers
@@ -121,9 +129,18 @@ lumo diagnose user@example.com
 # Run specific checks only
 lumo diagnose user@example.com --checks cpu,memory,disk
 
+# Run Kubernetes cluster diagnostics (requires kubeconfig)
+lumo diagnose --checks kubernetes
+
+# Run all diagnostics including Kubernetes
+lumo diagnose localhost
+
 # Get AI-powered analysis (requires API key)
 export LUMO_ANTHROPIC_API_KEY=sk-ant-...
 lumo diagnose localhost --analyze
+
+# Kubernetes diagnostics with AI analysis
+lumo diagnose --checks kubernetes --analyze
 
 # Use different AI provider
 export LUMO_OPENAI_API_KEY=sk-...
@@ -183,6 +200,22 @@ api:
   port: 8080
   host: 0.0.0.0
   tls: false
+
+diagnostics:
+  kubernetes:
+    enabled: false  # Enable Kubernetes diagnostics
+    kubeconfig_path: ""  # Uses ~/.kube/config by default
+    context: ""  # Use specific cluster context
+    namespaces: []  # Check all namespaces (or specify list)
+    check_nodes: true
+    check_pods: true
+    check_deployments: true
+    check_statefulsets: true
+    check_daemonsets: true
+    check_services: true
+    check_pvcs: true
+    check_events: true
+    event_lookback_mins: 30
 ```
 
 ### Environment Variables
@@ -209,6 +242,12 @@ export LUMO_AI_API_KEY=sk-...              # Fallback if provider-specific not s
 
 # Logging
 export LUMO_LOGGING_LEVEL=debug
+
+# Kubernetes Diagnostics
+export LUMO_DIAGNOSTICS_KUBERNETES_ENABLED=true
+export LUMO_DIAGNOSTICS_KUBERNETES_CONTEXT=production-cluster
+export LUMO_DIAGNOSTICS_KUBERNETES_KUBECONFIG_PATH=/path/to/kubeconfig
+export LUMO_DIAGNOSTICS_KUBERNETES_EVENT_LOOKBACK_MINS=60
 ```
 
 ## SSH Authentication
@@ -294,6 +333,79 @@ ssh:
   known_hosts_path: ~/.ssh/known_hosts
 ```
 
+## Kubernetes Diagnostics
+
+Lumo includes native Kubernetes cluster diagnostics using the official `k8s.io/client-go` library (no `kubectl` required).
+
+### Features
+
+- **8 Resource Types**: Nodes, Pods, Deployments, StatefulSets, DaemonSets, Services, PVCs, Events
+- **Native Client**: Direct Kubernetes API access via k8s.io/client-go
+- **Granular Control**: Enable/disable individual checks
+- **Namespace Filtering**: Check all or specific namespaces
+- **Read-Only**: No modifications to your cluster
+- **RBAC-Aware**: Requires minimal permissions (get/list)
+
+### Prerequisites
+
+1. **Kubeconfig**: Ensure `~/.kube/config` exists or specify custom path
+2. **RBAC Permissions**: Read-only access to cluster resources
+3. **Enable in Config**: Set `diagnostics.kubernetes.enabled: true`
+
+### Quick Start
+
+```bash
+# Enable Kubernetes diagnostics
+export LUMO_DIAGNOSTICS_KUBERNETES_ENABLED=true
+
+# Run Kubernetes diagnostics only
+lumo diagnose --checks kubernetes
+
+# Run with AI analysis
+lumo diagnose --checks kubernetes --analyze
+
+# Use specific cluster context
+export LUMO_DIAGNOSTICS_KUBERNETES_CONTEXT=production
+lumo diagnose --checks kubernetes
+
+# Check specific namespaces only
+# (Set in config.yaml: namespaces: ["production", "staging"])
+lumo diagnose --checks kubernetes
+```
+
+### Health Checks Performed
+
+| Check | Metrics Collected |
+|-------|------------------|
+| **Nodes** | Total, ready, not-ready, conditions |
+| **Pods** | Phase distribution, restart counts, problem pods |
+| **Deployments** | Replica health, desired vs ready |
+| **StatefulSets** | Replica readiness |
+| **DaemonSets** | Node coverage, desired vs current |
+| **Services** | Endpoint validation |
+| **PVCs** | Binding status, pending/lost volumes |
+| **Events** | Recent warnings/errors (configurable lookback) |
+
+### Sample Output
+
+```
+=== Kubernetes Cluster Diagnostics ===
+
+[✓] Nodes: All 3 nodes ready
+[✓] Pods (production): 25 total, 25 running
+[!] Deployments (production): 1 unhealthy
+    - api-server: Desired=3, Ready=1
+[✓] Services: All services have endpoints
+
+Overall Status: WARNING
+```
+
+### Configuration
+
+See [Configuration](#configuration) section for full Kubernetes configuration options.
+
+For detailed implementation documentation, see [REPORTS/kubernetes-diagnostics-implementation-2025-11-16.md](REPORTS/kubernetes-diagnostics-implementation-2025-11-16.md).
+
 ## Usage Examples
 
 ### Verbose Logging
@@ -344,27 +456,32 @@ When the API server is implemented (`lumo serve`), the following endpoints will 
 
 - [x] **Phase 1**: Foundation & Project Setup
 - [x] **Phase 2**: SSH & Connection Management (4 auth methods, retry logic, auto-reconnect)
-- [x] **Phase 3**: Diagnostic System (6 checkers: CPU, Memory, Disk, Process, Service, Network)
+- [x] **Phase 3**: Diagnostic System (6 core checkers: CPU, Memory, Disk, Process, Service, Network)
 - [x] **Phase 4**: AI Integration (4 providers: Anthropic, OpenAI, Ollama, Gemini)
-- [x] **Phase 8**: Testing & Documentation (37.1% coverage, 15 test files, 5,917 lines)
-- [ ] **Phase 5**: Auto-Remediation & Approval (Planned)
-- [ ] **Phase 6**: Reporting & Logging (Planned)
-- [ ] **Phase 7**: API Server (Planned)
+- [x] **Phase 5**: Enhanced Diagnostics
+  - [x] Security Diagnostics (4 checkers: Patch Status, Open Ports, SSH Security, Auth Failures)
+  - [x] Kubernetes Diagnostics (Native cluster health monitoring)
+  - [x] Enhanced Memory Metrics (Page faults, pressure indicators, top consumers)
+- [x] **Phase 8**: Testing & Documentation (50.4% coverage, 25 test files, 11,059 lines)
+- [ ] **Phase 6**: Auto-Remediation & Approval (Planned)
+- [ ] **Phase 7**: Reporting & Logging (Planned)
+- [ ] **Phase 9**: API Server (Planned)
 
 ## Testing
 
-**Overall Coverage**: 37.1% (5,917 lines of test code across 15 test files)
+**Overall Coverage**: 50.4% (11,059 lines of test code across 25 test files)
 
 ### Coverage by Package
 
 | Package | Coverage | Status |
 |---------|----------|--------|
-| internal/diagnostics/formatters | 100.0% | ✅ Complete |
+| internal/diagnostics/formatters | 98.1% | ✅ Complete |
+| internal/diagnostics | 87.6% | ✅ Excellent |
 | internal/config | 68.8% | ✅ Good |
-| internal/diagnostics/checkers | 61.2% | ✅ Good |
-| internal/diagnostics | 54.1% | ✅ Solid |
-| internal/ai | 27.0% | ⚠️ In Progress |
-| internal/ssh | 16.3% | ⚠️ In Progress |
+| internal/diagnostics/checkers | 61.4% | ✅ Good |
+| cmd/lumo | 61.6% | ✅ Good |
+| internal/ssh | 30.5% | ⚠️ In Progress |
+| internal/ai | 27.1% | ⚠️ In Progress |
 
 ### Run Tests
 
