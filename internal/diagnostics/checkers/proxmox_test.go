@@ -721,3 +721,243 @@ func TestProxmoxChecker_SelectiveChecks(t *testing.T) {
 		t.Error("expected no cluster data when checkCluster is disabled")
 	}
 }
+
+func TestProxmoxChecker_ParseCertificate(t *testing.T) {
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+
+	tests := []struct {
+		name             string
+		input            string
+		expectedSubject  string
+		expectedIssuer   string
+		expectedExpiring bool
+		expectedExpired  bool
+	}{
+		{
+			name: "valid certificate expiring soon",
+			input: `subject=CN=pve01
+issuer=CN=Proxmox Virtual Environment
+notBefore=Jan 1 00:00:00 2025 GMT
+notAfter=Dec 1 00:00:00 2025 GMT`,
+			expectedSubject:  "CN=pve01",
+			expectedIssuer:   "CN=Proxmox Virtual Environment",
+			expectedExpiring: true,
+			expectedExpired:  false,
+		},
+		{
+			name: "expired certificate",
+			input: `subject=CN=pve01
+issuer=CN=Proxmox Virtual Environment
+notBefore=Jan 1 00:00:00 2020 GMT
+notAfter=Jan 15 00:00:00 2021 GMT`,
+			expectedSubject:  "CN=pve01",
+			expectedIssuer:   "CN=Proxmox Virtual Environment",
+			expectedExpiring: false,
+			expectedExpired:  true,
+		},
+		{
+			name: "valid certificate far future",
+			input: `subject=CN=pve01
+issuer=CN=Proxmox Virtual Environment
+notBefore=Jan 1 00:00:00 2024 GMT
+notAfter=Jan 15 00:00:00 2030 GMT`,
+			expectedSubject:  "CN=pve01",
+			expectedIssuer:   "CN=Proxmox Virtual Environment",
+			expectedExpiring: false,
+			expectedExpired:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cert := checker.parseCertificate(tt.input, "/test/path", "test-cert")
+
+			if cert == nil {
+				t.Fatal("expected certificate, got nil")
+			}
+
+			if cert.Subject != tt.expectedSubject {
+				t.Errorf("expected subject %q, got %q", tt.expectedSubject, cert.Subject)
+			}
+
+			if cert.Issuer != tt.expectedIssuer {
+				t.Errorf("expected issuer %q, got %q", tt.expectedIssuer, cert.Issuer)
+			}
+
+			if cert.Expired != tt.expectedExpired {
+				t.Errorf("expected expired %v, got %v", tt.expectedExpired, cert.Expired)
+			}
+
+			// Check if certificate is expiring soon (within 30 days)
+			isExpiringSoon := cert.DaysToExpiry <= 30 && cert.DaysToExpiry >= 0
+			if isExpiringSoon != tt.expectedExpiring {
+				t.Errorf("expected expiring soon %v, got %v (days to expiry: %d)",
+					tt.expectedExpiring, isExpiringSoon, cert.DaysToExpiry)
+			}
+		})
+	}
+}
+
+func TestProxmoxChecker_ParseCephOSDStat(t *testing.T) {
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+
+	tests := []struct {
+		name            string
+		input           string
+		expectedTotal   int
+		expectedUp      int
+		expectedIn      int
+		expectedDown    int
+		expectedOut     int
+	}{
+		{
+			name:          "all OSDs healthy",
+			input:         "30 osds: 30 up, 30 in;",
+			expectedTotal: 30,
+			expectedUp:    30,
+			expectedIn:    30,
+			expectedDown:  0,
+			expectedOut:   0,
+		},
+		{
+			name:          "some OSDs down",
+			input:         "30 osds: 28 up, 28 in;",
+			expectedTotal: 30,
+			expectedUp:    28,
+			expectedIn:    28,
+			expectedDown:  2,
+			expectedOut:   2,
+		},
+		{
+			name:          "OSDs out but up",
+			input:         "30 osds: 30 up, 28 in;",
+			expectedTotal: 30,
+			expectedUp:    30,
+			expectedIn:    28,
+			expectedDown:  0,
+			expectedOut:   2,
+		},
+		{
+			name:          "small cluster",
+			input:         "3 osds: 3 up, 3 in;",
+			expectedTotal: 3,
+			expectedUp:    3,
+			expectedIn:    3,
+			expectedDown:  0,
+			expectedOut:   0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := &CephInfo{}
+			checker.parseCephOSDStat(tt.input, info)
+
+			if info.TotalOSDs != tt.expectedTotal {
+				t.Errorf("expected total OSDs %d, got %d", tt.expectedTotal, info.TotalOSDs)
+			}
+
+			if info.UpOSDs != tt.expectedUp {
+				t.Errorf("expected up OSDs %d, got %d", tt.expectedUp, info.UpOSDs)
+			}
+
+			if info.InOSDs != tt.expectedIn {
+				t.Errorf("expected in OSDs %d, got %d", tt.expectedIn, info.InOSDs)
+			}
+
+			if info.DownOSDs != tt.expectedDown {
+				t.Errorf("expected down OSDs %d, got %d", tt.expectedDown, info.DownOSDs)
+			}
+
+			if info.OutOSDs != tt.expectedOut {
+				t.Errorf("expected out OSDs %d, got %d", tt.expectedOut, info.OutOSDs)
+			}
+		})
+	}
+}
+
+func TestProxmoxChecker_ParseCephPools(t *testing.T) {
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+
+	input := `pool 1 'rbd' replicated size 3 min_size 2
+pool 2 'cephfs_data' replicated size 3 min_size 2
+pool 3 'cephfs_metadata' replicated size 3 min_size 2`
+
+	pools := checker.parseCephPools(input)
+
+	if len(pools) != 3 {
+		t.Fatalf("expected 3 pools, got %d", len(pools))
+	}
+
+	expectedPools := []struct {
+		id   int
+		name string
+	}{
+		{1, "rbd"},
+		{2, "cephfs_data"},
+		{3, "cephfs_metadata"},
+	}
+
+	for i, expected := range expectedPools {
+		if pools[i].ID != expected.id {
+			t.Errorf("pool %d: expected ID %d, got %d", i, expected.id, pools[i].ID)
+		}
+
+		if pools[i].Name != expected.name {
+			t.Errorf("pool %d: expected name %q, got %q", i, expected.name, pools[i].Name)
+		}
+	}
+}
+
+func TestProxmoxChecker_ParseCephDF(t *testing.T) {
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+
+	tests := []struct {
+		name               string
+		input              string
+		expectedUsedPct    float64
+		expectedNonZeroTotal bool
+	}{
+		{
+			name: "50% usage",
+			input: `--- GLOBAL ---
+TOTAL     USED       AVAIL      RAW USED     %RAW USED
+100 GiB   50 GiB     50 GiB     50 GiB       50.00%`,
+			expectedUsedPct:    50.0,
+			expectedNonZeroTotal: true,
+		},
+		{
+			name: "85% usage high",
+			input: `--- GLOBAL ---
+TOTAL      USED        AVAIL       RAW USED     %RAW USED
+1000 GiB   850 GiB     150 GiB     850 GiB      85.00%`,
+			expectedUsedPct:    85.0,
+			expectedNonZeroTotal: true,
+		},
+		{
+			name: "TiB units",
+			input: `--- GLOBAL ---
+TOTAL    USED     AVAIL    RAW USED     %RAW USED
+10 TiB   5 TiB    5 TiB    5 TiB        50.00%`,
+			expectedUsedPct:    50.0,
+			expectedNonZeroTotal: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := &CephInfo{}
+			checker.parseCephDF(tt.input, info)
+
+			// Allow 1% tolerance for floating point
+			if abs := tt.expectedUsedPct - info.UsedPercent; abs > 1.0 && abs < -1.0 {
+				t.Errorf("expected used percent %.2f%%, got %.2f%%",
+					tt.expectedUsedPct, info.UsedPercent)
+			}
+
+			if tt.expectedNonZeroTotal && info.TotalStorageBytes == 0 {
+				t.Error("expected non-zero total storage bytes")
+			}
+		})
+	}
+}

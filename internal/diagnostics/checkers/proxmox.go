@@ -25,6 +25,8 @@ type ProxmoxChecker struct {
 	checkPerformance  bool
 	checkBootConfig   bool
 	checkNetwork      bool
+	checkCertificates bool
+	checkCeph         bool
 }
 
 // NewProxmoxChecker creates a new Proxmox checker
@@ -47,6 +49,8 @@ func NewProxmoxChecker(checkCluster, checkVMs, checkStorage, checkReplication, c
 		checkPerformance:  allDisabled, // Always check VM/CT performance
 		checkBootConfig:   allDisabled, // Always check boot configuration
 		checkNetwork:      allDisabled, // Always check network stats
+		checkCertificates: allDisabled, // Always check SSL certificates
+		checkCeph:         allDisabled, // Always check Ceph if installed
 	}
 }
 
@@ -62,7 +66,7 @@ func (p *ProxmoxChecker) Category() diagnostics.CheckCategory {
 
 // Description returns the checker description
 func (p *ProxmoxChecker) Description() string {
-	return "Comprehensive Proxmox VE monitoring: cluster health, VMs/containers, storage, replication, backups, HA, subscription status, updates, task history, performance metrics, boot configuration, and network statistics"
+	return "Comprehensive Proxmox VE monitoring: cluster health, VMs/containers, storage, replication, backups, HA, subscription status, updates, task history, performance metrics, boot configuration, network statistics, SSL certificate expiry, and Ceph integration"
 }
 
 // RequiresRoot returns true as many Proxmox commands require root
@@ -242,6 +246,28 @@ func (p *ProxmoxChecker) Run(ctx context.Context, executor diagnostics.CommandEx
 		} else {
 			result.SetData("network_stats", netInfo)
 			issues = append(issues, netIssues...)
+		}
+	}
+
+	// Check SSL certificates
+	if p.checkCertificates {
+		certInfo, certIssues, err := p.performCertificatesCheck(ctx, executor)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("certificate check failed: %v", err))
+		} else {
+			result.SetData("certificates", certInfo)
+			issues = append(issues, certIssues...)
+		}
+	}
+
+	// Check Ceph storage
+	if p.checkCeph {
+		cephInfo, cephIssues, err := p.performCephCheck(ctx, executor)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("ceph check failed: %v", err))
+		} else {
+			result.SetData("ceph", cephInfo)
+			issues = append(issues, cephIssues...)
 		}
 	}
 
@@ -1039,14 +1065,63 @@ type NetworkStatsInfo struct {
 
 // NetworkInterface holds individual interface statistics
 type ProxmoxNetworkInterface struct {
-	Name    string `json:"name"`
-	State   string `json:"state"`
-	RXBytes int64  `json:"rx_bytes"`
-	TXBytes int64  `json:"tx_bytes"`
-	RXPackets int64 `json:"rx_packets"`
-	TXPackets int64 `json:"tx_packets"`
-	RXErrors int64  `json:"rx_errors"`
-	TXErrors int64  `json:"tx_errors"`
+	Name      string `json:"name"`
+	State     string `json:"state"`
+	RXBytes   int64  `json:"rx_bytes"`
+	TXBytes   int64  `json:"tx_bytes"`
+	RXPackets int64  `json:"rx_packets"`
+	TXPackets int64  `json:"tx_packets"`
+	RXErrors  int64  `json:"rx_errors"`
+	TXErrors  int64  `json:"tx_errors"`
+}
+
+// CertificateInfo holds SSL certificate information
+type CertificateInfo struct {
+	CertificateFound bool                `json:"certificate_found"`
+	Node             string              `json:"node"`
+	Certificates     []CertificateEntry  `json:"certificates"`
+	ExpiringCerts    []string            `json:"expiring_certs"`   // Certs expiring within 30 days
+	ExpiredCerts     []string            `json:"expired_certs"`
+}
+
+// CertificateEntry holds individual certificate information
+type CertificateEntry struct {
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	Subject    string `json:"subject"`
+	Issuer     string `json:"issuer"`
+	NotBefore  string `json:"not_before"`
+	NotAfter   string `json:"not_after"`
+	DaysToExpiry int  `json:"days_to_expiry"`
+	Expired    bool   `json:"expired"`
+}
+
+// CephInfo holds Ceph cluster information
+type CephInfo struct {
+	CephInstalled    bool              `json:"ceph_installed"`
+	CephVersion      string            `json:"ceph_version"`
+	ClusterHealth    string            `json:"cluster_health"`    // HEALTH_OK, HEALTH_WARN, HEALTH_ERR
+	MonStatus        string            `json:"mon_status"`
+	TotalOSDs        int               `json:"total_osds"`
+	UpOSDs           int               `json:"up_osds"`
+	InOSDs           int               `json:"in_osds"`
+	DownOSDs         int               `json:"down_osds"`
+	OutOSDs          int               `json:"out_osds"`
+	Pools            []CephPool        `json:"pools"`
+	TotalStorageBytes int64            `json:"total_storage_bytes"`
+	UsedBytes        int64             `json:"used_bytes"`
+	AvailableBytes   int64             `json:"available_bytes"`
+	UsedPercent      float64           `json:"used_percent"`
+}
+
+// CephPool holds Ceph pool information
+type CephPool struct {
+	Name         string  `json:"name"`
+	ID           int     `json:"id"`
+	UsedBytes    int64   `json:"used_bytes"`
+	AvailBytes   int64   `json:"avail_bytes"`
+	UsedPercent  float64 `json:"used_percent"`
+	Objects      int64   `json:"objects"`
 }
 
 // checkSubscription checks Proxmox subscription status
@@ -1434,6 +1509,309 @@ func (p *ProxmoxChecker) parseNetworkStats(output string) []ProxmoxNetworkInterf
 	}
 
 	return interfaces
+}
+
+// performCertificatesCheck checks SSL certificate expiry
+func (p *ProxmoxChecker) performCertificatesCheck(ctx context.Context, executor diagnostics.CommandExecutor) (*CertificateInfo, []string, error) {
+	var issues []string
+	info := &CertificateInfo{}
+
+	// Get the current node hostname
+	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, "hostname")
+	if exitCode != 0 {
+		return info, issues, fmt.Errorf("failed to get hostname")
+	}
+	nodeName := strings.TrimSpace(stdout)
+	info.Node = nodeName
+
+	// Check PVE SSL certificate
+	certPath := fmt.Sprintf("/etc/pve/nodes/%s/pve-ssl.pem", nodeName)
+	stdout, _, exitCode, _ = executor.ExecuteWithContext(ctx,
+		fmt.Sprintf("test -f %s && openssl x509 -in %s -noout -subject -issuer -dates 2>/dev/null", certPath, certPath))
+
+	if exitCode != 0 {
+		info.CertificateFound = false
+		warnings := []string{"SSL certificate not found"}
+		return info, warnings, nil
+	}
+
+	info.CertificateFound = true
+
+	// Parse certificate details
+	cert := p.parseCertificate(stdout, certPath, "pve-ssl")
+	if cert != nil {
+		info.Certificates = append(info.Certificates, *cert)
+
+		// Check expiry
+		if cert.Expired {
+			info.ExpiredCerts = append(info.ExpiredCerts, cert.Name)
+			issues = append(issues, fmt.Sprintf("SSL certificate %s has expired", cert.Name))
+		} else if cert.DaysToExpiry <= 30 && cert.DaysToExpiry >= 0 {
+			info.ExpiringCerts = append(info.ExpiringCerts, cert.Name)
+			issues = append(issues, fmt.Sprintf("SSL certificate %s expires in %d days", cert.Name, cert.DaysToExpiry))
+		} else if cert.DaysToExpiry < 0 {
+			info.ExpiredCerts = append(info.ExpiredCerts, cert.Name)
+			issues = append(issues, fmt.Sprintf("SSL certificate %s is expired", cert.Name))
+		}
+	}
+
+	// Check cluster certificates if in a cluster
+	stdout, _, exitCode, _ = executor.ExecuteWithContext(ctx,
+		fmt.Sprintf("test -f /etc/pve/nodes/%s/pve-ssl.key && echo 'exists' 2>/dev/null", nodeName))
+	if exitCode == 0 && strings.TrimSpace(stdout) == "exists" {
+		// Additional certificate checks could be added here
+	}
+
+	return info, issues, nil
+}
+
+// parseCertificate parses openssl x509 output
+func (p *ProxmoxChecker) parseCertificate(output, path, name string) *CertificateEntry {
+	cert := &CertificateEntry{
+		Name: name,
+		Path: path,
+	}
+
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		if strings.HasPrefix(line, "subject=") {
+			cert.Subject = strings.TrimPrefix(line, "subject=")
+		} else if strings.HasPrefix(line, "issuer=") {
+			cert.Issuer = strings.TrimPrefix(line, "issuer=")
+		} else if strings.HasPrefix(line, "notBefore=") {
+			cert.NotBefore = strings.TrimPrefix(line, "notBefore=")
+		} else if strings.HasPrefix(line, "notAfter=") {
+			notAfterStr := strings.TrimPrefix(line, "notAfter=")
+			cert.NotAfter = notAfterStr
+
+			// Parse expiry date and calculate days to expiry
+			// Format: "Jan 15 12:00:00 2025 GMT"
+			expiry, err := time.Parse("Jan 2 15:04:05 2006 MST", notAfterStr)
+			if err == nil {
+				daysToExpiry := int(time.Until(expiry).Hours() / 24)
+				cert.DaysToExpiry = daysToExpiry
+				cert.Expired = daysToExpiry < 0
+			}
+		}
+	}
+
+	return cert
+}
+
+// performCephCheck checks Ceph storage cluster status
+func (p *ProxmoxChecker) performCephCheck(ctx context.Context, executor diagnostics.CommandExecutor) (*CephInfo, []string, error) {
+	var issues []string
+	info := &CephInfo{}
+
+	// Check if Ceph is installed
+	_, _, exitCode, _ := executor.ExecuteWithContext(ctx, "command -v ceph >/dev/null 2>&1")
+	if exitCode != 0 {
+		info.CephInstalled = false
+		// Not an issue - Ceph might not be used
+		return info, issues, nil
+	}
+
+	info.CephInstalled = true
+
+	// Get Ceph version
+	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, "ceph --version 2>/dev/null")
+	if exitCode == 0 {
+		info.CephVersion = strings.TrimSpace(strings.Split(stdout, "\n")[0])
+	}
+
+	// Check Ceph health
+	stdout, _, exitCode, _ = executor.ExecuteWithContext(ctx, "ceph health 2>/dev/null")
+	if exitCode != 0 {
+		warnings := []string{"Ceph is installed but cluster is not accessible"}
+		return info, warnings, nil
+	}
+
+	healthOutput := strings.TrimSpace(stdout)
+	info.ClusterHealth = healthOutput
+
+	// Parse health status
+	if strings.Contains(healthOutput, "HEALTH_OK") {
+		// All good
+	} else if strings.Contains(healthOutput, "HEALTH_WARN") {
+		issues = append(issues, fmt.Sprintf("Ceph cluster health: %s", healthOutput))
+	} else if strings.Contains(healthOutput, "HEALTH_ERR") {
+		issues = append(issues, fmt.Sprintf("Ceph cluster error: %s", healthOutput))
+	}
+
+	// Get OSD status
+	stdout, _, exitCode, _ = executor.ExecuteWithContext(ctx, "ceph osd stat 2>/dev/null")
+	if exitCode == 0 {
+		p.parseCephOSDStat(stdout, info)
+
+		// Check for down OSDs
+		if info.DownOSDs > 0 {
+			issues = append(issues, fmt.Sprintf("%d Ceph OSD(s) are down", info.DownOSDs))
+		}
+		if info.OutOSDs > 0 {
+			issues = append(issues, fmt.Sprintf("%d Ceph OSD(s) are out", info.OutOSDs))
+		}
+	}
+
+	// Get storage usage
+	stdout, _, exitCode, _ = executor.ExecuteWithContext(ctx, "ceph df 2>/dev/null")
+	if exitCode == 0 {
+		p.parseCephDF(stdout, info)
+
+		// Check for high storage usage
+		if info.UsedPercent > 85 {
+			issues = append(issues, fmt.Sprintf("Ceph cluster storage is %.1f%% full", info.UsedPercent))
+		}
+	}
+
+	// Get pool information
+	stdout, _, exitCode, _ = executor.ExecuteWithContext(ctx, "ceph osd pool ls detail 2>/dev/null")
+	if exitCode == 0 {
+		info.Pools = p.parseCephPools(stdout)
+	}
+
+	return info, issues, nil
+}
+
+// parseCephOSDStat parses ceph osd stat output
+// Example: "30 osds: 28 up, 28 in; 2 osds out"
+func (p *ProxmoxChecker) parseCephOSDStat(output string, info *CephInfo) {
+	fields := strings.Fields(output)
+	for i, field := range fields {
+		if field == "osds:" && i > 0 {
+			// Total OSDs is before "osds:"
+			if total, err := strconv.Atoi(fields[i-1]); err == nil {
+				info.TotalOSDs = total
+			}
+		} else if field == "up," && i > 0 {
+			// Up OSDs is before "up,"
+			if up, err := strconv.Atoi(fields[i-1]); err == nil {
+				info.UpOSDs = up
+			}
+		} else if field == "in;" && i > 0 {
+			// In OSDs is before "in;"
+			if in, err := strconv.Atoi(fields[i-1]); err == nil {
+				info.InOSDs = in
+			}
+		}
+	}
+
+	// Calculate down and out OSDs
+	info.DownOSDs = info.TotalOSDs - info.UpOSDs
+	info.OutOSDs = info.TotalOSDs - info.InOSDs
+}
+
+// parseCephDF parses ceph df output
+func (p *ProxmoxChecker) parseCephDF(output string, info *CephInfo) {
+	lines := strings.Split(output, "\n")
+
+	// Track if we're in the GLOBAL section
+	inGlobalSection := false
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// Detect GLOBAL section
+		if strings.Contains(strings.ToUpper(line), "GLOBAL") {
+			inGlobalSection = true
+			continue
+		}
+
+		// Skip header lines (contain "TOTAL" "USED" etc in caps)
+		if strings.Contains(line, "TOTAL") && strings.Contains(line, "USED") {
+			continue
+		}
+
+		// Parse data lines in GLOBAL section
+		if inGlobalSection && line != "" && !strings.HasPrefix(line, "---") {
+			fields := strings.Fields(line)
+
+			// Try to parse storage sizes
+			for i, field := range fields {
+				// Look for size patterns like "100" followed by "GiB"
+				if i+1 < len(fields) && (fields[i+1] == "GiB" || fields[i+1] == "TiB" || fields[i+1] == "MiB") {
+					sizeStr := field
+					unit := fields[i+1]
+					size, err := strconv.ParseFloat(sizeStr, 64)
+					if err != nil {
+						continue
+					}
+
+					// Convert to bytes
+					var bytes int64
+					switch unit {
+					case "TiB":
+						bytes = int64(size * 1024 * 1024 * 1024 * 1024)
+					case "GiB":
+						bytes = int64(size * 1024 * 1024 * 1024)
+					case "MiB":
+						bytes = int64(size * 1024 * 1024)
+					}
+
+					// Determine which field based on position
+					if info.TotalStorageBytes == 0 {
+						info.TotalStorageBytes = bytes
+					} else if info.UsedBytes == 0 {
+						info.UsedBytes = bytes
+					} else if info.AvailableBytes == 0 {
+						info.AvailableBytes = bytes
+					}
+				}
+			}
+
+			// Look for percentage
+			for _, field := range fields {
+				if strings.HasSuffix(field, "%") {
+					pctStr := strings.TrimSuffix(field, "%")
+					if pct, err := strconv.ParseFloat(pctStr, 64); err == nil {
+						info.UsedPercent = pct
+					}
+				}
+			}
+
+			// After parsing the first data line, we're done with GLOBAL
+			break
+		}
+	}
+
+	// Calculate used percent if not provided
+	if info.UsedPercent == 0 && info.TotalStorageBytes > 0 {
+		info.UsedPercent = float64(info.UsedBytes) / float64(info.TotalStorageBytes) * 100
+	}
+}
+
+// parseCephPools parses ceph osd pool ls detail output
+func (p *ProxmoxChecker) parseCephPools(output string) []CephPool {
+	var pools []CephPool
+	lines := strings.Split(output, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Example: "pool 1 'rbd' replicated size 3 min_size 2"
+		if strings.HasPrefix(line, "pool ") {
+			fields := strings.Fields(line)
+			if len(fields) >= 3 {
+				pool := CephPool{}
+
+				// Parse pool ID
+				if id, err := strconv.Atoi(fields[1]); err == nil {
+					pool.ID = id
+				}
+
+				// Parse pool name (remove quotes)
+				pool.Name = strings.Trim(fields[2], "'\"")
+
+				pools = append(pools, pool)
+			}
+		}
+	}
+
+	return pools
 }
 
 // formatMessage creates a human-readable summary message
