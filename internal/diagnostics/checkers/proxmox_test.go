@@ -1062,3 +1062,492 @@ func TestProxmoxChecker_ParseNodesJSON(t *testing.T) {
 		}
 	}
 }
+
+// Integration Tests for NEW Features (Priority 1)
+
+func TestProxmoxChecker_Run_CertificateExpiring7Days(t *testing.T) {
+	// Certificate expiring in 7 days should trigger warning
+	now := time.Now()
+	expiryDate := now.AddDate(0, 0, 7)
+
+	certOutput := "subject=CN=pve01.example.com\n" +
+		"issuer=CN=Proxmox Virtual Environment\n" +
+		"notBefore=Jan 1 00:00:00 2025 GMT\n" +
+		"notAfter=" + expiryDate.Format("Jan 2 15:04:05 2006 MST") + "\n"
+
+	executor := &proxmoxMockExecutor{
+		responses: map[string]proxmoxMockResponse{
+			"command -v pveversion": {stdout: "", exitCode: 0},
+			"pveversion":            {stdout: "pve-manager/8.1.3/b46aac3b42da5d15", exitCode: 0},
+			"pvecm status":          {stdout: "", stderr: "not in cluster", exitCode: 1},
+			"hostname":              {stdout: "pve01", exitCode: 0},
+			// Combined command as used in implementation
+			"test -f /etc/pve/nodes/pve01/pve-ssl.pem && openssl x509": {stdout: certOutput, exitCode: 0},
+		},
+	}
+
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+	checker.checkCertificates = true
+	result, err := checker.Run(context.Background(), executor)
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	certInfo, ok := result.Data["certificates"].(*CertificateInfo)
+	if !ok || !certInfo.CertificateFound {
+		t.Fatal("expected certificate data")
+	}
+
+	if len(certInfo.ExpiringCerts) == 0 {
+		t.Error("expected expiring certificate warning")
+	}
+
+	if len(certInfo.Certificates) == 0 {
+		t.Error("expected at least one certificate")
+	}
+
+	cert := certInfo.Certificates[0]
+	if cert.DaysToExpiry > 7 || cert.DaysToExpiry < 6 {
+		t.Errorf("expected ~7 days to expiry, got %d", cert.DaysToExpiry)
+	}
+}
+
+func TestProxmoxChecker_Run_CertificateExpiring30Days(t *testing.T) {
+	// Certificate expiring in 30 days should trigger warning
+	now := time.Now()
+	expiryDate := now.AddDate(0, 0, 30)
+
+	certOutput := "subject=CN=pve01.example.com\n" +
+		"issuer=CN=Proxmox Virtual Environment\n" +
+		"notBefore=Jan 1 00:00:00 2025 GMT\n" +
+		"notAfter=" + expiryDate.Format("Jan 2 15:04:05 2006 MST") + "\n"
+
+	executor := &proxmoxMockExecutor{
+		responses: map[string]proxmoxMockResponse{
+			"command -v pveversion": {stdout: "", exitCode: 0},
+			"pveversion":            {stdout: "pve-manager/8.1.3/b46aac3b42da5d15", exitCode: 0},
+			"pvecm status":          {stdout: "", stderr: "not in cluster", exitCode: 1},
+			"hostname":              {stdout: "pve01", exitCode: 0},
+			"test -f /etc/pve/nodes/pve01/pve-ssl.pem && openssl x509": {stdout: certOutput, exitCode: 0},
+		},
+	}
+
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+	checker.checkCertificates = true
+	result, err := checker.Run(context.Background(), executor)
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	certInfo, ok := result.Data["certificates"].(*CertificateInfo)
+	if !ok || !certInfo.CertificateFound {
+		t.Fatal("expected certificate data")
+	}
+
+	if len(certInfo.ExpiringCerts) == 0 {
+		t.Error("expected expiring certificate warning")
+	}
+
+	cert := certInfo.Certificates[0]
+	if cert.DaysToExpiry > 31 || cert.DaysToExpiry < 29 {
+		t.Errorf("expected ~30 days to expiry, got %d", cert.DaysToExpiry)
+	}
+}
+
+func TestProxmoxChecker_Run_CertificateExpired(t *testing.T) {
+	// Expired certificate should trigger alert
+	pastDate := time.Now().AddDate(0, 0, -30) // Expired 30 days ago
+
+	certOutput := "subject=CN=pve01.example.com\n" +
+		"issuer=CN=Proxmox Virtual Environment\n" +
+		"notBefore=Jan 1 00:00:00 2024 GMT\n" +
+		"notAfter=" + pastDate.Format("Jan 2 15:04:05 2006 MST") + "\n"
+
+	executor := &proxmoxMockExecutor{
+		responses: map[string]proxmoxMockResponse{
+			"command -v pveversion": {stdout: "", exitCode: 0},
+			"pveversion":            {stdout: "pve-manager/8.1.3/b46aac3b42da5d15", exitCode: 0},
+			"pvecm status":          {stdout: "", stderr: "not in cluster", exitCode: 1},
+			"hostname":              {stdout: "pve01", exitCode: 0},
+			"test -f /etc/pve/nodes/pve01/pve-ssl.pem && openssl x509": {stdout: certOutput, exitCode: 0},
+		},
+	}
+
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+	checker.checkCertificates = true
+	result, err := checker.Run(context.Background(), executor)
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	certInfo, ok := result.Data["certificates"].(*CertificateInfo)
+	if !ok || !certInfo.CertificateFound {
+		t.Fatal("expected certificate data")
+	}
+
+	if len(certInfo.ExpiredCerts) == 0 {
+		t.Error("expected expired certificate alert")
+	}
+
+	cert := certInfo.Certificates[0]
+	if !cert.Expired {
+		t.Error("expected certificate to be marked as expired")
+	}
+
+	if cert.DaysToExpiry >= 0 {
+		t.Errorf("expected negative days to expiry, got %d", cert.DaysToExpiry)
+	}
+}
+
+func TestProxmoxChecker_Run_CertificateNotFound(t *testing.T) {
+	// Certificate file not found - should skip gracefully
+	executor := &proxmoxMockExecutor{
+		responses: map[string]proxmoxMockResponse{
+			"command -v pveversion": {stdout: "", exitCode: 0},
+			"pveversion":            {stdout: "pve-manager/8.1.3/b46aac3b42da5d15", exitCode: 0},
+			"pvecm status":          {stdout: "", stderr: "not in cluster", exitCode: 1},
+			"hostname":              {stdout: "pve01", exitCode: 0},
+			"test -f /etc/pve/nodes/pve01/pve-ssl.pem && openssl x509": {exitCode: 1}, // File not found
+		},
+	}
+
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+	checker.checkCertificates = true
+	result, err := checker.Run(context.Background(), executor)
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	certInfo, ok := result.Data["certificates"].(*CertificateInfo)
+	if !ok {
+		t.Fatal("expected certificate data structure")
+	}
+
+	if certInfo.CertificateFound {
+		t.Error("expected certificate not to be found")
+	}
+}
+
+func TestProxmoxChecker_Run_CephHealthWarning(t *testing.T) {
+	// Ceph cluster in HEALTH_WARN state
+	executor := &proxmoxMockExecutor{
+		responses: map[string]proxmoxMockResponse{
+			"command -v pveversion": {stdout: "", exitCode: 0},
+			"pveversion":            {stdout: "pve-manager/8.1.3/b46aac3b42da5d15", exitCode: 0},
+			"pvecm status":          {stdout: "", stderr: "not in cluster", exitCode: 1},
+			"command -v ceph":       {stdout: "/usr/bin/ceph", exitCode: 0},
+			"ceph -v":               {stdout: "ceph version 17.2.6", exitCode: 0},
+			"ceph health":           {stdout: "HEALTH_WARN clock skew detected", exitCode: 0},
+			"ceph osd stat": {
+				stdout:   "12 osds: 12 up, 12 in;",
+				exitCode: 0,
+			},
+			"ceph osd pool ls": {
+				stdout:   "rbd\ncephfs_data\ncephfs_metadata",
+				exitCode: 0,
+			},
+			"ceph df": {
+				stdout:   "--- GLOBAL ---\nSIZE        AVAIL       RAW USED     %RAW USED\n1000G       800G        200G         20.00",
+				exitCode: 0,
+			},
+		},
+	}
+
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+	checker.checkCeph = true
+	result, err := checker.Run(context.Background(), executor)
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	cephInfo, ok := result.Data["ceph"].(*CephInfo)
+	if !ok || !cephInfo.CephInstalled {
+		t.Fatal("expected Ceph data")
+	}
+
+	// Health includes full message
+	if !strings.HasPrefix(cephInfo.ClusterHealth, "HEALTH_WARN") {
+		t.Errorf("expected HEALTH_WARN prefix, got %s", cephInfo.ClusterHealth)
+	}
+
+	if cephInfo.TotalOSDs != 12 {
+		t.Errorf("expected 12 OSDs, got %d", cephInfo.TotalOSDs)
+	}
+
+	if cephInfo.UpOSDs != 12 {
+		t.Errorf("expected 12 up OSDs, got %d", cephInfo.UpOSDs)
+	}
+}
+
+func TestProxmoxChecker_Run_CephHealthError(t *testing.T) {
+	// Ceph cluster in HEALTH_ERR state
+	executor := &proxmoxMockExecutor{
+		responses: map[string]proxmoxMockResponse{
+			"command -v pveversion": {stdout: "", exitCode: 0},
+			"pveversion":            {stdout: "pve-manager/8.1.3/b46aac3b42da5d15", exitCode: 0},
+			"pvecm status":          {stdout: "", stderr: "not in cluster", exitCode: 1},
+			"command -v ceph":       {stdout: "/usr/bin/ceph", exitCode: 0},
+			"ceph -v":               {stdout: "ceph version 17.2.6", exitCode: 0},
+			"ceph health":           {stdout: "HEALTH_ERR 2 osds down", exitCode: 0},
+			"ceph osd stat": {
+				stdout:   "12 osds: 10 up, 10 in;",
+				exitCode: 0,
+			},
+			"ceph osd pool ls": {
+				stdout:   "rbd",
+				exitCode: 0,
+			},
+			"ceph df": {
+				stdout:   "--- GLOBAL ---\nSIZE        AVAIL       RAW USED     %RAW USED\n1000G       800G        200G         20.00",
+				exitCode: 0,
+			},
+		},
+	}
+
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+	checker.checkCeph = true
+	result, err := checker.Run(context.Background(), executor)
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	cephInfo, ok := result.Data["ceph"].(*CephInfo)
+	if !ok || !cephInfo.CephInstalled {
+		t.Fatal("expected Ceph data")
+	}
+
+	if !strings.HasPrefix(cephInfo.ClusterHealth, "HEALTH_ERR") {
+		t.Errorf("expected HEALTH_ERR prefix, got %s", cephInfo.ClusterHealth)
+	}
+
+	if cephInfo.DownOSDs == 0 {
+		t.Error("expected at least one down OSD")
+	}
+
+	if cephInfo.UpOSDs != 10 {
+		t.Errorf("expected 10 up OSDs, got %d", cephInfo.UpOSDs)
+	}
+}
+
+func TestProxmoxChecker_Run_CephOSDsDown(t *testing.T) {
+	// Multiple OSDs down
+	executor := &proxmoxMockExecutor{
+		responses: map[string]proxmoxMockResponse{
+			"command -v pveversion": {stdout: "", exitCode: 0},
+			"pveversion":            {stdout: "pve-manager/8.1.3/b46aac3b42da5d15", exitCode: 0},
+			"pvecm status":          {stdout: "", stderr: "not in cluster", exitCode: 1},
+			"command -v ceph":       {stdout: "/usr/bin/ceph", exitCode: 0},
+			"ceph -v":               {stdout: "ceph version 17.2.6", exitCode: 0},
+			"ceph health":           {stdout: "HEALTH_ERR", exitCode: 0},
+			"ceph osd stat": {
+				stdout:   "12 osds: 9 up, 10 in;",
+				exitCode: 0,
+			},
+			"ceph osd pool ls": {
+				stdout:   "rbd",
+				exitCode: 0,
+			},
+			"ceph df": {
+				stdout:   "--- GLOBAL ---\nSIZE        AVAIL       RAW USED     %RAW USED\n1000G        800G        200G         20.00",
+				exitCode: 0,
+			},
+		},
+	}
+
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+	checker.checkCeph = true
+	result, err := checker.Run(context.Background(), executor)
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	cephInfo, ok := result.Data["ceph"].(*CephInfo)
+	if !ok || !cephInfo.CephInstalled {
+		t.Fatal("expected Ceph data")
+	}
+
+	if cephInfo.DownOSDs != 3 {
+		t.Errorf("expected 3 down OSDs (12 total - 9 up), got %d", cephInfo.DownOSDs)
+	}
+
+	if cephInfo.OutOSDs != 2 {
+		t.Errorf("expected 2 out OSDs (12 total - 10 in), got %d", cephInfo.OutOSDs)
+	}
+}
+
+func TestProxmoxChecker_Run_CephStorageHighUsage(t *testing.T) {
+	// Ceph storage usage >85% should trigger warning
+	executor := &proxmoxMockExecutor{
+		responses: map[string]proxmoxMockResponse{
+			"command -v pveversion": {stdout: "", exitCode: 0},
+			"pveversion":            {stdout: "pve-manager/8.1.3/b46aac3b42da5d15", exitCode: 0},
+			"pvecm status":          {stdout: "", stderr: "not in cluster", exitCode: 1},
+			"command -v ceph":       {stdout: "/usr/bin/ceph", exitCode: 0},
+			"ceph -v":               {stdout: "ceph version 17.2.6", exitCode: 0},
+			"ceph health":           {stdout: "HEALTH_OK", exitCode: 0},
+			"ceph osd stat": {
+				stdout:   "12 osds: 12 up, 12 in;",
+				exitCode: 0,
+			},
+			"ceph osd pool ls": {
+				stdout:   "rbd",
+				exitCode: 0,
+			},
+			"ceph df": {
+				// 90% usage - should trigger warning
+				stdout:   "--- GLOBAL ---\nTOTAL     USED      AVAIL     RAW USED     %RAW USED\n1000 GiB  900 GiB   100 GiB   900 GiB      90.00%",
+				exitCode: 0,
+			},
+		},
+	}
+
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+	checker.checkCeph = true
+	result, err := checker.Run(context.Background(), executor)
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	cephInfo, ok := result.Data["ceph"].(*CephInfo)
+	if !ok || !cephInfo.CephInstalled {
+		t.Fatal("expected Ceph data")
+	}
+
+	if cephInfo.UsedPercent < 85.0 {
+		t.Errorf("expected high usage (>85%%), got %.2f%%", cephInfo.UsedPercent)
+	}
+
+	if cephInfo.UsedPercent < 89.0 || cephInfo.UsedPercent > 91.0 {
+		t.Errorf("expected ~90%% usage, got %.2f%%", cephInfo.UsedPercent)
+	}
+}
+
+func TestProxmoxChecker_Run_CephNotInstalled(t *testing.T) {
+	// Ceph not installed - should skip gracefully
+	executor := &proxmoxMockExecutor{
+		responses: map[string]proxmoxMockResponse{
+			"command -v pveversion": {stdout: "", exitCode: 0},
+			"pveversion":            {stdout: "pve-manager/8.1.3/b46aac3b42da5d15", exitCode: 0},
+			"pvecm status":          {stdout: "", stderr: "not in cluster", exitCode: 1},
+			"command -v ceph":       {stdout: "", stderr: "not found", exitCode: 1}, // Not installed
+		},
+	}
+
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+	checker.checkCeph = true
+	result, err := checker.Run(context.Background(), executor)
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	cephInfo, ok := result.Data["ceph"].(*CephInfo)
+	if !ok {
+		t.Fatal("expected Ceph data structure")
+	}
+
+	if cephInfo.CephInstalled {
+		t.Error("expected Ceph not to be installed")
+	}
+}
+
+func TestProxmoxChecker_Run_ResourcePoolsDetection(t *testing.T) {
+	// Test that resource pools are detected and listed
+	poolListText := "Name        Comment\nproduction  Production workloads\ndevelopment  Dev environment\n"
+
+	executor := &proxmoxMockExecutor{
+		responses: map[string]proxmoxMockResponse{
+			"command -v pveversion": {stdout: "", exitCode: 0},
+			"pveversion":            {stdout: "pve-manager/8.1.3/b46aac3b42da5d15", exitCode: 0},
+			"pvecm status":          {stdout: "", stderr: "not in cluster", exitCode: 1},
+			"pvesh get /pools": {
+				stdout:   poolListText,
+				exitCode: 0,
+			},
+			"pvesh get /pools/production --output-format json": {
+				stdout:   "", // Empty response
+				exitCode: 0,
+			},
+			"pvesh get /pools/development --output-format json": {
+				stdout:   "", // Empty response
+				exitCode: 0,
+			},
+		},
+	}
+
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+	checker.checkPools = true
+	result, err := checker.Run(context.Background(), executor)
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	poolInfo, ok := result.Data["pools"].(*PoolInfo)
+	if !ok {
+		t.Fatal("expected pool info data")
+	}
+
+	if poolInfo.TotalPools != 2 {
+		t.Errorf("expected 2 pools, got %d", poolInfo.TotalPools)
+	}
+
+	// Verify pool IDs are correct
+	expectedPools := map[string]bool{"production": true, "development": true}
+	for _, pool := range poolInfo.Pools {
+		if !expectedPools[pool.PoolID] {
+			t.Errorf("unexpected pool ID: %s", pool.PoolID)
+		}
+	}
+
+	// Verify pool comments are captured
+	for _, pool := range poolInfo.Pools {
+		if pool.PoolID == "production" && pool.Comment == "" {
+			t.Error("expected production pool to have a comment")
+		}
+	}
+}
+
+func TestProxmoxChecker_Run_NoResourcePools(t *testing.T) {
+	// No resource pools configured
+	executor := &proxmoxMockExecutor{
+		responses: map[string]proxmoxMockResponse{
+			"command -v pveversion": {stdout: "", exitCode: 0},
+			"pveversion":            {stdout: "pve-manager/8.1.3/b46aac3b42da5d15", exitCode: 0},
+			"pvecm status":          {stdout: "", stderr: "not in cluster", exitCode: 1},
+			"pvesh get /pools": {
+				stdout:   "",
+				exitCode: 0,
+			},
+		},
+	}
+
+	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+	checker.checkPools = true
+	result, err := checker.Run(context.Background(), executor)
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	poolInfo, ok := result.Data["pools"].(*PoolInfo)
+	if !ok {
+		t.Fatal("expected pool info data")
+	}
+
+	if poolInfo.TotalPools != 0 {
+		t.Errorf("expected 0 pools, got %d", poolInfo.TotalPools)
+	}
+
+	if len(poolInfo.Pools) != 0 {
+		t.Errorf("expected empty pools slice, got %d entries", len(poolInfo.Pools))
+	}
+}
