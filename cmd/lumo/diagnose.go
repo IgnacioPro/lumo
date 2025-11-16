@@ -195,7 +195,7 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 
 	// Run AI analysis if requested
 	var analysis *ai.AnalysisResponse
-	if enableAI || (cfg.AI.Enabled && cfg.AI.Provider != "") {
+	if enableAI {
 		log.Info("Running AI-powered analysis...")
 
 		analysis, err = runAIAnalysis(cfg, report, hostname, checksFilter, focusAreas)
