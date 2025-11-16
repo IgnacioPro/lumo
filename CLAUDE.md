@@ -45,10 +45,11 @@ lumo/
 ├── internal/
 │   ├── config/                    # Configuration management
 │   ├── ssh/                       # SSH client (8 files, 2,410 lines) ✅
-│   ├── diagnostics/               # Diagnostic system (18 files, 5,900+ lines) ✅
-│   │   ├── checkers/             # 10 checkers (6 core + 4 security)
+│   ├── diagnostics/               # Diagnostic system (20 files, 7,800+ lines) ✅
+│   │   ├── checkers/             # 11 checkers (6 core + 4 security + 1 virtualization)
 │   │   │                         # Core: CPU, Memory, Disk, Process, Service, Network
 │   │   │                         # Security: Patch Status, Open Ports, SSH Security, Auth Failures
+│   │   │                         # Virtualization: Proxmox
 │   │   └── formatters/           # Output formatters (text, JSON, TOON)
 │   └── ai/                        # AI providers (7 files, 1,964 lines) ✅
 │       ├── anthropic.go          # Claude integration
@@ -58,7 +59,7 @@ lumo/
 └── configs/
     └── config.example.yaml        # Configuration template
 
-Total: 41 Go files (~12,000 lines) + 14 test files (~5,246 lines)
+Total: 43 Go files (~14,000 lines) + 15 test files (~6,000 lines)
 ```
 
 **Directory Purposes:**
@@ -417,7 +418,9 @@ chmod 600 /etc/lumo/key.pem
 | `internal/diagnostics/diagnostics.go` | Diagnostic orchestration | `Checker` interface, `Runner`, parallel execution |
 | `internal/diagnostics/executor.go` | Command execution | `SSHExecutor`, `LocalExecutor` |
 
-### Diagnostic Checkers (All 6 Complete)
+### Diagnostic Checkers
+
+#### Core System Checkers (6 Complete)
 
 | Checker | Key Metrics |
 |---------|-------------|
@@ -427,6 +430,21 @@ chmod 600 /etc/lumo/key.pem
 | `process.go` | Process count, zombies, top consumers |
 | `service.go` | Failed services, systemd/init/launchd support |
 | `network.go` | Interfaces (Linux `ip`, macOS/BSD `ifconfig` with proper UP/status parsing), connectivity (ICMP/TCP), configurable targets, latency, error classification, active connection counting |
+
+#### Security Checkers (4 Complete)
+
+| Checker | Key Metrics |
+|---------|-------------|
+| `patch_status.go` | Available updates, security patches across package managers (apt, yum, dnf, apk, pacman) |
+| `ports.go` | Listening ports, public vs localhost, unexpected ports, configurable whitelisting |
+| `ssh_security.go` | SSH key permissions, sshd_config security validation |
+| `auth_failures.go` | Failed login attempts, brute force detection, suspicious IPs |
+
+#### Virtualization Checkers (1 Complete)
+
+| Checker | Key Metrics |
+|---------|-------------|
+| `proxmox.go` | Cluster status (quorum, nodes), VMs/containers (running/stopped), storage (usage, health), replication jobs, backup status, HA services, Proxmox daemon health |
 
 ### AI Providers (All 4 Complete)
 
@@ -483,6 +501,20 @@ chmod 600 /etc/lumo/key.pem
 - ✅ **Integration:** All 4 checkers registered and working with existing diagnostic framework
 - 4 new checkers, ~1,400 lines of code
 
+### ✅ Phase 5.1: Virtualization Platform Support (Complete - 2025-11-16)
+- ✅ **Proxmox VE Checker:** Comprehensive monitoring for Proxmox Virtual Environment
+  - Cluster health: Quorum status, node membership, online/offline detection
+  - VM/Container status: Running/stopped VMs and LXC containers with resource metrics
+  - Storage monitoring: Pool health, usage percentages, active/inactive detection
+  - Replication jobs: Status tracking, error detection
+  - Backup validation: Recent backup success/failure tracking
+  - High Availability: HA service status and managed VM tracking
+  - Daemon health: Critical Proxmox service monitoring (pve-cluster, pvedaemon, pveproxy, etc.)
+- ✅ **Auto-detection:** Automatically skips check if Proxmox not installed
+- ✅ **Selective checking:** Granular control over which Proxmox components to check
+- ✅ **Comprehensive tests:** 12 test cases covering all parsing functions and edge cases
+- 1 new checker (~900 lines implementation + ~750 lines tests)
+
 ### ⏳ Phase 6: Auto-Remediation (Planned)
 - Remediation action registry
 - Risk classification (safe, moderate, critical)
@@ -523,7 +555,7 @@ chmod 600 /etc/lumo/key.pem
 | **internal/ssh** | 30.5% | config, errors, types, retry, session, auth tests | ⚠️ Needs expansion |
 | **internal/ai** | 27.1% | prompts_test.go, provider_test.go, testing.go | ⚠️ Needs expansion |
 
-#### Test Files Added (25 files, 11,059 total lines):
+#### Test Files Added (26 files, 11,800+ total lines):
 
 **CMD Package Tests (1,177 lines, 86 test cases):**
 - `cmd/lumo/diagnose_test.go` - CLI formatting functions, localhost detection, AI analysis output (67 test cases)
@@ -538,7 +570,7 @@ chmod 600 /etc/lumo/key.pem
 - `internal/ssh/session_test.go` - Security tests for shellQuote and sanitizeWorkingDir
 - `internal/ssh/auth_test.go` - Key validation, key type detection (18 tests)
 
-**Diagnostics Tests (6,198 lines):**
+**Diagnostics Tests (6,950+ lines):**
 - `internal/diagnostics/testing.go` - **MockChecker for integration testing** (65 lines)
 - `internal/diagnostics/runner_test.go` - Runner orchestration, parallel/sequential execution (18 tests)
 - `internal/diagnostics/executor_test.go` - LocalExecutor with context support (7 tests)
@@ -548,6 +580,7 @@ chmod 600 /etc/lumo/key.pem
 - `internal/diagnostics/checkers/network_test.go` - Network checker + Run() tests
 - `internal/diagnostics/checkers/process_test.go` - Process checker tests
 - `internal/diagnostics/checkers/service_test.go` - Service checker + Run() tests
+- `internal/diagnostics/checkers/proxmox_test.go` - **Proxmox checker with comprehensive tests** (750+ lines, 12 test cases)
 - `internal/diagnostics/formatters/text_test.go` - Text formatter (98.1% coverage)
 - `internal/diagnostics/result_test.go` - CheckResult and Report types
 - `internal/diagnostics/severity_test.go` - Severity and threshold types
