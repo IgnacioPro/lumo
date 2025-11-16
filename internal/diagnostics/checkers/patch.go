@@ -161,7 +161,7 @@ func (p *PatchChecker) parseOSRelease(content string) (string, string) {
 
 // detectPackageManager detects the package manager by checking for binaries
 func (p *PatchChecker) detectPackageManager(ctx context.Context, executor diagnostics.CommandExecutor) (string, error) {
-	managers := []string{"apt", "dnf", "yum", "apk", "pacman"}
+	managers := []string{"apt", "dnf", "yum", "apk", "pacman", "brew"}
 
 	for _, mgr := range managers {
 		_, _, exitCode, _ := executor.ExecuteWithContext(ctx, fmt.Sprintf("which %s 2>/dev/null", mgr))
@@ -184,6 +184,8 @@ func (p *PatchChecker) getAvailableUpdates(ctx context.Context, executor diagnos
 		return p.getApkUpdates(ctx, executor)
 	case "pacman":
 		return p.getPacmanUpdates(ctx, executor)
+	case "brew":
+		return p.getBrewUpdates(ctx, executor)
 	default:
 		return nil, nil, fmt.Errorf("unsupported package manager: %s", pkgManager)
 	}
@@ -327,6 +329,44 @@ func (p *PatchChecker) parsePacmanOutput(output string) ([]string, []string, err
 	}
 
 	// Pacman doesn't distinguish security updates easily
+	return updates, []string{}, nil
+}
+
+// getBrewUpdates gets updates for macOS Homebrew
+func (p *PatchChecker) getBrewUpdates(ctx context.Context, executor diagnostics.CommandExecutor) ([]string, []string, error) {
+	// Update Homebrew database (best effort, don't fail if it times out)
+	executor.ExecuteWithContext(ctx, "brew update 2>/dev/null")
+
+	// Get outdated packages
+	stdout, _, exitCode, err := executor.ExecuteWithContext(ctx, "brew outdated 2>/dev/null")
+	if err != nil || exitCode != 0 {
+		return nil, nil, fmt.Errorf("brew outdated failed: %w", err)
+	}
+
+	return p.parseBrewOutput(stdout)
+}
+
+// parseBrewOutput parses brew outdated output
+func (p *PatchChecker) parseBrewOutput(output string) ([]string, []string, error) {
+	lines := strings.Split(output, "\n")
+	updates := []string{}
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Brew outdated format: "package (version) < new_version"
+		// or just "package"
+		fields := strings.Fields(line)
+		if len(fields) > 0 {
+			updates = append(updates, fields[0])
+		}
+	}
+
+	// Homebrew doesn't distinguish security updates in standard output
+	// but all updates should be applied for security
 	return updates, []string{}, nil
 }
 
