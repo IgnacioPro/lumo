@@ -1,8 +1,8 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-16 (TOON format integration)
+> **Last Updated:** 2025-11-16 (Phase 5 Complete - Security Diagnostics)
 > **Project Version:** 0.4.2
-> **Current Phase:** Phase 4 Complete + Phase 8 In Progress (Testing + Security + TOON Integration)
+> **Current Phase:** Phase 5 Complete (Security Diagnostics) + Phase 8 In Progress (Testing)
 
 This document provides comprehensive guidance for AI assistants working on the Lumo codebase.
 
@@ -25,7 +25,7 @@ This document provides comprehensive guidance for AI assistants working on the L
 - **Language:** Go 1.25.4
 - **Module Path:** `github.com/ignacio/lumo`
 - **Architecture:** Modular CLI with pluggable backends
-- **Current Status:** Phase 4 complete (SSH + Diagnostics + AI with 4 providers + Local execution)
+- **Current Status:** Phase 5 complete (SSH + Enhanced Diagnostics + AI with 4 providers + Security Checks + Advanced Memory Metrics)
 - **License:** MIT
 
 ---
@@ -45,8 +45,10 @@ lumo/
 ├── internal/
 │   ├── config/                    # Configuration management
 │   ├── ssh/                       # SSH client (8 files, 2,410 lines) ✅
-│   ├── diagnostics/               # Diagnostic system (14 files, 4,500+ lines) ✅
-│   │   ├── checkers/             # 6 core checkers (CPU, Memory, Disk, Process, Service, Network)
+│   ├── diagnostics/               # Diagnostic system (18 files, 5,900+ lines) ✅
+│   │   ├── checkers/             # 10 checkers (6 core + 4 security)
+│   │   │                         # Core: CPU, Memory, Disk, Process, Service, Network
+│   │   │                         # Security: Patch Status, Open Ports, SSH Security, Auth Failures
 │   │   └── formatters/           # Output formatters (text, JSON, TOON)
 │   └── ai/                        # AI providers (7 files, 1,964 lines) ✅
 │       ├── anthropic.go          # Claude integration
@@ -56,7 +58,7 @@ lumo/
 └── configs/
     └── config.example.yaml        # Configuration template
 
-Total: 37 Go files (~10,600 lines) + 14 test files (~5,246 lines)
+Total: 41 Go files (~12,000 lines) + 14 test files (~5,246 lines)
 ```
 
 **Directory Purposes:**
@@ -464,26 +466,32 @@ chmod 600 /etc/lumo/key.pem
 - Local execution support (no SSH for localhost)
 - 7 files, 1,964 lines (includes tests)
 
-### 🔄 Phase 4.1: Enhanced Diagnostics (In Progress)
+### ✅ Phase 4.1: Enhanced Diagnostics (Complete - 2025-11-16)
 - ✅ **Memory enhancements:** Top 10 memory consumers per process
-- ⏳ Page fault tracking and memory pressure indicators
-- ⏳ Deep-dive metrics for existing checkers
-- ⏳ Better process-level insights
+- ✅ **Page fault tracking:** Total, major, and minor page faults (Linux: /proc/vmstat, macOS: vm_stat)
+- ✅ **Memory pressure indicators:** Pages throttled, compressions/decompressions, swapins/swapouts, purged pages
+- ✅ **Deep-dive metrics:** Active/Inactive/Wired memory breakdown, File-backed vs Anonymous pages
+- ✅ **Pressure warnings:** Automatic alerts in text format when memory pressure is significant
+- ✅ **Cross-platform:** Full support for both Linux (/proc/meminfo + /proc/vmstat) and macOS (vm_stat)
 
-### ⏳ Phase 5: Auto-Remediation (Planned)
+### ✅ Phase 5: Security Diagnostics (Complete - 2025-11-16)
+- ✅ **Patch Status Checker:** Detects available system updates and security patches across multiple package managers (apt, yum, dnf, apk, pacman)
+- ✅ **Open Ports Checker:** Identifies listening services, public vs localhost ports, unexpected ports, with configurable whitelisting
+- ✅ **SSH Security Checker:** Validates SSH key permissions (600 for private keys), analyzes sshd_config for security issues (PermitRootLogin, PasswordAuthentication, etc.)
+- ✅ **Auth Failures Checker:** Parses authentication logs to detect failed login attempts, brute force attacks, and suspicious IPs
+- ✅ **Configuration:** Security settings in config.yaml (whitelisted_ports, lookback_hours, failure_threshold)
+- ✅ **Integration:** All 4 checkers registered and working with existing diagnostic framework
+- 4 new checkers, ~1,400 lines of code
+
+### ⏳ Phase 6: Auto-Remediation (Planned)
 - Remediation action registry
 - Risk classification (safe, moderate, critical)
 - Human-in-the-loop approval
 - Rollback support, audit logging
 
-### ⏳ Phase 6: Reporting (Planned)
+### ⏳ Phase 7: Reporting (Planned)
 - Multiple formats (Markdown, JSON, YAML, HTML)
 - Historical data, trend analysis
-
-### ⏳ Phase 7: API Server (Planned)
-- REST API + WebSocket
-- Authentication, rate limiting
-- OpenAPI/Swagger docs
 
 ### ✅ Phase 8: Testing & Documentation (Substantially Complete)
 **Status:** Comprehensive test coverage achieved across all core packages
@@ -561,6 +569,11 @@ chmod 600 /etc/lumo/key.pem
 6. Integration tests with real SSH connections
 7. E2E tests for full diagnostic flows
 8. GoDoc comments for exported functions
+
+### ⏳ Phase 9: API Server (Planned)
+- REST API + WebSocket
+- Authentication, rate limiting
+- OpenAPI/Swagger docs
 
 ---
 
