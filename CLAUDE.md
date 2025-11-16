@@ -488,35 +488,39 @@ chmod 600 /etc/lumo/key.pem
 ### ✅ Phase 8: Testing & Documentation (Substantially Complete)
 **Status:** Comprehensive test coverage achieved across all core packages
 
-**Overall Test Coverage: 37.1%** (5,917 lines of test code)
+**Overall Test Coverage: 44.7%** (8,679 lines of test code) - **Updated 2025-11-16**
 
 #### Package Coverage Status:
 
 | Package | Coverage | Test Files | Status |
 |---------|----------|------------|--------|
-| **internal/diagnostics/formatters** | 100.0% | text_test.go | ✅ Complete |
+| **internal/diagnostics/formatters** | 98.1% | text_test.go | ✅ Excellent |
+| **internal/diagnostics** | 92.1% | result, severity, runner, executor tests | ✅ Excellent |
 | **internal/config** | 68.8% | config_test.go, config_api_key_test.go | ✅ Good |
 | **internal/diagnostics/checkers** | 61.2% | cpu, disk, memory, network, process, service tests | ✅ Good |
-| **internal/diagnostics** | 54.1% | result_test.go, severity_test.go | ✅ Solid |
-| **internal/ai** | 27.0% | prompts_test.go, provider_test.go | ⚠️ Needs expansion |
-| **internal/ssh** | 16.3% | config_test.go, errors_test.go, types_test.go | ⚠️ Needs expansion |
+| **internal/ai** | 28.5% | prompts_test.go, provider_test.go | ⚠️ Needs expansion |
+| **internal/ssh** | 28.4% | config, errors, types, retry, session tests | ⚠️ Needs expansion |
 | **cmd/lumo** | 0.0% | (none) | ❌ Not started |
 
-#### Test Files Added (15 files, 5,917 total lines):
+#### Test Files Added (20 files, 8,679 total lines):
 
-**SSH Package Tests (1,230 lines):**
+**SSH Package Tests (2,119 lines):**
 - `internal/ssh/config_test.go` - ClientConfig validation, key handling
 - `internal/ssh/errors_test.go` - All error types, helper functions
 - `internal/ssh/types_test.go` - Enums, CommandResult, constants
+- `internal/ssh/retry_test.go` - Retry logic, exponential backoff, context handling (23 tests)
+- `internal/ssh/session_test.go` - Security tests for shellQuote and sanitizeWorkingDir
 
-**Diagnostics Tests (4,207 lines):**
+**Diagnostics Tests (6,090 lines):**
+- `internal/diagnostics/runner_test.go` - Runner orchestration, parallel/sequential execution (18 tests)
+- `internal/diagnostics/executor_test.go` - LocalExecutor with context support (7 tests)
 - `internal/diagnostics/checkers/cpu_test.go` - CPU checker with mock executor
 - `internal/diagnostics/checkers/disk_test.go` - Disk checker tests
-- `internal/diagnostics/checkers/memory_test.go` - Memory checker tests with security validations (48 test cases covering command injection prevention, input validation, sanitization)
+- `internal/diagnostics/checkers/memory_test.go` - Memory checker tests with security validations (48 test cases)
 - `internal/diagnostics/checkers/network_test.go` - Network checker + Run() tests
 - `internal/diagnostics/checkers/process_test.go` - Process checker tests
 - `internal/diagnostics/checkers/service_test.go` - Service checker + Run() tests
-- `internal/diagnostics/formatters/text_test.go` - Text formatter (100% coverage)
+- `internal/diagnostics/formatters/text_test.go` - Text formatter (98.1% coverage)
 - `internal/diagnostics/result_test.go` - CheckResult and Report types
 - `internal/diagnostics/severity_test.go` - Severity and threshold types
 
@@ -546,21 +550,29 @@ chmod 600 /etc/lumo/key.pem
 - ✅ Created 48 test cases with mock executor pattern
 - ✅ All tests passing, functionality preserved
 
+#### Recent Test Additions (2025-11-16):
+
+**Coverage Improvement: 37.1% → 44.7% (+7.6%)**
+
+- ✅ SSH retry tests: 100% coverage on retry.go (exponential backoff, context handling)
+- ✅ SSH session helper tests: Security validations for command injection prevention
+- ✅ Diagnostics runner tests: 92.1% package coverage (orchestration, parallel/sequential execution)
+- ✅ Diagnostics executor tests: LocalExecutor with full context and timeout support
+
 #### Remaining Work for Higher Coverage:
 
-**High Priority:**
-1. **cmd/lumo (0%)** - CLI command tests
-2. **AI providers (27%)** - HTTP client tests for Anthropic, OpenAI, Ollama, Gemini
-3. **SSH package (16.3%)** - Auth flow tests, retry logic tests
+**High Priority (to reach 80% total):**
+1. **cmd/lumo (0%)** - CLI command tests (biggest impact)
+2. **SSH package (28.4% → 70%)** - Auth flow tests, client operations, health monitoring
+3. **AI providers (28.5% → 70%)** - HTTP client tests for Anthropic, OpenAI, Ollama, Gemini
 
 **Medium Priority:**
-4. **Checkers (61.2%)** - Additional edge case coverage for parsing functions
-5. **Diagnostics core (54.1%)** - Runner orchestration and parallel execution tests
+4. **Checkers (61.2% → 85%)** - Additional edge case coverage for parsing functions
 
 **Future:**
-6. Integration tests with real SSH connections
-7. E2E tests for full diagnostic flows
-8. GoDoc comments for exported functions
+5. Integration tests with real SSH connections
+6. E2E tests for full diagnostic flows
+7. GoDoc comments for exported functions
 
 ---
 
