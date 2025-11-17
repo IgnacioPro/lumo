@@ -2,6 +2,7 @@ package checkers
 
 import (
 	"context"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -802,13 +803,13 @@ func TestProxmoxChecker_ParseCephOSDStat(t *testing.T) {
 	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
 
 	tests := []struct {
-		name            string
-		input           string
-		expectedTotal   int
-		expectedUp      int
-		expectedIn      int
-		expectedDown    int
-		expectedOut     int
+		name          string
+		input         string
+		expectedTotal int
+		expectedUp    int
+		expectedIn    int
+		expectedDown  int
+		expectedOut   int
 	}{
 		{
 			name:          "all OSDs healthy",
@@ -913,9 +914,9 @@ func TestProxmoxChecker_ParseCephDF(t *testing.T) {
 	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
 
 	tests := []struct {
-		name               string
-		input              string
-		expectedUsedPct    float64
+		name                 string
+		input                string
+		expectedUsedPct      float64
 		expectedNonZeroTotal bool
 	}{
 		{
@@ -923,7 +924,7 @@ func TestProxmoxChecker_ParseCephDF(t *testing.T) {
 			input: `--- GLOBAL ---
 TOTAL     USED       AVAIL      RAW USED     %RAW USED
 100 GiB   50 GiB     50 GiB     50 GiB       50.00%`,
-			expectedUsedPct:    50.0,
+			expectedUsedPct:      50.0,
 			expectedNonZeroTotal: true,
 		},
 		{
@@ -931,7 +932,7 @@ TOTAL     USED       AVAIL      RAW USED     %RAW USED
 			input: `--- GLOBAL ---
 TOTAL      USED        AVAIL       RAW USED     %RAW USED
 1000 GiB   850 GiB     150 GiB     850 GiB      85.00%`,
-			expectedUsedPct:    85.0,
+			expectedUsedPct:      85.0,
 			expectedNonZeroTotal: true,
 		},
 		{
@@ -939,7 +940,7 @@ TOTAL      USED        AVAIL       RAW USED     %RAW USED
 			input: `--- GLOBAL ---
 TOTAL    USED     AVAIL    RAW USED     %RAW USED
 10 TiB   5 TiB    5 TiB    5 TiB        50.00%`,
-			expectedUsedPct:    50.0,
+			expectedUsedPct:      50.0,
 			expectedNonZeroTotal: true,
 		},
 	}
@@ -950,7 +951,7 @@ TOTAL    USED     AVAIL    RAW USED     %RAW USED
 			checker.parseCephDF(tt.input, info)
 
 			// Allow 1% tolerance for floating point
-			if abs := tt.expectedUsedPct - info.UsedPercent; abs > 1.0 && abs < -1.0 {
+			if abs := tt.expectedUsedPct - info.UsedPercent; math.Abs(abs) > 1.0 {
 				t.Errorf("expected used percent %.2f%%, got %.2f%%",
 					tt.expectedUsedPct, info.UsedPercent)
 			}
