@@ -168,7 +168,7 @@ func TestValidateKeyFile_PermissionChecks(t *testing.T) {
 			if err := os.WriteFile(filePath, []byte("test"), tc.perm); err != nil {
 				t.Fatalf("Failed to create test file: %v", err)
 			}
-			defer os.Remove(filePath)
+			defer func() { _ = os.Remove(filePath) }()
 
 			err := validateKeyFile(filePath)
 

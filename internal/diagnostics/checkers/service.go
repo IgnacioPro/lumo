@@ -199,6 +199,7 @@ func (s *ServiceChecker) parseSystemdOutput(output string) ([]ServiceInfo, error
 
 		// Map systemd states to our standard states
 		state := "inactive"
+		//nolint:staticcheck // Simple if-else is clearer than switch for 2-3 cases
 		if activeState == "active" {
 			state = "running"
 		} else if activeState == "failed" {

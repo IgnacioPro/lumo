@@ -183,7 +183,7 @@ func (p *OllamaProvider) Health(ctx context.Context) error {
 			Retryable: true,
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return &Error{
@@ -241,7 +241,7 @@ func (p *OllamaProvider) callAPI(ctx context.Context, req *ollamaRequest) (strin
 			Retryable: true,
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -284,7 +284,7 @@ func (p *OllamaProvider) streamAPI(ctx context.Context, req *ollamaRequest, ch c
 			Retryable: true,
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

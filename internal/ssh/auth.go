@@ -2,7 +2,6 @@ package ssh
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"strings"
@@ -86,12 +85,12 @@ func trySSHAgent() (ssh.AuthMethod, error) {
 	// Test if agent has any keys
 	signers, err := agentClient.Signers()
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("failed to get signers from SSH agent: %w", err)
 	}
 
 	if len(signers) == 0 {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("SSH agent has no keys loaded")
 	}
 
@@ -163,7 +162,7 @@ func tryInteractive(user, host string) ssh.AuthMethod {
 			if echos[i] {
 				// Echo is enabled, read normally
 				fmt.Printf("%s ", question)
-				fmt.Scanln(&answer)
+				_, _ = fmt.Scanln(&answer)
 			} else {
 				// Echo is disabled, read password securely
 				fmt.Printf("%s ", question)
@@ -251,31 +250,6 @@ func getHostKeyCallback(config *ClientConfig) (ssh.HostKeyCallback, error) {
 }
 
 // getKeyFromAgent retrieves a specific key from the SSH agent
-func getKeyFromAgent() (ssh.Signer, error) {
-	socket := os.Getenv("SSH_AUTH_SOCK")
-	if socket == "" {
-		return nil, fmt.Errorf("SSH_AUTH_SOCK not set")
-	}
-
-	conn, err := net.Dial("unix", socket)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to SSH agent: %w", err)
-	}
-	defer conn.Close()
-
-	agentClient := agent.NewClient(conn)
-	signers, err := agentClient.Signers()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get signers from SSH agent: %w", err)
-	}
-
-	if len(signers) == 0 {
-		return nil, fmt.Errorf("no keys available in SSH agent")
-	}
-
-	// Return the first signer
-	return signers[0], nil
-}
 
 // validateKeyFile checks if a key file exists and has correct permissions
 func validateKeyFile(keyPath string) error {
@@ -314,37 +288,5 @@ func detectKeyType(keyBytes []byte) string {
 }
 
 // readPasswordFromStdin reads a password from stdin without echo
-func readPasswordFromStdin(prompt string) (string, error) {
-	fmt.Print(prompt)
-
-	// Check if stdin is a terminal
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		// If not a terminal, read directly from stdin
-		var password string
-		_, err := fmt.Scanln(&password)
-		return password, err
-	}
-
-	// Read password securely
-	passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Println() // Add newline
-
-	if err != nil {
-		return "", err
-	}
-
-	return string(passwordBytes), nil
-}
 
 // readLineFromStdin reads a line from stdin
-func readLineFromStdin(prompt string) (string, error) {
-	fmt.Print(prompt)
-
-	var line string
-	_, err := fmt.Scanln(&line)
-	if err != nil && err != io.EOF {
-		return "", err
-	}
-
-	return line, nil
-}

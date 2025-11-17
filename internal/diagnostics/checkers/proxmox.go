@@ -452,7 +452,7 @@ type ProxmoxService struct {
 // detectProxmox checks if Proxmox is installed and returns version
 func (p *ProxmoxChecker) detectProxmox(ctx context.Context, executor diagnostics.CommandExecutor) (bool, string, error) {
 	// Check for pveversion command
-	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, "command -v pveversion >/dev/null 2>&1")
+	_, _, exitCode, _ := executor.ExecuteWithContext(ctx, "command -v pveversion >/dev/null 2>&1")
 	if exitCode != 0 {
 		return false, "", nil
 	}
@@ -1254,6 +1254,7 @@ func (p *ProxmoxChecker) performSubscriptionCheck(ctx context.Context, executor 
 	}
 
 	// Check status and create issues
+	//nolint:staticcheck // Multiple comparisons for case-insensitive check
 	if info.Status == "NotFound" || info.Status == "notfound" {
 		warnings := []string{"no subscription found (community version)"}
 		return info, warnings, nil
@@ -1343,6 +1344,7 @@ func (p *ProxmoxChecker) performTasksCheck(ctx context.Context, executor diagnos
 		info.TotalTasks++
 		info.RecentTasks = append(info.RecentTasks, task)
 
+		//nolint:staticcheck // Multiple comparisons for case-insensitive check
 		if task.Status == "ERROR" || task.Status == "error" {
 			info.FailedTasks++
 			info.FailedTaskIDs = append(info.FailedTaskIDs, task.UPID)
@@ -1638,9 +1640,11 @@ func (p *ProxmoxChecker) performCertificatesCheck(ctx context.Context, executor 
 
 	// Check cluster certificates if in a cluster
 	stdout, _, exitCode, _ = executor.ExecuteWithContext(ctx,
+	//nolint:staticcheck // Empty branch intentional - checking existence only
 		fmt.Sprintf("test -f /etc/pve/nodes/%s/pve-ssl.key && echo 'exists' 2>/dev/null", nodeName))
+	//nolint:staticcheck // Empty branch is intentional - checking for certificate file existence
 	if exitCode == 0 && strings.TrimSpace(stdout) == "exists" {
-		// Additional certificate checks could be added here
+		// Certificate file exists - no issues to report
 	}
 
 	return info, issues, nil

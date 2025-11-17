@@ -57,12 +57,6 @@ func (m *mockChecker) Run(ctx context.Context, executor CommandExecutor) (*Check
 	}, nil
 }
 
-func (m *mockChecker) getCallCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.callCount
-}
-
 // Mock executor for testing
 type mockExecutor struct {
 	executeFunc func(command string, timeout time.Duration) (string, string, int, error)

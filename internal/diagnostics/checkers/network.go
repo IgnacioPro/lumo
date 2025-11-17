@@ -320,9 +320,10 @@ func (n *NetworkChecker) parseIfconfig(output string) ([]NetworkInterface, error
 					statusVal := fields[len(fields)-1]
 					currentIface.Status = statusVal
 					// Override state based on actual status
-					if statusVal == "active" {
+					switch statusVal {
+					case "active":
 						currentIface.State = "up"
-					} else if statusVal == "inactive" {
+					case "inactive":
 						currentIface.State = "down"
 					}
 				}
@@ -361,6 +362,8 @@ func (n *NetworkChecker) getConnectionCount(ctx context.Context, executor diagno
 }
 
 // testDNS tests DNS resolution latency
+//
+//nolint:unused
 func (n *NetworkChecker) testDNS(ctx context.Context, executor diagnostics.CommandExecutor) (float64, error) {
 	// Use dig with timing if available, fallback to nslookup
 	startTime := time.Now()
@@ -375,6 +378,8 @@ func (n *NetworkChecker) testDNS(ctx context.Context, executor diagnostics.Comma
 }
 
 // testConnectivity tests connectivity to a common host
+//
+//nolint:unused
 func (n *NetworkChecker) testConnectivity(ctx context.Context, executor diagnostics.CommandExecutor) (*ConnectivityResult, error) {
 	host := "8.8.8.8" // Google DNS
 	count := 4
