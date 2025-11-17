@@ -187,11 +187,12 @@ func (p *AnthropicProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequ
 // Health checks if the Anthropic API is accessible.
 func (p *AnthropicProvider) Health(ctx context.Context) error {
 	// Simple health check: send a minimal request
+	// Use 100 tokens for consistency with other providers and to accommodate potential future changes
 	req := &anthropicRequest{
 		Model:     p.config.Model,
-		MaxTokens: 10,
+		MaxTokens: 100,
 		Messages: []anthropicMessage{
-			{Role: "user", Content: "test"},
+			{Role: "user", Content: "Respond with 'OK'"},
 		},
 	}
 

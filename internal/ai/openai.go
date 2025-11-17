@@ -185,11 +185,13 @@ func (p *OpenAIProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest
 // Health checks if the OpenAI API is accessible.
 func (p *OpenAIProvider) Health(ctx context.Context) error {
 	// Simple health check: send a minimal request
+	// Note: Use 100 tokens to accommodate models with reasoning capabilities (e.g., gpt-5-nano)
+	// which may use tokens for reasoning before generating content
 	req := &openaiRequest{
 		Model:              p.config.Model,
-		MaxCompletionTokens: 10,
+		MaxCompletionTokens: 100,
 		Messages: []openaiMessage{
-			{Role: "user", Content: "test"},
+			{Role: "user", Content: "Respond with 'OK'"},
 		},
 	}
 
