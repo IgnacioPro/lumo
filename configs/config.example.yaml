@@ -44,7 +44,7 @@ ai:
   # Enable AI-powered analysis (set to false to disable)
   enabled: true
 
-  # Primary AI provider: anthropic, openai, ollama, or gemini
+  # Primary AI provider: anthropic, openai, ollama, gemini, or openrouter
   provider: anthropic
 
   # API key: DO NOT set here! Use environment variable instead:
@@ -61,6 +61,7 @@ ai:
     openai: gpt-4-turbo-preview
     ollama: llama3.1:8b
     gemini: gemini-2.0-flash-exp
+    openrouter: anthropic/claude-sonnet-4.5  # OpenRouter provides access to multiple models
 
   # Custom API endpoint (optional, leave empty for defaults)
   # Examples:
@@ -232,6 +233,7 @@ diagnostics:
 #   LUMO_OPENAI_API_KEY=sk-...          # OpenAI GPT API key
 #   LUMO_GEMINI_API_KEY=...             # Google Gemini API key
 #   LUMO_OLLAMA_API_KEY=...             # Ollama API key (usually not needed for local)
+#   LUMO_OPENROUTER_API_KEY=sk-or-...   # OpenRouter API key (unified access to multiple LLMs)
 #
 # AI - Generic fallback (works but requires changing when switching providers):
 #   LUMO_AI_API_KEY=sk-...              # Generic API key (fallback if provider-specific not set)
