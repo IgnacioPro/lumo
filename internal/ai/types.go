@@ -254,6 +254,11 @@ type ProviderConfig struct {
 	// MaxTokens limits response length
 	MaxTokens int
 
+	// ReasoningEffort controls reasoning token usage for OpenAI reasoning models
+	// Options: "low", "medium", "high" (empty = default)
+	// Only applies to reasoning models (o1, o3, gpt-5-nano, etc.)
+	ReasoningEffort string
+
 	// CustomHeaders for API requests
 	CustomHeaders map[string]string
 }
