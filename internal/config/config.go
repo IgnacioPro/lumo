@@ -32,16 +32,17 @@ type SSHConfig struct {
 
 // AIConfig contains AI provider settings
 type AIConfig struct {
-	Provider    string            `mapstructure:"provider"`
-	APIKey      string            `mapstructure:"api_key"`
-	Model       string            `mapstructure:"model"`
-	Models      map[string]string `mapstructure:"models"`   // Per-provider model overrides
-	Endpoint    string            `mapstructure:"endpoint"` // Custom endpoint (optional)
-	Timeout     time.Duration     `mapstructure:"timeout"`
-	MaxRetries  int               `mapstructure:"max_retries"`
-	Temperature float64           `mapstructure:"temperature"` // 0.0-1.0 (default 1.0)
-	MaxTokens   int               `mapstructure:"max_tokens"`  // Maximum response tokens
-	Enabled     bool              `mapstructure:"enabled"`     // Enable/disable AI analysis
+	Provider        string            `mapstructure:"provider"`
+	APIKey          string            `mapstructure:"api_key"`
+	Model           string            `mapstructure:"model"`
+	Models          map[string]string `mapstructure:"models"`   // Per-provider model overrides
+	Endpoint        string            `mapstructure:"endpoint"` // Custom endpoint (optional)
+	Timeout         time.Duration     `mapstructure:"timeout"`
+	MaxRetries      int               `mapstructure:"max_retries"`
+	Temperature     float64           `mapstructure:"temperature"`      // 0.0-1.0 (default 1.0)
+	MaxTokens       int               `mapstructure:"max_tokens"`       // Maximum response tokens
+	ReasoningEffort string            `mapstructure:"reasoning_effort"` // For OpenAI reasoning models: "low", "medium", "high"
+	Enabled         bool              `mapstructure:"enabled"`          // Enable/disable AI analysis
 }
 
 // LoggingConfig contains logging settings
@@ -187,9 +188,9 @@ func DefaultConfig() *Config {
 				},
 			},
 			Kubernetes: KubernetesConfig{
-				Enabled:           false, // Disabled by default, enable via config or --checks kubernetes
-				KubeconfigPath:    "",    // Use default ~/.kube/config
-				Context:           "",    // Use current context
+				Enabled:           false,      // Disabled by default, enable via config or --checks kubernetes
+				KubeconfigPath:    "",         // Use default ~/.kube/config
+				Context:           "",         // Use current context
 				Namespaces:        []string{}, // All namespaces
 				CheckNodes:        true,
 				CheckPods:         true,
@@ -237,8 +238,8 @@ func (c *Config) Validate() error {
 			"openai":    true,
 			"ollama":    true,
 			"gemini":    true,
-			"local":     true,  // Alias for ollama
-			"google":    true,  // Alias for gemini
+			"local":     true, // Alias for ollama
+			"google":    true, // Alias for gemini
 		}
 		if !validProviders[c.AI.Provider] {
 			return fmt.Errorf("unsupported AI provider: %s (supported: anthropic, openai, ollama, gemini)", c.AI.Provider)
@@ -252,6 +253,18 @@ func (c *Config) Validate() error {
 		// Validate max tokens
 		if c.AI.MaxTokens < 1 {
 			return fmt.Errorf("AI max_tokens must be positive, got: %d", c.AI.MaxTokens)
+		}
+
+		// Validate reasoning effort (if specified)
+		if c.AI.ReasoningEffort != "" {
+			validEfforts := map[string]bool{
+				"low":    true,
+				"medium": true,
+				"high":   true,
+			}
+			if !validEfforts[c.AI.ReasoningEffort] {
+				return fmt.Errorf("AI reasoning_effort must be 'low', 'medium', or 'high', got: %s", c.AI.ReasoningEffort)
+			}
 		}
 
 		// Validate API key for cloud providers
