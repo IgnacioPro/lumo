@@ -9,16 +9,16 @@ import (
 
 // MockProvider is a test double for the Provider interface
 type MockProvider struct {
-	ProviderName   string
-	ProviderModel  string
-	HealthError    error
-	AnalyzeError   error
-	AnalyzeResult  *AnalysisResponse
-	AnalyzeFunc    func(ctx context.Context, req *AnalysisRequest) (*AnalysisResponse, error)
-	HealthFunc     func(ctx context.Context) error
-	StreamFunc     func(ctx context.Context, req *AnalysisRequest, callback func(string) error) (*AnalysisResponse, error)
-	CallCount      int
-	LastRequest    *AnalysisRequest
+	ProviderName  string
+	ProviderModel string
+	HealthError   error
+	AnalyzeError  error
+	AnalyzeResult *AnalysisResponse
+	AnalyzeFunc   func(ctx context.Context, req *AnalysisRequest) (*AnalysisResponse, error)
+	HealthFunc    func(ctx context.Context) error
+	StreamFunc    func(ctx context.Context, req *AnalysisRequest, callback func(string) error) (*AnalysisResponse, error)
+	CallCount     int
+	LastRequest   *AnalysisRequest
 }
 
 // Name returns the provider name
@@ -64,14 +64,14 @@ func (m *MockProvider) Analyze(ctx context.Context, req *AnalysisRequest) (*Anal
 
 	// Default successful response
 	return &AnalysisResponse{
-		Summary:       "System is healthy",
-		OverallHealth: HealthHealthy,
-		Confidence:    0.95,
-		Provider:      m.Name(),
-		Model:         m.Model(),
-		Timestamp:     time.Now(),
-		Duration:      100 * time.Millisecond,
-		Findings:      []Finding{},
+		Summary:         "System is healthy",
+		OverallHealth:   HealthHealthy,
+		Confidence:      0.95,
+		Provider:        m.Name(),
+		Model:           m.Model(),
+		Timestamp:       time.Now(),
+		Duration:        100 * time.Millisecond,
+		Findings:        []Finding{},
 		Recommendations: []Recommendation{},
 	}, nil
 }
@@ -99,14 +99,14 @@ func (m *MockProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest, 
 // NewMockAnalysisResponse creates a mock analysis response for testing
 func NewMockAnalysisResponse(health HealthStatus, findings int, recommendations int) *AnalysisResponse {
 	resp := &AnalysisResponse{
-		Summary:       "Mock analysis complete",
-		OverallHealth: health,
-		Confidence:    0.90,
-		Provider:      "mock",
-		Model:         "mock-v1",
-		Timestamp:     time.Now(),
-		Duration:      50 * time.Millisecond,
-		Findings:      []Finding{},
+		Summary:         "Mock analysis complete",
+		OverallHealth:   health,
+		Confidence:      0.90,
+		Provider:        "mock",
+		Model:           "mock-v1",
+		Timestamp:       time.Now(),
+		Duration:        50 * time.Millisecond,
+		Findings:        []Finding{},
 		Recommendations: []Recommendation{},
 		TokensUsed: &TokenUsage{
 			InputTokens:  100,

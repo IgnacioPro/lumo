@@ -153,9 +153,9 @@ func (n *NetworkChecker) Run(ctx context.Context, executor diagnostics.CommandEx
 // NetworkInterface holds information about a network interface
 type NetworkInterface struct {
 	Name       string `json:"name"`
-	State      string `json:"state"`       // up, down, inactive, unknown
-	IPAddress  string `json:"ip_address"`  // IPv4 address
-	MACAddress string `json:"mac_address"` // Hardware address
+	State      string `json:"state"`            // up, down, inactive, unknown
+	IPAddress  string `json:"ip_address"`       // IPv4 address
+	MACAddress string `json:"mac_address"`      // Hardware address
 	Status     string `json:"status,omitempty"` // active, inactive, unknown (from status line)
 }
 
@@ -320,12 +320,12 @@ func (n *NetworkChecker) parseIfconfig(output string) ([]NetworkInterface, error
 					statusVal := fields[len(fields)-1]
 					currentIface.Status = statusVal
 					// Override state based on actual status
-				switch statusVal {
-				case "active":
-					currentIface.State = "up"
-				case "inactive":
-					currentIface.State = "down"
-				}
+					switch statusVal {
+					case "active":
+						currentIface.State = "up"
+					case "inactive":
+						currentIface.State = "down"
+					}
 				}
 			}
 
@@ -360,8 +360,6 @@ func (n *NetworkChecker) getConnectionCount(ctx context.Context, executor diagno
 
 	return count, nil
 }
-
-
 
 // testTarget tests connectivity to a specific network target
 func (n *NetworkChecker) testTarget(ctx context.Context, executor diagnostics.CommandExecutor, target config.NetworkTarget) TargetResult {

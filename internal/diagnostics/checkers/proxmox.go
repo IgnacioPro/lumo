@@ -1639,9 +1639,9 @@ func (p *ProxmoxChecker) performCertificatesCheck(ctx context.Context, executor 
 	}
 
 	// Check cluster certificates if in a cluster
-	// Additional certificate checks could be added here if needed
+	// Additional certificate checks could be added in the future
 	_, _, _, _ = executor.ExecuteWithContext(ctx,
-		fmt.Sprintf("test -f /etc/pve/nodes/%s/pve-ssl.key 2>/dev/null", nodeName))
+		fmt.Sprintf("test -f /etc/pve/nodes/%s/pve-ssl.key && echo 'exists' 2>/dev/null", nodeName))
 
 	return info, issues, nil
 }

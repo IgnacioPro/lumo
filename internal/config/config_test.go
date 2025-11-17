@@ -144,6 +144,57 @@ func TestValidate(t *testing.T) {
 			wantErr: true,
 			errMsg:  "key_file",
 		},
+		{
+			name: "valid reasoning_effort - low",
+			cfg: &Config{
+				SSH:     SSHConfig{Port: 22},
+				AI:      AIConfig{Provider: "openai", APIKey: "key", ReasoningEffort: "low"},
+				Logging: LoggingConfig{Level: "info", Format: "text"},
+				API:     APIConfig{Port: 8080},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid reasoning_effort - medium",
+			cfg: &Config{
+				SSH:     SSHConfig{Port: 22},
+				AI:      AIConfig{Provider: "openai", APIKey: "key", ReasoningEffort: "medium"},
+				Logging: LoggingConfig{Level: "info", Format: "text"},
+				API:     APIConfig{Port: 8080},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid reasoning_effort - high",
+			cfg: &Config{
+				SSH:     SSHConfig{Port: 22},
+				AI:      AIConfig{Provider: "openai", APIKey: "key", ReasoningEffort: "high"},
+				Logging: LoggingConfig{Level: "info", Format: "text"},
+				API:     APIConfig{Port: 8080},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid reasoning_effort - empty (default)",
+			cfg: &Config{
+				SSH:     SSHConfig{Port: 22},
+				AI:      AIConfig{Provider: "openai", APIKey: "key", ReasoningEffort: ""},
+				Logging: LoggingConfig{Level: "info", Format: "text"},
+				API:     APIConfig{Port: 8080},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid reasoning_effort",
+			cfg: &Config{
+				SSH:     SSHConfig{Port: 22},
+				AI:      AIConfig{Provider: "openai", APIKey: "key", ReasoningEffort: "invalid", Enabled: true, MaxTokens: 4096, Temperature: 1.0},
+				Logging: LoggingConfig{Level: "info", Format: "text"},
+				API:     APIConfig{Port: 8080},
+			},
+			wantErr: true,
+			errMsg:  "reasoning_effort",
+		},
 	}
 
 	for _, tt := range tests {
@@ -166,10 +217,10 @@ func TestValidate(t *testing.T) {
 
 func TestGetModelForProvider(t *testing.T) {
 	tests := []struct {
-		name   string
-		config AIConfig
+		name     string
+		config   AIConfig
 		provider string
-		want   string
+		want     string
 	}{
 		{
 			name:     "uses explicit Model field",

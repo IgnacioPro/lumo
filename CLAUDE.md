@@ -130,6 +130,9 @@ export LUMO_OPENROUTER_API_KEY=sk-or-...   # For OpenRouter
 # AI API key - Generic fallback (works but requires changing when switching providers)
 export LUMO_AI_API_KEY=sk-...              # Fallback if provider-specific not set
 
+# AI reasoning effort (for OpenAI reasoning models: o1, o3, gpt-5-nano)
+export LUMO_AI_REASONING_EFFORT=low        # low, medium, or high
+
 # Logging
 export LUMO_LOGGING_LEVEL=debug
 ```
@@ -150,7 +153,13 @@ type Config struct {
 - `provider`: anthropic | openai | ollama | gemini | openrouter
 - `models`: Per-provider model map (defaults in code)
 - `temperature`: 1.0 (standardized across all providers)
-- `max_tokens`: 4096
+- `max_tokens`: 4096 (16384 recommended for OpenAI reasoning models)
+- `reasoning_effort`: low | medium | high (OpenAI reasoning models only: o1, o3, gpt-5-nano)
+  - **Purpose:** Controls reasoning token usage for OpenAI reasoning models
+  - **low:** ~1-2k reasoning tokens, faster responses
+  - **medium:** ~2-4k reasoning tokens (default if not specified)
+  - **high:** ~4-8k reasoning tokens, most thorough analysis
+  - **Note:** Only affects OpenAI reasoning models, ignored by other providers
 
 **API Key Security:** NEVER in config file, ONLY via environment variables:
 - **Recommended:** Provider-specific env vars (`LUMO_ANTHROPIC_API_KEY`, `LUMO_OPENAI_API_KEY`, `LUMO_GEMINI_API_KEY`, `LUMO_OPENROUTER_API_KEY`, etc.)

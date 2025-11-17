@@ -141,7 +141,9 @@ func (p *GeminiProvider) Analyze(ctx context.Context, req *AnalysisRequest) (*An
 			Retryable: true,
 		}
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	// Read response body
 	respBody, err := io.ReadAll(resp.Body)
@@ -420,7 +422,7 @@ type geminiRequest struct {
 }
 
 type geminiContent struct {
-	Role  string        `json:"role"`
+	Role  string       `json:"role"`
 	Parts []geminiPart `json:"parts"`
 }
 

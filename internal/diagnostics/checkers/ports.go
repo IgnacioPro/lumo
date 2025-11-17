@@ -53,8 +53,8 @@ type ListeningPort struct {
 	Address     string `json:"address"`  // Listen address (0.0.0.0, 127.0.0.1, ::, etc.)
 	Process     string `json:"process"`  // Process name/command
 	PID         int    `json:"pid"`
-	IsPublic    bool   `json:"is_public"`     // True if listening on 0.0.0.0 or ::
-	IsLocalhost bool   `json:"is_localhost"`  // True if listening on 127.0.0.1 or ::1
+	IsPublic    bool   `json:"is_public"`    // True if listening on 0.0.0.0 or ::
+	IsLocalhost bool   `json:"is_localhost"` // True if listening on 127.0.0.1 or ::1
 }
 
 // Run executes the open ports check

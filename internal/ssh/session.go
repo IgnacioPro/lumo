@@ -103,7 +103,9 @@ func (s *Session) executeCommand(command string, options *CommandOptions, result
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
-	defer func() { _ = session.Close() }()
+	defer func() {
+		_ = session.Close()
+	}()
 
 	// Set up output buffers
 	var stdout, stderr bytes.Buffer
@@ -217,7 +219,9 @@ func (s *Session) executeStreamCommand(command string, stdout, stderr io.Writer,
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
-	defer func() { _ = session.Close() }()
+	defer func() {
+		_ = session.Close()
+	}()
 
 	// Set up output streams
 	session.Stdout = stdout
@@ -390,16 +394,17 @@ func (s *Session) executeCommandWithInput(command string, input io.Reader, optio
 //
 // Algorithm:
 // 1. Wrap the entire string in single quotes
-// 2. Replace any single quotes with: '\''  (end quote, escaped quote, start quote)
+// 2. Replace any single quotes with: '\”  (end quote, escaped quote, start quote)
 //
 // This is the POSIX-standard way to quote shell arguments and handles all edge cases.
 // Examples:
-//   shellQuote("hello")           → 'hello'
-//   shellQuote("hello world")     → 'hello world'
-//   shellQuote("it's")            → 'it'\''s'
-//   shellQuote("a'b'c")           → 'a'\''b'\''c'
-//   shellQuote("$HOME")           → '$HOME'  (literal, not expanded)
-//   shellQuote("`whoami`")        → '`whoami`'  (literal, not executed)
+//
+//	shellQuote("hello")           → 'hello'
+//	shellQuote("hello world")     → 'hello world'
+//	shellQuote("it's")            → 'it'\''s'
+//	shellQuote("a'b'c")           → 'a'\''b'\''c'
+//	shellQuote("$HOME")           → '$HOME'  (literal, not expanded)
+//	shellQuote("`whoami`")        → '`whoami`'  (literal, not executed)
 func shellQuote(s string) string {
 	// Handle empty string
 	if s == "" {

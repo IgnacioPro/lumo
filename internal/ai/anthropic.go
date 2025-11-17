@@ -112,14 +112,14 @@ func (p *AnthropicProvider) Analyze(ctx context.Context, req *AnalysisRequest) (
 
 	// Parse response
 	p.log.WithFields(logrus.Fields{
-		"content_length": len(respContent),
+		"content_length":  len(respContent),
 		"content_preview": truncateString(respContent, 300),
 	}).Debug("Parsing AI response content")
 
 	response, err := ParseAnalysisResponse(respContent, p.Name(), p.config.Model)
 	if err != nil {
 		p.log.WithFields(logrus.Fields{
-			"error": err.Error(),
+			"error":          err.Error(),
 			"content_length": len(respContent),
 		}).Error("Failed to parse analysis response")
 		return nil, &Error{
@@ -253,7 +253,9 @@ func (p *AnthropicProvider) callAPI(ctx context.Context, req *anthropicRequest) 
 			Retryable: true,
 		}
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	// Read the entire response body for logging and parsing
 	body, err := io.ReadAll(resp.Body)
@@ -306,10 +308,10 @@ func (p *AnthropicProvider) callAPI(ctx context.Context, req *anthropicRequest) 
 	}
 
 	p.log.WithFields(logrus.Fields{
-		"content_length":    len(content.String()),
-		"input_tokens":      usage.InputTokens,
-		"output_tokens":     usage.OutputTokens,
-		"total_tokens":      usage.TotalTokens,
+		"content_length": len(content.String()),
+		"input_tokens":   usage.InputTokens,
+		"output_tokens":  usage.OutputTokens,
+		"total_tokens":   usage.TotalTokens,
 	}).Debug("Successfully parsed Anthropic response")
 
 	return content.String(), usage, nil
@@ -338,7 +340,9 @@ func (p *AnthropicProvider) streamAPI(ctx context.Context, req *anthropicRequest
 			Retryable: true,
 		}
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

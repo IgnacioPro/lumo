@@ -147,28 +147,28 @@ func TestNetworkChecker_RunWithErrors(t *testing.T) {
 
 func TestNetworkChecker_GetConnectionCount(t *testing.T) {
 	tests := []struct {
-		name     string
-		output   string
-		want     int
-		wantErr  bool
+		name    string
+		output  string
+		want    int
+		wantErr bool
 	}{
 		{
-			name:     "valid count",
-			output:   "42\n",
-			want:     42,
-			wantErr:  false,
+			name:    "valid count",
+			output:  "42\n",
+			want:    42,
+			wantErr: false,
 		},
 		{
-			name:     "zero connections",
-			output:   "0\n",
-			want:     0,
-			wantErr:  false,
+			name:    "zero connections",
+			output:  "0\n",
+			want:    0,
+			wantErr: false,
 		},
 		{
-			name:     "with whitespace",
-			output:   "  123  \n",
-			want:     123,
-			wantErr:  false,
+			name:    "with whitespace",
+			output:  "  123  \n",
+			want:    123,
+			wantErr: false,
 		},
 	}
 

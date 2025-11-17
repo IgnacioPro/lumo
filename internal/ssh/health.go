@@ -251,7 +251,9 @@ func PingServer(client *ssh.Client) error {
 	if err != nil {
 		return fmt.Errorf("failed to create session for ping: %w", err)
 	}
-	defer func() { _ = session.Close() }()
+	defer func() {
+		_ = session.Close()
+	}()
 
 	// Run a simple command that should always succeed
 	if err := session.Run("true"); err != nil {
