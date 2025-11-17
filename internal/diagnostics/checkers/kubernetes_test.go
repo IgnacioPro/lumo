@@ -67,7 +67,7 @@ func TestMaxSeverity(t *testing.T) {
 		},
 		{
 			name:     "high vs critical",
-			a:        diagnostics.SeverityCritical,
+			a:        diagnostics.SeverityWarning,
 			b:        diagnostics.SeverityCritical,
 			expected: diagnostics.SeverityCritical,
 		},
