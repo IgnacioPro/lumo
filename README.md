@@ -1,491 +1,405 @@
 <div align="center">
-  <img src=".github/images/lumo-logo.png" alt="Lumo Logo" width="200"/>
+
+<img src=".github/images/lumo-logo.png" alt="Lumo Logo" width="200"/>
+
+# 🔦 Lumo
+
+**Intelligent SRE/DevOps Automation Agent**
+
+[![CI](https://github.com/IgnacioPro/lumo/actions/workflows/ci.yml/badge.svg)](https://github.com/IgnacioPro/lumo/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go)](https://golang.org)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Coverage](https://img.shields.io/badge/coverage-50.4%25-yellow.svg)](https://github.com/IgnacioPro/lumo)
+[![Release](https://img.shields.io/badge/version-0.5.0-brightgreen.svg)](https://github.com/IgnacioPro/lumo/releases)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20BSD-lightgrey.svg)](https://github.com/IgnacioPro/lumo)
+
+**AI-powered diagnostics + SSH automation + Kubernetes monitoring = Better SRE workflows**
+
+[Features](#-features) • [Quick Start](#-quick-start) • [Installation](#-installation) • [Documentation](#-documentation) • [Contributing](#-contributing)
+
 </div>
 
-# Lumo
+---
 
-**Lumo** is an intelligent SRE/DevOps automation AGENT that connects to remote servers via SSH, runs comprehensive system diagnostics, and uses AI to analyze issues and suggest fixes. It supports multiple AI providers (Anthropic Claude, OpenAI GPT-4, Ollama, Google Gemini) and works on both remote servers and localhost.
+## 📖 Overview
 
-## Features
+**Lumo** is a modern, intelligent automation agent that connects to your infrastructure, performs comprehensive diagnostics, and leverages AI to help you understand and fix issues faster. Think of it as your AI-powered SRE companion.
 
-### ✅ Implemented
-- **SSH Connection Management**: 4 auth methods (agent, key, password, keyboard-interactive) with retry logic and auto-reconnect
-- **Intelligent Diagnostics**:
-  - 10 automated health checks (6 core + 4 security)
-  - Core: CPU, memory, disk, processes, services, network
-  - Security: Patch status, open ports, SSH security, auth failures
-  - Kubernetes: Native cluster diagnostics (nodes, pods, deployments, services, etc.)
-- **AI-Powered Analysis**: Multi-provider support (Anthropic Claude, OpenAI GPT-4, Ollama, Google Gemini)
-- **Localhost Execution**: Run diagnostics on local machine without SSH overhead
-- **Cross-Platform Support**: Linux, macOS, BSD compatibility
-- **Kubernetes Support**: Native diagnostics using k8s.io/client-go (no kubectl required)
+### What Makes Lumo Different?
 
-### 🚧 Planned
-- **Auto-Remediation**: Automatically fix common issues with smart approval workflows (Phase 5)
-- **Detailed Reporting**: Generate comprehensive reports in markdown, JSON, or YAML (Phase 6)
-- **API Server**: REST API with WebSocket support (Phase 7)
+- 🤖 **Multi-Provider AI Analysis** - Claude, GPT-4, Gemini, Ollama, or OpenRouter
+- 🔌 **Zero-Config Localhost** - Instant diagnostics without SSH overhead
+- ☸️ **Native Kubernetes** - Direct API integration (no kubectl required)
+- 🔐 **Security-First** - Built-in security diagnostics and audit trails
+- 🎯 **Token-Optimized** - TOON format reduces AI costs by 30-60%
+- 🚀 **Production-Ready** - 50%+ test coverage, CI/CD, cross-platform
 
-## Architecture
+---
 
-```
-┌─────────────────┐
-│   CLI Interface │  Commands: connect, diagnose
-└────────┬────────┘
-         │
-    ┌────▼────┐
-    │ Config  │  YAML + Environment Variables
-    └────┬────┘
-         │
-┌────────▼──────────────┐
-│  Diagnostics Runner   │  11 Health Checkers:
-│                       │  • 6 Core (CPU, Memory, Disk, Process, Service, Network)
-│                       │  • 4 Security (Patches, Ports, SSH, Auth)
-│                       │  • 1 Kubernetes (Cluster Health)
-└────┬─────────┬────┬───┘
-     │         │    │
-┌────▼────┐ ┌──▼────────┐ ┌──▼──────────┐
-│  Local  │ │    SSH    │ │ Kubernetes  │
-│ Executor│ │  Executor │ │   Client    │
-└─────────┘ └──────┬────┘ └──────┬──────┘
-                   │             │
-            ┌──────▼──────┐ ┌────▼─────────┐
-            │   Remote    │ │  K8s Cluster │
-            │   Servers   │ │  (via API)   │
-            └─────────────┘ └──────────────┘
-                   │
-            ┌──────▼──────────┐
-            │  AI Analysis    │  4 Providers
-            │  (Optional)     │  Streaming Support
-            └─────────────────┘
-```
+## ✨ Features
 
-## Installation
+### Core Capabilities
 
-### From Source
+<table>
+<tr>
+<td width="50%">
 
-```bash
-# Clone the repository
-git clone https://github.com/ignacio/lumo.git
-cd lumo
+#### 🔍 Comprehensive Diagnostics
 
-# Build
-go build -o lumo ./cmd/lumo
+**6 Core Checks**
+- CPU (load average, usage, cores)
+- Memory (usage, pressure, top consumers)
+- Disk (space, inodes, multi-filesystem)
+- Processes (count, zombies, resource hogs)
+- Services (systemd, init, launchd)
+- Network (interfaces, connectivity, latency)
 
-# Install globally
-go install ./cmd/lumo
-```
+**4 Security Checks**
+- Patch status (security updates)
+- Open ports (unexpected listeners)
+- SSH security (config audit)
+- Auth failures (brute force detection)
 
-### Using Go Install
+</td>
+<td width="50%">
+
+#### 🤖 AI-Powered Analysis
+
+**5 Provider Support**
+- Anthropic Claude (Sonnet 4.5)
+- OpenAI (GPT-4 Turbo, o1, o3)
+- Google Gemini (2.0 Flash)
+- Ollama (local models)
+- OpenRouter (multi-model routing)
+
+**Smart Features**
+- Streaming responses
+- Token usage tracking
+- TOON format (30-60% cost savings)
+- Reasoning effort control (OpenAI)
+
+</td>
+</tr>
+</table>
+
+### Platform Support
+
+| Platform | SSH Diagnostics | Kubernetes | Proxmox VE |
+|----------|----------------|------------|------------|
+| **Linux** | ✅ Full support | ✅ Native client | ✅ Cluster monitoring |
+| **macOS** | ✅ Full support | ✅ Native client | ❌ N/A |
+| **BSD** | ✅ Full support | ✅ Native client | ❌ N/A |
+| **Windows** | ⏳ Planned | ✅ Native client | ❌ N/A |
+
+### Kubernetes Diagnostics
+
+Native cluster monitoring using `k8s.io/client-go`:
+
+- ✅ **8 Resource Types** - Nodes, Pods, Deployments, StatefulSets, DaemonSets, Services, PVCs, Events
+- ✅ **Read-Only** - No modifications to your cluster
+- ✅ **Namespace Filtering** - Check all or specific namespaces
+- ✅ **RBAC-Aware** - Minimal permissions required (get/list)
+- ✅ **Context Switching** - Work with multiple clusters
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Go 1.23+ (for building from source)
+- SSH access to target servers (or use localhost)
+- Optional: AI provider API key for analysis
+- Optional: kubeconfig for Kubernetes diagnostics
+
+### Installation
+
+#### Option 1: Go Install (Recommended)
 
 ```bash
 go install github.com/ignacio/lumo/cmd/lumo@latest
 ```
 
-## Quick Start
-
-### 1. Configure Lumo
-
-Create a configuration file at `~/.lumo/config.yaml`:
+#### Option 2: Build from Source
 
 ```bash
-mkdir -p ~/.lumo
-cp configs/config.example.yaml ~/.lumo/config.yaml
+git clone https://github.com/IgnacioPro/lumo.git
+cd lumo
+go build -o lumo ./cmd/lumo
+
+# Optional: Install globally
+sudo mv lumo /usr/local/bin/
 ```
 
-Edit the configuration file to set your AI provider credentials and preferences.
+#### Option 3: Download Binary (Coming Soon)
 
-### 2. Connect to a Server
+Pre-built binaries for Linux, macOS, and Windows will be available in [Releases](https://github.com/IgnacioPro/lumo/releases).
 
-Lumo supports multiple authentication methods with automatic fallback:
-
-```bash
-# Connect using SSH agent (recommended)
-lumo connect user@example.com
-
-# Connect with specific key file
-lumo connect user@example.com --key ~/.ssh/id_ed25519
-
-# Connect with custom port
-lumo connect user@example.com --port 2222
-
-# Connect with password (interactive prompt)
-lumo connect user@example.com
-
-# Skip test commands after connecting
-lumo connect user@example.com --test=false
-```
-
-**Authentication Methods** (tried in order):
-1. **SSH Agent** - Most secure, uses ssh-agent
-2. **Private Keys** - Auto-discovers keys in ~/.ssh/ (id_ed25519, id_rsa, etc.)
-3. **Password** - Interactive prompt (if other methods fail)
-4. **Keyboard-Interactive** - For 2FA/MFA scenarios
-
-### 3. Run Diagnostics
+### First Run
 
 ```bash
-# Diagnose localhost (no SSH required)
+# 1. Diagnose your local machine (no configuration needed)
 lumo diagnose localhost
 
-# Diagnose remote server
-lumo diagnose user@example.com
+# 2. Connect to a remote server
+lumo connect user@server.com
 
-# Run specific checks only
-lumo diagnose user@example.com --checks cpu,memory,disk
+# 3. Run remote diagnostics
+lumo diagnose user@server.com
 
-# Run Kubernetes cluster diagnostics (requires kubeconfig)
-lumo diagnose --checks kubernetes
-
-# Run all diagnostics including Kubernetes
-lumo diagnose localhost
-
-# Get AI-powered analysis (requires API key)
+# 4. Add AI-powered analysis
 export LUMO_ANTHROPIC_API_KEY=sk-ant-...
 lumo diagnose localhost --analyze
+```
 
-# Kubernetes diagnostics with AI analysis
-lumo diagnose --checks kubernetes --analyze
+### Example Output
 
-# Use different AI provider
-export LUMO_OPENAI_API_KEY=sk-...
+```
+=== System Diagnostics for localhost ===
+
+[✓] CPU Check (OK)
+    Load Average: 1.23, 1.45, 1.67 (8 cores)
+    Usage: 15.3%
+
+[!] Memory Check (WARNING)
+    RAM: 71.2% used (22.7/31.9 GB)
+    Swap: 12.4% used (2.0/16.0 GB)
+    Top Consumers:
+      1. chrome (3.2 GB)
+      2. docker (2.1 GB)
+      3. postgres (1.8 GB)
+
+[✓] Disk Check (OK)
+    /: 45% used (225/500 GB)
+    /home: 62% used (310/500 GB)
+
+[✓] Network Check (OK)
+    Interfaces: eth0 (UP), lo (UP)
+    Connectivity: All targets reachable
+
+Overall Status: WARNING (1 check needs attention)
+
+🤖 AI Analysis:
+Your system is healthy overall, but memory usage is approaching 75%.
+Consider:
+1. Closing unnecessary Chrome tabs (3.2 GB usage)
+2. Reviewing Docker container memory limits
+3. Tuning PostgreSQL shared_buffers if not needed
+
+Estimated Impact: Moderate
+Risk Level: Low
+```
+
+---
+
+## 📚 Documentation
+
+### Command Reference
+
+#### `diagnose` - Run System Diagnostics
+
+```bash
+# Localhost (no SSH)
+lumo diagnose localhost
+
+# Remote server
+lumo diagnose user@server.com
+
+# Specific checks only
+lumo diagnose localhost --checks cpu,memory,disk
+
+# With AI analysis
+lumo diagnose localhost --analyze
+
+# Different AI provider
 lumo diagnose localhost --analyze --ai-provider openai
 
-# Output in JSON format
+# JSON output
 lumo diagnose localhost --format json
+
+# TOON format (AI-optimized, 30-60% token reduction)
+lumo diagnose localhost --format toon
+
+# Kubernetes cluster
+lumo diagnose --checks kubernetes
 ```
 
-## Configuration
+#### `connect` - Establish SSH Connection
 
-Lumo uses a YAML configuration file with support for environment variable overrides.
+```bash
+# Auto-discover authentication
+lumo connect user@server.com
 
-### Configuration Locations
+# Specific key file
+lumo connect user@server.com --key ~/.ssh/id_ed25519
 
-Lumo searches for configuration files in the following order:
-1. Path specified by `--config` flag
-2. `./config.yaml` (current directory)
-3. `~/.lumo/config.yaml` (home directory)
+# Custom port
+lumo connect user@server.com --port 2222
 
-### Configuration Structure
-
-```yaml
-ssh:
-  timeout: 30s
-  port: 22
-  keepalive: 30s
-  max_retries: 3
-  retry_interval: 5s
-  known_hosts_path: ""  # Uses ~/.ssh/known_hosts by default
-  strict_host_key_checking: false
-  preferred_auth_methods:
-    - agent
-    - key
-    - password
-    - interactive
-  command_timeout: 5m
-  default_key_path: ""  # Auto-discovers in ~/.ssh/
-
-ai:
-  provider: anthropic  # Options: anthropic, openai, ollama, gemini
-  models:
-    anthropic: claude-sonnet-4-5-20250929
-    openai: gpt-4-turbo-preview
-    ollama: llama3.1:8b
-    gemini: gemini-2.0-flash-exp
-  timeout: 60s
-  max_retries: 3
-  temperature: 1.0
-
-logging:
-  level: info
-  format: text
-  output: stdout
-
-api:
-  port: 8080
-  host: 0.0.0.0
-  tls: false
-
-diagnostics:
-  kubernetes:
-    enabled: false  # Enable Kubernetes diagnostics
-    kubeconfig_path: ""  # Uses ~/.kube/config by default
-    context: ""  # Use specific cluster context
-    namespaces: []  # Check all namespaces (or specify list)
-    check_nodes: true
-    check_pods: true
-    check_deployments: true
-    check_statefulsets: true
-    check_daemonsets: true
-    check_services: true
-    check_pvcs: true
-    check_events: true
-    event_lookback_mins: 30
+# Skip test commands
+lumo connect user@server.com --test=false
 ```
 
-### Environment Variables
+### Configuration
 
-Override configuration with environment variables using the `LUMO_` prefix:
+#### Configuration File Locations (searched in order)
+
+1. `--config` flag path
+2. `./config.yaml`
+3. `~/.lumo/config.yaml`
+
+#### Quick Setup
+
+```bash
+# Copy example configuration
+mkdir -p ~/.lumo
+cp configs/config.example.yaml ~/.lumo/config.yaml
+
+# Edit with your preferences
+vim ~/.lumo/config.yaml
+```
+
+#### Environment Variables
 
 ```bash
 # SSH Configuration
 export LUMO_SSH_PORT=2222
 export LUMO_SSH_STRICT_HOST_KEY_CHECKING=true
-export LUMO_SSH_DEFAULT_KEY_PATH=~/.ssh/id_ed25519
 
-# AI Configuration
-export LUMO_AI_PROVIDER=openai
+# AI Provider Selection
+export LUMO_AI_PROVIDER=openai  # anthropic, openai, ollama, gemini, openrouter
 
-# AI API Keys (Provider-Specific - Recommended)
-export LUMO_ANTHROPIC_API_KEY=sk-ant-...   # For Anthropic Claude
-export LUMO_OPENAI_API_KEY=sk-...          # For OpenAI GPT
-export LUMO_GEMINI_API_KEY=...             # For Google Gemini
-export LUMO_OLLAMA_API_KEY=...             # For Ollama (usually not needed)
+# AI API Keys (Provider-Specific)
+export LUMO_ANTHROPIC_API_KEY=sk-ant-...
+export LUMO_OPENAI_API_KEY=sk-...
+export LUMO_GEMINI_API_KEY=...
+export LUMO_OPENROUTER_API_KEY=sk-or-...
 
-# AI API Key (Generic Fallback - works but not recommended)
-export LUMO_AI_API_KEY=sk-...              # Fallback if provider-specific not set
+# AI Settings
+export LUMO_AI_TEMPERATURE=1.0
+export LUMO_AI_MAX_TOKENS=4096
+export LUMO_AI_REASONING_EFFORT=medium  # low, medium, high (OpenAI reasoning models)
 
 # Logging
 export LUMO_LOGGING_LEVEL=debug
 
-# Kubernetes Diagnostics
+# Kubernetes
 export LUMO_DIAGNOSTICS_KUBERNETES_ENABLED=true
-export LUMO_DIAGNOSTICS_KUBERNETES_CONTEXT=production-cluster
-export LUMO_DIAGNOSTICS_KUBERNETES_KUBECONFIG_PATH=/path/to/kubeconfig
-export LUMO_DIAGNOSTICS_KUBERNETES_EVENT_LOOKBACK_MINS=60
+export LUMO_DIAGNOSTICS_KUBERNETES_CONTEXT=production
 ```
 
-## SSH Authentication
+### SSH Authentication Methods
 
-Lumo provides comprehensive SSH connection management with multiple authentication methods and robust error handling.
+Lumo tries authentication methods in this order:
 
-### Supported Authentication Methods
+1. **SSH Agent** (most secure) → Uses `ssh-agent` with loaded keys
+2. **Private Keys** → Auto-discovers: `id_ed25519`, `id_ecdsa`, `id_rsa`, `id_dsa`
+3. **Password** → Interactive prompt (secure, not stored)
+4. **Keyboard-Interactive** → Supports 2FA/MFA
 
-1. **SSH Agent (Recommended)**
-   ```bash
-   # Ensure ssh-agent is running and has keys loaded
-   eval $(ssh-agent)
-   ssh-add ~/.ssh/id_ed25519
-
-   # Connect using agent
-   lumo connect user@example.com
-   ```
-
-2. **Private Key Files**
-   ```bash
-   # Auto-discovery (tries id_ed25519, id_ecdsa, id_rsa, id_dsa)
-   lumo connect user@example.com
-
-   # Specify key explicitly
-   lumo connect user@example.com --key ~/.ssh/custom_key
-
-   # Encrypted keys will prompt for passphrase
-   lumo connect user@example.com --key ~/.ssh/encrypted_key
-   ```
-
-3. **Password Authentication**
-   ```bash
-   # Interactive password prompt
-   lumo connect user@example.com
-   # You'll be prompted: "Password for user@example.com:"
-
-   # Or specify password (NOT RECOMMENDED for security)
-   lumo connect user@example.com --password 'mypassword'
-   ```
-
-4. **Keyboard-Interactive**
-   - Automatically handles multi-factor authentication
-   - Supports challenge-response authentication
-   - Works with systems requiring 2FA/MFA
-
-### Connection Features
-
-- **Automatic Retry**: Retries failed connections with exponential backoff (configurable)
-- **Keep-Alive**: Background health monitoring prevents connection drops
-- **Auto-Reconnect**: Automatically reconnects if connection becomes unhealthy
-- **Connection Health Checks**: Periodic validation ensures connection stability
-- **Timeout Management**: Configurable timeouts for connections and commands
-
-### Troubleshooting
-
-**Connection Refused**
 ```bash
-# Use verbose mode to see detailed logs
-lumo --verbose connect user@example.com
-```
-
-**SSH Agent Issues**
-```bash
-# Check if agent is running
-ssh-add -l
-
-# Start agent if needed
+# Ensure SSH agent is running
 eval $(ssh-agent)
 ssh-add ~/.ssh/id_ed25519
+
+# Verify keys loaded
+ssh-add -l
 ```
 
-**Key Permission Issues**
-```bash
-# Fix key permissions (must be 600 or 400)
-chmod 600 ~/.ssh/id_ed25519
-```
-
-**Known Hosts Verification**
-```yaml
-# Enable strict host key checking in config.yaml
-ssh:
-  strict_host_key_checking: true
-  known_hosts_path: ~/.ssh/known_hosts
-```
-
-## Kubernetes Diagnostics
-
-Lumo includes native Kubernetes cluster diagnostics using the official `k8s.io/client-go` library (no `kubectl` required).
-
-### Features
-
-- **8 Resource Types**: Nodes, Pods, Deployments, StatefulSets, DaemonSets, Services, PVCs, Events
-- **Native Client**: Direct Kubernetes API access via k8s.io/client-go
-- **Granular Control**: Enable/disable individual checks
-- **Namespace Filtering**: Check all or specific namespaces
-- **Read-Only**: No modifications to your cluster
-- **RBAC-Aware**: Requires minimal permissions (get/list)
-
-### Prerequisites
-
-1. **Kubeconfig**: Ensure `~/.kube/config` exists or specify custom path
-2. **RBAC Permissions**: Read-only access to cluster resources
-3. **Enable in Config**: Set `diagnostics.kubernetes.enabled: true`
-
-### Quick Start
+### Kubernetes Setup
 
 ```bash
-# Enable Kubernetes diagnostics
+# 1. Enable Kubernetes diagnostics
 export LUMO_DIAGNOSTICS_KUBERNETES_ENABLED=true
 
-# Run Kubernetes diagnostics only
-lumo diagnose --checks kubernetes
+# 2. (Optional) Use specific kubeconfig
+export LUMO_DIAGNOSTICS_KUBERNETES_KUBECONFIG_PATH=/path/to/kubeconfig
 
-# Run with AI analysis
-lumo diagnose --checks kubernetes --analyze
-
-# Use specific cluster context
+# 3. (Optional) Use specific context
 export LUMO_DIAGNOSTICS_KUBERNETES_CONTEXT=production
+
+# 4. Run diagnostics
 lumo diagnose --checks kubernetes
 
-# Check specific namespaces only
-# (Set in config.yaml: namespaces: ["production", "staging"])
-lumo diagnose --checks kubernetes
+# 5. With AI analysis
+lumo diagnose --checks kubernetes --analyze
 ```
 
-### Health Checks Performed
+#### RBAC Requirements
 
-| Check | Metrics Collected |
-|-------|------------------|
-| **Nodes** | Total, ready, not-ready, conditions |
-| **Pods** | Phase distribution, restart counts, problem pods |
-| **Deployments** | Replica health, desired vs ready |
-| **StatefulSets** | Replica readiness |
-| **DaemonSets** | Node coverage, desired vs current |
-| **Services** | Endpoint validation |
-| **PVCs** | Binding status, pending/lost volumes |
-| **Events** | Recent warnings/errors (configurable lookback) |
+Lumo needs minimal read-only permissions:
 
-### Sample Output
-
-```
-=== Kubernetes Cluster Diagnostics ===
-
-[✓] Nodes: All 3 nodes ready
-[✓] Pods (production): 25 total, 25 running
-[!] Deployments (production): 1 unhealthy
-    - api-server: Desired=3, Ready=1
-[✓] Services: All services have endpoints
-
-Overall Status: WARNING
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lumo-reader
+rules:
+- apiGroups: [""]
+  resources: ["nodes", "pods", "services", "persistentvolumeclaims", "events"]
+  verbs: ["get", "list"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "statefulsets", "daemonsets"]
+  verbs: ["get", "list"]
 ```
 
-### Configuration
+---
 
-See [Configuration](#configuration) section for full Kubernetes configuration options.
+## 🏗️ Architecture
 
-For detailed implementation documentation, see [REPORTS/kubernetes-diagnostics-implementation-2025-11-16.md](REPORTS/kubernetes-diagnostics-implementation-2025-11-16.md).
-
-## Usage Examples
-
-### Verbose Logging
-
-Enable detailed logging for debugging:
-
-```bash
-lumo --verbose connect user@example.com
-lumo --verbose diagnose localhost
-lumo -v diagnose user@example.com --analyze
+```
+┌─────────────────────────────────────────────────────────┐
+│                    CLI Interface                        │
+│         (connect, diagnose, fix, report, serve)         │
+└────────────────────────┬────────────────────────────────┘
+                         │
+                    ┌────▼────┐
+                    │ Config  │  YAML + Environment Variables
+                    └────┬────┘
+                         │
+        ┌────────────────┼────────────────┐
+        │                │                │
+   ┌────▼────┐    ┌──────▼──────┐   ┌────▼────────┐
+   │  Local  │    │     SSH     │   │ Kubernetes  │
+   │Executor │    │  Executor   │   │   Client    │
+   └────┬────┘    └──────┬──────┘   └──────┬──────┘
+        │                │                 │
+        └────────────────┼─────────────────┘
+                         │
+        ┌────────────────▼────────────────┐
+        │    Diagnostics Runner (12)       │
+        │  • 6 Core (CPU, Mem, Disk...)   │
+        │  • 4 Security (Patches, Ports...)│
+        │  • 2 Specialized (K8s, Proxmox) │
+        └────────────────┬─────────────────┘
+                         │
+                    ┌────▼────┐
+                    │Formatters│  Text, JSON, TOON
+                    └────┬────┘
+                         │
+                    ┌────▼────────┐
+                    │AI Analysis  │  5 Providers
+                    │ (Optional)  │  Streaming
+                    └─────────────┘
 ```
 
-### Multiple Checks
+---
 
-Run specific diagnostic checks:
+## 🧪 Testing
 
-```bash
-# Single check
-lumo diagnose localhost --checks cpu
-
-# Multiple checks
-lumo diagnose user@example.com --checks cpu,memory,disk
-
-# All checks (default)
-lumo diagnose localhost
-```
-
-### Custom Configuration
-
-Use a specific configuration file:
-
-```bash
-lumo --config /path/to/config.yaml diagnose
-```
-
-## API Endpoints (Planned - Phase 7)
-
-When the API server is implemented (`lumo serve`), the following endpoints will be available:
-
-- `POST /connect` - Establish SSH connection
-- `POST /diagnose` - Run diagnostics
-- `POST /fix` - Execute remediation
-- `GET /reports` - Retrieve reports
-- `GET /status` - Agent status
-- `WebSocket /logs` - Stream logs in real-time
-
-## Development Roadmap
-
-- [x] **Phase 1**: Foundation & Project Setup
-- [x] **Phase 2**: SSH & Connection Management (4 auth methods, retry logic, auto-reconnect)
-- [x] **Phase 3**: Diagnostic System (6 core checkers: CPU, Memory, Disk, Process, Service, Network)
-- [x] **Phase 4**: AI Integration (4 providers: Anthropic, OpenAI, Ollama, Gemini)
-- [x] **Phase 5**: Enhanced Diagnostics
-  - [x] Security Diagnostics (4 checkers: Patch Status, Open Ports, SSH Security, Auth Failures)
-  - [x] Kubernetes Diagnostics (Native cluster health monitoring)
-  - [x] Enhanced Memory Metrics (Page faults, pressure indicators, top consumers)
-- [x] **Phase 8**: Testing & Documentation (50.4% coverage, 25 test files, 11,059 lines)
-- [ ] **Phase 6**: Auto-Remediation & Approval (Planned)
-- [ ] **Phase 7**: Reporting & Logging (Planned)
-- [ ] **Phase 9**: API Server (Planned)
-
-## Testing
-
-**Overall Coverage**: 50.4% (11,059 lines of test code across 25 test files)
+**Overall Coverage**: 50.4% (11,059 lines of test code)
 
 ### Coverage by Package
 
 | Package | Coverage | Status |
 |---------|----------|--------|
-| internal/diagnostics/formatters | 98.1% | ✅ Complete |
-| internal/diagnostics | 87.6% | ✅ Excellent |
-| internal/config | 68.8% | ✅ Good |
-| internal/diagnostics/checkers | 61.4% | ✅ Good |
-| cmd/lumo | 61.6% | ✅ Good |
-| internal/ssh | 30.5% | ⚠️ In Progress |
-| internal/ai | 27.1% | ⚠️ In Progress |
+| `internal/diagnostics/formatters` | 98.1% | ✅ Excellent |
+| `internal/diagnostics` | 87.6% | ✅ Excellent |
+| `internal/config` | 68.8% | ✅ Good |
+| `internal/diagnostics/checkers` | 61.4% | ✅ Good |
+| `cmd/lumo` | 61.6% | ✅ Good |
+| `internal/ssh` | 30.5% | ⚠️ In Progress |
+| `internal/ai` | 27.1% | ⚠️ In Progress |
 
 ### Run Tests
 
@@ -493,10 +407,10 @@ When the API server is implemented (`lumo serve`), the following endpoints will 
 # All tests
 go test ./...
 
-# With coverage report
+# With coverage
 go test -cover ./...
 
-# Specific package
+# Specific package with verbose output
 go test -v ./internal/diagnostics
 
 # HTML coverage report
@@ -504,22 +418,136 @@ go test -coverprofile=coverage.out ./...
 go tool cover -html=coverage.out
 ```
 
-## Security Considerations
+---
 
-- **SSH Keys**: Store with proper permissions (`chmod 600 ~/.ssh/id_rsa`)
-- **API Keys**: Use provider-specific environment variables (LUMO_ANTHROPIC_API_KEY, LUMO_OPENAI_API_KEY, etc.)
-- **Configuration**: Never commit `config.yaml` with secrets to version control
-- **Credentials**: Use environment variables for all sensitive data in production
-- **Localhost**: Commands run with your user permissions when using localhost execution
+## 🗺️ Roadmap
 
-## License
+- [x] **Phase 1**: Foundation & CLI Framework
+- [x] **Phase 2**: SSH Connection Management
+- [x] **Phase 3**: Core Diagnostic System (6 checkers)
+- [x] **Phase 4**: AI Integration (5 providers)
+- [x] **Phase 4.2**: OpenRouter Integration
+- [x] **Phase 5**: Security & Kubernetes Diagnostics
+- [x] **Phase 8**: Testing & Documentation (50.4% coverage)
+- [ ] **Phase 6**: Auto-Remediation with Approval Workflows
+- [ ] **Phase 7**: Advanced Reporting (Markdown, HTML, Trends)
+- [ ] **Phase 9**: REST API + WebSocket Server
+- [ ] **Phase 10**: Messaging & Notifications (Slack, Teams, PagerDuty)
 
-MIT License - See LICENSE file for details
+---
 
-## Contributing
+## 🤝 Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request.
+We welcome contributions! Here's how you can help:
 
-## Support
+### Ways to Contribute
 
-For issues and questions, please open a GitHub issue at https://github.com/ignacio/lumo/issues
+- 🐛 **Report bugs** - Open an issue with reproduction steps
+- 💡 **Suggest features** - Share your ideas for improvements
+- 📖 **Improve docs** - Fix typos, add examples, clarify usage
+- 🧪 **Write tests** - Help us reach 80% coverage
+- 🔧 **Submit PRs** - Fix bugs or implement features
+
+### Development Setup
+
+```bash
+# 1. Fork and clone
+git clone https://github.com/YOUR_USERNAME/lumo.git
+cd lumo
+
+# 2. Create a branch
+git checkout -b feature/my-feature
+
+# 3. Make changes and test
+go test ./...
+go vet ./...
+go fmt ./...
+
+# 4. Commit and push
+git add .
+git commit -m "feat: add amazing feature"
+git push origin feature/my-feature
+
+# 5. Open a Pull Request
+```
+
+### Code Standards
+
+- ✅ Write tests for new functionality
+- ✅ Follow existing code patterns
+- ✅ Update documentation
+- ✅ Pass CI checks (format, vet, tests, build)
+- ✅ Use semantic commit messages
+
+### Development Resources
+
+- **Main Guide**: [CLAUDE.md](CLAUDE.md) - Comprehensive development documentation
+- **Examples**: [DEVELOPMENT.md](DEVELOPMENT.md) - Tutorials and examples
+- **Reports**: [REPORTS/](REPORTS/) - Implementation details and audits
+
+---
+
+## 🔐 Security
+
+### Security Practices
+
+- ✅ **Host Key Verification** - Enabled by default (`StrictHostKeyChecking: true`)
+- ✅ **No Password Flags** - Passwords only via secure prompts
+- ✅ **API Keys** - Environment variables only, never in config files
+- ✅ **Command Injection Prevention** - Path sanitization and validation
+- ✅ **File Permissions** - Validates SSH key permissions (600/400)
+
+### Reporting Security Issues
+
+Please report security vulnerabilities to the maintainers privately via GitHub Security Advisories.
+
+### Security Audit
+
+Last audit: 2025-11-16 - All CRITICAL issues resolved
+- See [REPORTS/security-audit-2025-11-15.md](REPORTS/security-audit-2025-11-15.md)
+
+---
+
+## 📜 License
+
+MIT License - See [LICENSE](LICENSE) file for details.
+
+Copyright (c) 2025 Lumo Contributors
+
+---
+
+## 🙏 Acknowledgments
+
+Built with these amazing technologies:
+
+- [Cobra](https://github.com/spf13/cobra) - CLI framework
+- [Viper](https://github.com/spf13/viper) - Configuration management
+- [Logrus](https://github.com/sirupsen/logrus) - Structured logging
+- [k8s.io/client-go](https://github.com/kubernetes/client-go) - Kubernetes client
+- [golang.org/x/crypto/ssh](https://pkg.go.dev/golang.org/x/crypto/ssh) - SSH implementation
+
+AI Providers:
+- [Anthropic Claude](https://www.anthropic.com/) - Leading AI safety and research
+- [OpenAI](https://openai.com/) - GPT-4 and advanced reasoning models
+- [Google Gemini](https://deepmind.google/technologies/gemini/) - Multimodal AI
+- [Ollama](https://ollama.ai/) - Run LLMs locally
+- [OpenRouter](https://openrouter.ai/) - Multi-provider AI routing
+
+---
+
+## 📞 Support
+
+- 📖 **Documentation**: [CLAUDE.md](CLAUDE.md) | [DEVELOPMENT.md](DEVELOPMENT.md)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/IgnacioPro/lumo/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/IgnacioPro/lumo/discussions)
+- ⭐ **Star us** on GitHub if you find Lumo useful!
+
+---
+
+<div align="center">
+
+**[⬆ Back to Top](#-lumo)**
+
+Made with ❤️ by the Lumo community
+
+</div>
