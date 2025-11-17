@@ -5,7 +5,7 @@ BINARY_NAME=lumo
 MAIN_PATH=./cmd/lumo
 GO=go
 GOFLAGS=-v
-INSTALL_PATH=$(GOPATH)/bin
+INSTALL_PATH=$(shell go env GOPATH)/bin
 
 # Build variables
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
