@@ -769,7 +769,7 @@ func (k *KubernetesChecker) checkEvents(ctx context.Context, namespace string, r
 			"message":   event.Message,
 			"object":    fmt.Sprintf("%s/%s", event.InvolvedObject.Kind, event.InvolvedObject.Name),
 			"count":     event.Count,
-			"timestamp": event.LastTimestamp.Time.Format(time.RFC3339),
+			"timestamp": event.LastTimestamp.Format(time.RFC3339),
 		}
 
 		if event.Type == corev1.EventTypeWarning {

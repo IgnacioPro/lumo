@@ -194,7 +194,7 @@ func (p *PatchChecker) getAvailableUpdates(ctx context.Context, executor diagnos
 // getAptUpdates gets updates for Debian/Ubuntu systems
 func (p *PatchChecker) getAptUpdates(ctx context.Context, executor diagnostics.CommandExecutor) ([]string, []string, error) {
 	// Update cache silently (best effort)
-	executor.ExecuteWithContext(ctx, "apt-get update -qq 2>/dev/null")
+	_, _, _, _ = executor.ExecuteWithContext(ctx, "apt-get update -qq 2>/dev/null")
 
 	// Get upgradable packages
 	stdout, _, exitCode, err := executor.ExecuteWithContext(ctx, "apt list --upgradable 2>/dev/null")
@@ -335,7 +335,7 @@ func (p *PatchChecker) parsePacmanOutput(output string) ([]string, []string, err
 // getBrewUpdates gets updates for macOS Homebrew
 func (p *PatchChecker) getBrewUpdates(ctx context.Context, executor diagnostics.CommandExecutor) ([]string, []string, error) {
 	// Update Homebrew database (best effort, don't fail if it times out)
-	executor.ExecuteWithContext(ctx, "brew update 2>/dev/null")
+	_, _, _, _ = executor.ExecuteWithContext(ctx, "brew update 2>/dev/null")
 
 	// Get outdated packages
 	stdout, _, exitCode, err := executor.ExecuteWithContext(ctx, "brew outdated 2>/dev/null")

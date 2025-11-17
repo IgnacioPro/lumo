@@ -117,7 +117,7 @@ func TestOllamaProvider_Analyze(t *testing.T) {
 
 		// Parse request
 		var req ollamaRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		if req.Model == "" {
 			t.Error("Model should be set in request")
@@ -148,7 +148,7 @@ func TestOllamaProvider_Analyze(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 

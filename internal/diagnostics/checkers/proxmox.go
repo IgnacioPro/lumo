@@ -452,7 +452,7 @@ type ProxmoxService struct {
 // detectProxmox checks if Proxmox is installed and returns version
 func (p *ProxmoxChecker) detectProxmox(ctx context.Context, executor diagnostics.CommandExecutor) (bool, string, error) {
 	// Check for pveversion command
-	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, "command -v pveversion >/dev/null 2>&1")
+	_, _, exitCode, _ := executor.ExecuteWithContext(ctx, "command -v pveversion >/dev/null 2>&1")
 	if exitCode != 0 {
 		return false, "", nil
 	}
@@ -1254,10 +1254,11 @@ func (p *ProxmoxChecker) performSubscriptionCheck(ctx context.Context, executor 
 	}
 
 	// Check status and create issues
-	if info.Status == "NotFound" || info.Status == "notfound" {
+	switch info.Status {
+	case "NotFound", "notfound":
 		warnings := []string{"no subscription found (community version)"}
 		return info, warnings, nil
-	} else if info.Status == "Inactive" || info.Status == "inactive" {
+	case "Inactive", "inactive":
 		issues = append(issues, "subscription is inactive or expired")
 	}
 
@@ -1343,10 +1344,11 @@ func (p *ProxmoxChecker) performTasksCheck(ctx context.Context, executor diagnos
 		info.TotalTasks++
 		info.RecentTasks = append(info.RecentTasks, task)
 
-		if task.Status == "ERROR" || task.Status == "error" {
+		switch task.Status {
+		case "ERROR", "error":
 			info.FailedTasks++
 			info.FailedTaskIDs = append(info.FailedTaskIDs, task.UPID)
-		} else if task.Status == "OK" || task.Status == "ok" {
+		case "OK", "ok":
 			info.SuccessTasks++
 		}
 	}
@@ -1637,11 +1639,9 @@ func (p *ProxmoxChecker) performCertificatesCheck(ctx context.Context, executor 
 	}
 
 	// Check cluster certificates if in a cluster
-	stdout, _, exitCode, _ = executor.ExecuteWithContext(ctx,
+	// Additional certificate checks could be added in the future
+	_, _, _, _ = executor.ExecuteWithContext(ctx,
 		fmt.Sprintf("test -f /etc/pve/nodes/%s/pve-ssl.key && echo 'exists' 2>/dev/null", nodeName))
-	if exitCode == 0 && strings.TrimSpace(stdout) == "exists" {
-		// Additional certificate checks could be added here
-	}
 
 	return info, issues, nil
 }
