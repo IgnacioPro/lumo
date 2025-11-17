@@ -1,3 +1,7 @@
+<div align="center">
+  <img src=".github/images/lumo-logo.png" alt="Lumo Logo" width="200"/>
+</div>
+
 # Lumo
 
 **Lumo** is an intelligent SRE/DevOps automation AGENT that connects to remote servers via SSH, runs comprehensive system diagnostics, and uses AI to analyze issues and suggest fixes. It supports multiple AI providers (Anthropic Claude, OpenAI GPT-4, Ollama, Google Gemini) and works on both remote servers and localhost.
