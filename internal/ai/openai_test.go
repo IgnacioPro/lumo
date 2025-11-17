@@ -131,6 +131,7 @@ func TestOpenAIProvider_Analyze(t *testing.T) {
 				Message struct {
 					Role    string `json:"role"`
 					Content string `json:"content"`
+					Refusal string `json:"refusal,omitempty"`
 				} `json:"message"`
 				FinishReason string `json:"finish_reason"`
 			}{
@@ -139,6 +140,7 @@ func TestOpenAIProvider_Analyze(t *testing.T) {
 					Message: struct {
 						Role    string `json:"role"`
 						Content string `json:"content"`
+						Refusal string `json:"refusal,omitempty"`
 					}{
 						Role: "assistant",
 						Content: `{
