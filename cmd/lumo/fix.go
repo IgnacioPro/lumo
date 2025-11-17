@@ -4,12 +4,16 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/diagnostics"
+	"github.com/ignacio/lumo/internal/diagnostics/checkers"
 	"github.com/ignacio/lumo/internal/remediation"
+	"github.com/ignacio/lumo/internal/ssh"
 	"github.com/spf13/cobra"
 )
 
@@ -42,6 +46,12 @@ Examples:
 func init() {
 	rootCmd.AddCommand(fixCmd)
 
+	// SSH connection flags (same as diagnose command)
+	fixCmd.Flags().IntP("port", "p", 22, "SSH port")
+	fixCmd.Flags().StringP("identity", "i", "", "SSH private key file")
+	fixCmd.Flags().DurationP("timeout", "t", 30*time.Second, "Connection timeout")
+
+	// Remediation flags
 	fixCmd.Flags().BoolP("auto-approve", "y", false, "Auto-approve safe operations")
 	fixCmd.Flags().StringSliceP("skip", "s", []string{}, "Skip categories (service, disk, process)")
 	fixCmd.Flags().String("audit-log", "", "Audit log path (default: ~/.lumo/remediation-audit.log)")
@@ -50,19 +60,57 @@ func init() {
 }
 
 func runFix(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
-
-	_ , err := config.Load()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+	// Default to localhost if no host argument provided
+	hostArg := "localhost"
+	if len(args) > 0 {
+		hostArg = args[0]
 	}
 
+	// Parse host argument (supports user@host format)
+	var username, hostname string
+	if strings.Contains(hostArg, "@") {
+		parts := strings.SplitN(hostArg, "@", 2)
+		username = parts[0]
+		hostname = parts[1]
+	} else {
+		hostname = hostArg
+	}
+
+	// Get flags
+	port, _ := cmd.Flags().GetInt("port")
+	identityFile, _ := cmd.Flags().GetString("identity")
 	autoApprove, _ := cmd.Flags().GetBool("auto-approve")
 	skipCategories, _ := cmd.Flags().GetStringSlice("skip")
 	auditLogPath, _ := cmd.Flags().GetString("audit-log")
 	listOnly, _ := cmd.Flags().GetBool("list-actions")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 
+	// Default to current user if not specified
+	if username == "" {
+		currentUser, err := user.Current()
+		if err != nil {
+			return fmt.Errorf("failed to get current user: %w", err)
+		}
+		username = currentUser.Username
+	}
+
+	// Check if this is a localhost execution (no SSH needed)
+	isLocal := isLocalhost(hostname)
+
+	if isLocal {
+		log.Info("Running diagnostics locally (no SSH connection needed)")
+	} else {
+		log.Infof("Starting diagnostics for %s@%s", username, hostname)
+	}
+
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		log.Warnf("Failed to load config, using defaults: %v", err)
+		cfg = config.DefaultConfig()
+	}
+
+	// Set audit log path
 	if auditLogPath == "" {
 		homeDir, _ := os.UserHomeDir()
 		auditLogPath = filepath.Join(homeDir, ".lumo", "remediation-audit.log")
@@ -70,22 +118,92 @@ func runFix(cmd *cobra.Command, args []string) error {
 
 	log.Info("Starting auto-remediation system")
 
+	// Create command executor (local or SSH)
+	var executor diagnostics.CommandExecutor
+	if isLocal {
+		// Use local executor - no SSH needed
+		executor = diagnostics.NewLocalExecutor()
+		log.Debug("Using local command executor")
+	} else {
+		// Create SSH client configuration
+		sshClientConfig := ssh.NewClientConfig(cfg.SSH)
 
+		// Override with command-line flags
+		if identityFile != "" {
+			if err := sshClientConfig.SetKeyPath(identityFile); err != nil {
+				return fmt.Errorf("invalid key path: %w", err)
+			}
+		}
 
-	// For now, create an empty report - full integration will be added later
-	report := &diagnostics.Report{
-		Results: []*diagnostics.CheckResult{},
+		// Create SSH client
+		log.Debug("Creating SSH client")
+		sshClient, err := ssh.NewClient(sshClientConfig, log)
+		if err != nil {
+			return fmt.Errorf("failed to create SSH client: %w", err)
+		}
+
+		// Connect
+		log.Infof("Connecting to %s@%s:%d", username, hostname, port)
+		if err := sshClient.Connect(hostname, port, username); err != nil {
+			return fmt.Errorf("failed to connect: %w", err)
+		}
+		defer sshClient.Disconnect()
+
+		log.Info("Connected successfully")
+
+		// Create SSH executor
+		executor = diagnostics.NewSSHExecutor(sshClient)
 	}
 
-	fmt.Println("\n⚠️  Full diagnostic integration coming soon!")
-	fmt.Println("For now, the remediation system is ready with the following capabilities:")
-	fmt.Println("  ✓ Service restart actions")
-	fmt.Println("  ✓ Disk cleanup actions")
-	fmt.Println("  ✓ Process management actions")
-	fmt.Println("  ✓ Risk-based approval workflow")
-	fmt.Println("  ✓ Audit logging")
-	fmt.Println("  ✓ Rollback support\n")
+	// Create diagnostic runner
+	diagConfig := diagnostics.DefaultConfig()
+	thresholds := diagnostics.DefaultThresholds()
+	runner := diagnostics.NewRunner(diagConfig, thresholds, executor, log)
 
+	// Register checkers (same as diagnose command)
+	log.Debug("Registering diagnostic checkers")
+
+	checkersToRegister := []diagnostics.Checker{
+		// Core system checkers
+		checkers.NewCPUChecker(thresholds.CPU),
+		checkers.NewMemoryChecker(thresholds.Memory),
+		checkers.NewDiskChecker(thresholds.Disk),
+		checkers.NewProcessChecker(thresholds.Process),
+		checkers.NewServiceChecker([]string{}), // Empty list = check all services
+		checkers.NewNetworkChecker(thresholds.Network, cfg.Diagnostics.Network.Targets),
+		// Security checkers
+		checkers.NewPatchChecker(),
+		checkers.NewPortsChecker(cfg.Diagnostics.Security.PortCheck.WhitelistedPorts),
+		checkers.NewSSHSecurityChecker(),
+		checkers.NewAuthFailuresChecker(
+			cfg.Diagnostics.Security.AuthFailureCheck.LookbackHours,
+			cfg.Diagnostics.Security.AuthFailureCheck.FailureThreshold,
+		),
+		// Proxmox checker (auto-skips if not installed)
+		checkers.NewProxmoxChecker(false, false, false, false, false, false, false),
+	}
+
+	// Add Kubernetes checker if enabled in config
+	if cfg.Diagnostics.Kubernetes.Enabled {
+		log.Debug("Kubernetes diagnostics enabled")
+		checkersToRegister = append(checkersToRegister, checkers.NewKubernetesChecker(cfg.Diagnostics.Kubernetes, log))
+	}
+
+	runner.RegisterCheckers(checkersToRegister...)
+
+	// Run diagnostics to detect issues
+	log.Info("Running diagnostic checks to detect issues...")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	report, err := runner.RunAll(ctx)
+	if err != nil {
+		return fmt.Errorf("diagnostic run failed: %w", err)
+	}
+
+	log.Infof("Diagnostics complete - found %d check results", len(report.Results))
+
+	// Generate remediation plan from diagnostic report
 	registry := remediation.GetDefaultRegistry(log)
 	suggester := remediation.NewSuggester(registry, log)
 
@@ -124,7 +242,7 @@ func runFix(cmd *cobra.Command, args []string) error {
 
 	approver := remediation.NewApprover(log)
 
-	executor := diagnostics.NewLocalExecutor()
+	// Use the same executor we created earlier (local or SSH)
 	remediationExecutor := remediation.NewExecutor(executor, auditor, approver, log, dryRun, autoApprove)
 
 	fmt.Println("\n" + strings.Repeat("=", 70))
