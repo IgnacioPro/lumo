@@ -2,6 +2,7 @@ package checkers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -330,11 +331,11 @@ type ProxmoxVersion struct {
 
 // ClusterInfo holds cluster information
 type ClusterInfo struct {
-	Name       string       `json:"name"`
-	Nodes      int          `json:"nodes"`
-	Quorate    bool         `json:"quorate"`
-	QuorumVotes int         `json:"quorum_votes"`
-	NodeList   []ClusterNode `json:"node_list"`
+	Name        string        `json:"name"`
+	Nodes       int           `json:"nodes"`
+	Quorate     bool          `json:"quorate"`
+	QuorumVotes int           `json:"quorum_votes"`
+	NodeList    []ClusterNode `json:"node_list"`
 }
 
 // ClusterNode holds node information
@@ -347,14 +348,14 @@ type ClusterNode struct {
 
 // VMInfo holds VM/container information
 type VMInfo struct {
-	TotalVMs       int      `json:"total_vms"`
-	RunningVMs     int      `json:"running_vms"`
-	StoppedVMs     int      `json:"stopped_vms"`
-	TotalCT        int      `json:"total_containers"`
-	RunningCT      int      `json:"running_containers"`
-	StoppedCT      int      `json:"stopped_containers"`
-	VMs            []VMEntry `json:"vms"`
-	Containers     []VMEntry `json:"containers"`
+	TotalVMs   int       `json:"total_vms"`
+	RunningVMs int       `json:"running_vms"`
+	StoppedVMs int       `json:"stopped_vms"`
+	TotalCT    int       `json:"total_containers"`
+	RunningCT  int       `json:"running_containers"`
+	StoppedCT  int       `json:"stopped_containers"`
+	VMs        []VMEntry `json:"vms"`
+	Containers []VMEntry `json:"containers"`
 }
 
 // VMEntry holds individual VM/container information
@@ -368,10 +369,10 @@ type VMEntry struct {
 
 // StorageInfo holds storage information
 type StorageInfo struct {
-	TotalStorage    int              `json:"total_storage"`
-	ActiveStorage   int              `json:"active_storage"`
-	InactiveStorage int              `json:"inactive_storage"`
-	Storages        []StorageEntry   `json:"storages"`
+	TotalStorage    int            `json:"total_storage"`
+	ActiveStorage   int            `json:"active_storage"`
+	InactiveStorage int            `json:"inactive_storage"`
+	Storages        []StorageEntry `json:"storages"`
 }
 
 // StorageEntry holds individual storage information
@@ -387,27 +388,27 @@ type StorageEntry struct {
 
 // ReplicationInfo holds replication status
 type ReplicationInfo struct {
-	TotalJobs  int                `json:"total_jobs"`
-	OKJobs     int                `json:"ok_jobs"`
-	ErrorJobs  int                `json:"error_jobs"`
-	Jobs       []ReplicationJob   `json:"jobs"`
+	TotalJobs int              `json:"total_jobs"`
+	OKJobs    int              `json:"ok_jobs"`
+	ErrorJobs int              `json:"error_jobs"`
+	Jobs      []ReplicationJob `json:"jobs"`
 }
 
 // ReplicationJob holds individual replication job information
 type ReplicationJob struct {
-	ID         string `json:"id"`
-	Guest      string `json:"guest"`
-	Status     string `json:"status"`
-	LastSync   string `json:"last_sync"`
-	NextSync   string `json:"next_sync"`
+	ID       string `json:"id"`
+	Guest    string `json:"guest"`
+	Status   string `json:"status"`
+	LastSync string `json:"last_sync"`
+	NextSync string `json:"next_sync"`
 }
 
 // BackupInfo holds backup information
 type BackupInfo struct {
-	RecentBackups    int           `json:"recent_backups"`
-	FailedBackups    int           `json:"failed_backups"`
-	SuccessfulBackups int          `json:"successful_backups"`
-	Backups          []BackupEntry `json:"backups"`
+	RecentBackups     int           `json:"recent_backups"`
+	FailedBackups     int           `json:"failed_backups"`
+	SuccessfulBackups int           `json:"successful_backups"`
+	Backups           []BackupEntry `json:"backups"`
 }
 
 // BackupEntry holds individual backup information
@@ -420,10 +421,10 @@ type BackupEntry struct {
 
 // HAInfo holds HA status
 type HAInfo struct {
-	HAEnabled    bool      `json:"ha_enabled"`
-	HARunning    bool      `json:"ha_running"`
-	ManagedVMs   int       `json:"managed_vms"`
-	HAServices   []HAService `json:"services"`
+	HAEnabled  bool        `json:"ha_enabled"`
+	HARunning  bool        `json:"ha_running"`
+	ManagedVMs int         `json:"managed_vms"`
+	HAServices []HAService `json:"services"`
 }
 
 // HAService holds HA service information
@@ -435,10 +436,10 @@ type HAService struct {
 
 // ProxmoxServiceInfo holds Proxmox service information
 type ProxmoxServiceInfo struct {
-	TotalServices  int            `json:"total_services"`
-	RunningServices int           `json:"running_services"`
-	FailedServices int            `json:"failed_services"`
-	Services       []ProxmoxService `json:"services"`
+	TotalServices   int              `json:"total_services"`
+	RunningServices int              `json:"running_services"`
+	FailedServices  int              `json:"failed_services"`
+	Services        []ProxmoxService `json:"services"`
 }
 
 // ProxmoxService holds individual service information
@@ -1044,12 +1045,12 @@ type TaskEntry struct {
 
 // PerformanceInfo holds VM/CT performance metrics
 type PerformanceInfo struct {
-	TotalVMs         int                   `json:"total_vms"`
-	TotalCT          int                   `json:"total_containers"`
-	VMPerformance    []VMPerformanceEntry  `json:"vm_performance"`
-	CTPerformance    []VMPerformanceEntry  `json:"ct_performance"`
-	HighCPUVMs       []string              `json:"high_cpu_vms"`
-	HighMemoryVMs    []string              `json:"high_memory_vms"`
+	TotalVMs      int                  `json:"total_vms"`
+	TotalCT       int                  `json:"total_containers"`
+	VMPerformance []VMPerformanceEntry `json:"vm_performance"`
+	CTPerformance []VMPerformanceEntry `json:"ct_performance"`
+	HighCPUVMs    []string             `json:"high_cpu_vms"`
+	HighMemoryVMs []string             `json:"high_memory_vms"`
 }
 
 // VMPerformanceEntry holds individual VM/CT performance data
@@ -1066,27 +1067,27 @@ type VMPerformanceEntry struct {
 
 // BootConfigInfo holds boot configuration information
 type BootConfigInfo struct {
-	TotalBootOnStart int                    `json:"total_boot_on_start"`
-	BootEntries      []BootConfigEntry      `json:"boot_entries"`
-	StartupOrder     map[string]int         `json:"startup_order"` // VMID -> order
+	TotalBootOnStart int               `json:"total_boot_on_start"`
+	BootEntries      []BootConfigEntry `json:"boot_entries"`
+	StartupOrder     map[string]int    `json:"startup_order"` // VMID -> order
 }
 
 // BootConfigEntry holds individual boot configuration
 type BootConfigEntry struct {
-	VMID      string `json:"vmid"`
-	Name      string `json:"name"`
-	OnBoot    bool   `json:"onboot"`
-	StartupOrder int  `json:"startup_order"`
-	StartupDelay int  `json:"startup_delay"`
+	VMID         string `json:"vmid"`
+	Name         string `json:"name"`
+	OnBoot       bool   `json:"onboot"`
+	StartupOrder int    `json:"startup_order"`
+	StartupDelay int    `json:"startup_delay"`
 }
 
 // NetworkStatsInfo holds network statistics
 type NetworkStatsInfo struct {
-	TotalInterfaces    int                  `json:"total_interfaces"`
-	ActiveInterfaces   int                  `json:"active_interfaces"`
-	Interfaces         []ProxmoxNetworkInterface   `json:"interfaces"`
-	TotalRXBytes       int64                `json:"total_rx_bytes"`
-	TotalTXBytes       int64                `json:"total_tx_bytes"`
+	TotalInterfaces  int                       `json:"total_interfaces"`
+	ActiveInterfaces int                       `json:"active_interfaces"`
+	Interfaces       []ProxmoxNetworkInterface `json:"interfaces"`
+	TotalRXBytes     int64                     `json:"total_rx_bytes"`
+	TotalTXBytes     int64                     `json:"total_tx_bytes"`
 }
 
 // NetworkInterface holds individual interface statistics
@@ -1103,94 +1104,105 @@ type ProxmoxNetworkInterface struct {
 
 // CertificateInfo holds SSL certificate information
 type CertificateInfo struct {
-	CertificateFound bool                `json:"certificate_found"`
-	Node             string              `json:"node"`
-	Certificates     []CertificateEntry  `json:"certificates"`
-	ExpiringCerts    []string            `json:"expiring_certs"`   // Certs expiring within 30 days
-	ExpiredCerts     []string            `json:"expired_certs"`
+	CertificateFound bool               `json:"certificate_found"`
+	Node             string             `json:"node"`
+	Certificates     []CertificateEntry `json:"certificates"`
+	ExpiringCerts    []string           `json:"expiring_certs"` // Certs expiring within 30 days
+	ExpiredCerts     []string           `json:"expired_certs"`
 }
 
 // CertificateEntry holds individual certificate information
 type CertificateEntry struct {
-	Name       string `json:"name"`
-	Path       string `json:"path"`
-	Subject    string `json:"subject"`
-	Issuer     string `json:"issuer"`
-	NotBefore  string `json:"not_before"`
-	NotAfter   string `json:"not_after"`
-	DaysToExpiry int  `json:"days_to_expiry"`
-	Expired    bool   `json:"expired"`
+	Name         string `json:"name"`
+	Path         string `json:"path"`
+	Subject      string `json:"subject"`
+	Issuer       string `json:"issuer"`
+	NotBefore    string `json:"not_before"`
+	NotAfter     string `json:"not_after"`
+	DaysToExpiry int    `json:"days_to_expiry"`
+	Expired      bool   `json:"expired"`
 }
 
 // CephInfo holds Ceph cluster information
 type CephInfo struct {
-	CephInstalled    bool              `json:"ceph_installed"`
-	CephVersion      string            `json:"ceph_version"`
-	ClusterHealth    string            `json:"cluster_health"`    // HEALTH_OK, HEALTH_WARN, HEALTH_ERR
-	MonStatus        string            `json:"mon_status"`
-	TotalOSDs        int               `json:"total_osds"`
-	UpOSDs           int               `json:"up_osds"`
-	InOSDs           int               `json:"in_osds"`
-	DownOSDs         int               `json:"down_osds"`
-	OutOSDs          int               `json:"out_osds"`
-	Pools            []CephPool        `json:"pools"`
-	TotalStorageBytes int64            `json:"total_storage_bytes"`
-	UsedBytes        int64             `json:"used_bytes"`
-	AvailableBytes   int64             `json:"available_bytes"`
-	UsedPercent      float64           `json:"used_percent"`
+	CephInstalled     bool       `json:"ceph_installed"`
+	CephVersion       string     `json:"ceph_version"`
+	ClusterHealth     string     `json:"cluster_health"` // HEALTH_OK, HEALTH_WARN, HEALTH_ERR
+	MonStatus         string     `json:"mon_status"`
+	TotalOSDs         int        `json:"total_osds"`
+	UpOSDs            int        `json:"up_osds"`
+	InOSDs            int        `json:"in_osds"`
+	DownOSDs          int        `json:"down_osds"`
+	OutOSDs           int        `json:"out_osds"`
+	Pools             []CephPool `json:"pools"`
+	TotalStorageBytes int64      `json:"total_storage_bytes"`
+	UsedBytes         int64      `json:"used_bytes"`
+	AvailableBytes    int64      `json:"available_bytes"`
+	UsedPercent       float64    `json:"used_percent"`
 }
 
 // CephPool holds Ceph pool information
 type CephPool struct {
-	Name         string  `json:"name"`
-	ID           int     `json:"id"`
-	UsedBytes    int64   `json:"used_bytes"`
-	AvailBytes   int64   `json:"avail_bytes"`
-	UsedPercent  float64 `json:"used_percent"`
-	Objects      int64   `json:"objects"`
+	Name        string  `json:"name"`
+	ID          int     `json:"id"`
+	UsedBytes   int64   `json:"used_bytes"`
+	AvailBytes  int64   `json:"avail_bytes"`
+	UsedPercent float64 `json:"used_percent"`
+	Objects     int64   `json:"objects"`
 }
 
 // PoolInfo holds resource pool information
 type PoolInfo struct {
-	TotalPools   int         `json:"total_pools"`
-	Pools        []PoolEntry `json:"pools"`
+	TotalPools int         `json:"total_pools"`
+	Pools      []PoolEntry `json:"pools"`
 }
 
 // PoolEntry holds individual pool information
 type PoolEntry struct {
-	PoolID      string   `json:"poolid"`
-	Comment     string   `json:"comment"`
-	Members     int      `json:"members"`      // Total VMs/CTs in pool
-	VMIDs       []string `json:"vmids"`        // List of VM/CT IDs
-	StorageIDs  []string `json:"storage_ids"`  // Storage assigned to pool
+	PoolID     string   `json:"poolid"`
+	Comment    string   `json:"comment"`
+	Members    int      `json:"members"`     // Total VMs/CTs in pool
+	VMIDs      []string `json:"vmids"`       // List of VM/CT IDs
+	StorageIDs []string `json:"storage_ids"` // Storage assigned to pool
 }
 
 // NodeSummaryInfo holds cluster-wide node summary
 type NodeSummaryInfo struct {
-	TotalNodes      int                 `json:"total_nodes"`
-	OnlineNodes     int                 `json:"online_nodes"`
-	OfflineNodes    int                 `json:"offline_nodes"`
-	Nodes           []NodeSummaryEntry  `json:"nodes"`
-	ClusterCPUUsage float64             `json:"cluster_cpu_usage"`
-	ClusterMemUsage float64             `json:"cluster_mem_usage"`
-	TotalCPUs       int                 `json:"total_cpus"`
+	TotalNodes       int                `json:"total_nodes"`
+	OnlineNodes      int                `json:"online_nodes"`
+	OfflineNodes     int                `json:"offline_nodes"`
+	Nodes            []NodeSummaryEntry `json:"nodes"`
+	ClusterCPUUsage  float64            `json:"cluster_cpu_usage"`
+	ClusterMemUsage  float64            `json:"cluster_mem_usage"`
+	TotalCPUs        int                `json:"total_cpus"`
 	TotalMemoryBytes int64              `json:"total_memory_bytes"`
 	UsedMemoryBytes  int64              `json:"used_memory_bytes"`
 }
 
 // NodeSummaryEntry holds individual node summary
 type NodeSummaryEntry struct {
-	Node         string  `json:"node"`
-	Status       string  `json:"status"`       // online/offline
-	CPUUsage     float64 `json:"cpu_usage"`    // 0-100
-	MemUsage     float64 `json:"mem_usage"`    // 0-100
-	DiskUsage    float64 `json:"disk_usage"`   // 0-100
-	CPUCount     int     `json:"cpu_count"`
-	TotalMemBytes int64  `json:"total_mem_bytes"`
-	UsedMemBytes  int64  `json:"used_mem_bytes"`
-	TotalDiskBytes int64 `json:"total_disk_bytes"`
-	UsedDiskBytes  int64 `json:"used_disk_bytes"`
-	Uptime       int64   `json:"uptime_seconds"`
+	Node           string  `json:"node"`
+	Status         string  `json:"status"`     // online/offline
+	CPUUsage       float64 `json:"cpu_usage"`  // 0-100
+	MemUsage       float64 `json:"mem_usage"`  // 0-100
+	DiskUsage      float64 `json:"disk_usage"` // 0-100
+	CPUCount       int     `json:"cpu_count"`
+	TotalMemBytes  int64   `json:"total_mem_bytes"`
+	UsedMemBytes   int64   `json:"used_mem_bytes"`
+	TotalDiskBytes int64   `json:"total_disk_bytes"`
+	UsedDiskBytes  int64   `json:"used_disk_bytes"`
+	Uptime         int64   `json:"uptime_seconds"`
+}
+
+// nodeStatusResponse represents the JSON response from pvesh get /nodes/{node}/status
+type nodeStatusResponse struct {
+	CPU    float64 `json:"cpu"`  // CPU utilization (0-1)
+	CPUs   int     `json:"cpus"` // Number of CPUs (optional, may be in cpuinfo)
+	Memory struct {
+		Total int64 `json:"total"` // Total memory in bytes
+		Used  int64 `json:"used"`  // Used memory in bytes
+	} `json:"memory"`
+	Uptime int64 `json:"uptime"` // Uptime in seconds
 }
 
 // checkSubscription checks Proxmox subscription status
@@ -2173,67 +2185,19 @@ func (p *ProxmoxChecker) getNodeStatus(ctx context.Context, executor diagnostics
 
 	entry.Status = "online"
 
-	// Parse status output
-	lines := strings.Split(stdout, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-
-		// CPU usage
-		if strings.Contains(line, "\"cpu\"") {
-			if idx := strings.Index(line, ":"); idx != -1 {
-				valStr := strings.TrimSpace(line[idx+1:])
-				valStr = strings.Trim(valStr, ",")
-				if val, err := strconv.ParseFloat(valStr, 64); err == nil {
-					entry.CPUUsage = val * 100
-				}
-			}
-		}
-
-		// CPU count
-		if strings.Contains(line, "\"cpuinfo\"") || strings.Contains(line, "\"cpus\"") {
-			if idx := strings.Index(line, ":"); idx != -1 {
-				valStr := strings.TrimSpace(line[idx+1:])
-				valStr = strings.Trim(valStr, ",")
-				if val, err := strconv.Atoi(valStr); err == nil {
-					entry.CPUCount = val
-				}
-			}
-		}
-
-		// Memory
-		if strings.Contains(line, "\"memory\"") && strings.Contains(line, "\"total\"") {
-			// Total memory
-			if idx := strings.Index(line, ":"); idx != -1 {
-				valStr := strings.TrimSpace(line[idx+1:])
-				valStr = strings.Trim(valStr, ",")
-				if val, err := strconv.ParseInt(valStr, 10, 64); err == nil {
-					entry.TotalMemBytes = val
-				}
-			}
-		}
-
-		if strings.Contains(line, "\"memory\"") && strings.Contains(line, "\"used\"") {
-			// Used memory
-			if idx := strings.Index(line, ":"); idx != -1 {
-				valStr := strings.TrimSpace(line[idx+1:])
-				valStr = strings.Trim(valStr, ",")
-				if val, err := strconv.ParseInt(valStr, 10, 64); err == nil {
-					entry.UsedMemBytes = val
-				}
-			}
-		}
-
-		// Uptime
-		if strings.Contains(line, "\"uptime\"") {
-			if idx := strings.Index(line, ":"); idx != -1 {
-				valStr := strings.TrimSpace(line[idx+1:])
-				valStr = strings.Trim(valStr, ",")
-				if val, err := strconv.ParseInt(valStr, 10, 64); err == nil {
-					entry.Uptime = val
-				}
-			}
-		}
+	// Parse JSON response
+	var status nodeStatusResponse
+	if err := json.Unmarshal([]byte(stdout), &status); err != nil {
+		issues = append(issues, fmt.Sprintf("Failed to parse node status JSON for %s: %v", nodeName, err))
+		return entry, issues
 	}
+
+	// Map parsed data to entry
+	entry.CPUUsage = status.CPU * 100 // Convert 0-1 to 0-100
+	entry.CPUCount = status.CPUs
+	entry.TotalMemBytes = status.Memory.Total
+	entry.UsedMemBytes = status.Memory.Used
+	entry.Uptime = status.Uptime
 
 	// Calculate memory usage percentage
 	if entry.TotalMemBytes > 0 {
