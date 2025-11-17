@@ -19,7 +19,7 @@ import (
 func TestRunAIAnalysis_Ollama(t *testing.T) {
 	// Create mock Ollama server
 	mockResponse := map[string]interface{}{
-		"model":     "llama3.1:8b",
+		"model":      "llama3.1:8b",
 		"created_at": time.Now().Format(time.RFC3339),
 		"message": map[string]interface{}{
 			"role": "assistant",

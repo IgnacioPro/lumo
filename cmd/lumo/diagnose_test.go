@@ -409,17 +409,17 @@ func TestFormatRisk(t *testing.T) {
 
 func TestFormatAIAnalysisJSON(t *testing.T) {
 	tests := []struct {
-		name    string
+		name     string
 		analysis *ai.AnalysisResponse
-		wantErr bool
-		checkFn func(string) bool
+		wantErr  bool
+		checkFn  func(string) bool
 	}{
 		{
 			name: "valid analysis",
 			analysis: &ai.AnalysisResponse{
-				OverallHealth: ai.HealthHealthy,
-				Summary:       "System is healthy",
-				Findings:      []ai.Finding{},
+				OverallHealth:   ai.HealthHealthy,
+				Summary:         "System is healthy",
+				Findings:        []ai.Finding{},
 				Recommendations: []ai.Recommendation{},
 			},
 			wantErr: false,
@@ -506,9 +506,9 @@ func TestFormatAIAnalysisText(t *testing.T) {
 		{
 			name: "basic analysis without color",
 			analysis: &ai.AnalysisResponse{
-				OverallHealth: ai.HealthHealthy,
-				Summary:       "System is healthy",
-				Findings:      []ai.Finding{},
+				OverallHealth:   ai.HealthHealthy,
+				Summary:         "System is healthy",
+				Findings:        []ai.Finding{},
 				Recommendations: []ai.Recommendation{},
 			},
 			color: false,
@@ -561,9 +561,9 @@ func TestFormatAIAnalysisText(t *testing.T) {
 		{
 			name: "analysis with color enabled",
 			analysis: &ai.AnalysisResponse{
-				OverallHealth: ai.HealthHealthy,
-				Summary:       "All good",
-				Findings:      []ai.Finding{},
+				OverallHealth:   ai.HealthHealthy,
+				Summary:         "All good",
+				Findings:        []ai.Finding{},
 				Recommendations: []ai.Recommendation{},
 			},
 			color: true,
@@ -576,9 +576,9 @@ func TestFormatAIAnalysisText(t *testing.T) {
 		{
 			name: "analysis with tokens used",
 			analysis: &ai.AnalysisResponse{
-				OverallHealth: ai.HealthHealthy,
-				Summary:       "System OK",
-				Findings:      []ai.Finding{},
+				OverallHealth:   ai.HealthHealthy,
+				Summary:         "System OK",
+				Findings:        []ai.Finding{},
 				Recommendations: []ai.Recommendation{},
 				TokensUsed: &ai.TokenUsage{
 					TotalTokens: 1500,

@@ -110,14 +110,14 @@ func (p *OpenAIProvider) Analyze(ctx context.Context, req *AnalysisRequest) (*An
 
 	// Parse response
 	p.log.WithFields(logrus.Fields{
-		"content_length": len(respContent),
+		"content_length":  len(respContent),
 		"content_preview": truncateString(respContent, 300),
 	}).Debug("Parsing AI response content")
 
 	response, err := ParseAnalysisResponse(respContent, p.Name(), p.config.Model)
 	if err != nil {
 		p.log.WithFields(logrus.Fields{
-			"error": err.Error(),
+			"error":          err.Error(),
 			"content_length": len(respContent),
 		}).Error("Failed to parse analysis response")
 		return nil, &Error{
@@ -189,7 +189,7 @@ func (p *OpenAIProvider) Health(ctx context.Context) error {
 	// which use significant tokens for internal reasoning before generating content.
 	// Previous limit of 100 tokens was insufficient and caused empty responses.
 	req := &openaiRequest{
-		Model:              p.config.Model,
+		Model:               p.config.Model,
 		MaxCompletionTokens: 1000,
 		Messages: []openaiMessage{
 			{Role: "user", Content: "Respond with 'OK'"},
@@ -212,9 +212,9 @@ func (p *OpenAIProvider) Health(ctx context.Context) error {
 // buildRequest constructs an OpenAI API request.
 func (p *OpenAIProvider) buildRequest(systemPrompt, userPrompt string) *openaiRequest {
 	return &openaiRequest{
-		Model:              p.config.Model,
+		Model:               p.config.Model,
 		MaxCompletionTokens: p.config.MaxTokens,
-		Temperature:        p.config.Temperature,
+		Temperature:         p.config.Temperature,
 		Messages: []openaiMessage{
 			{
 				Role:    "system",
@@ -266,10 +266,10 @@ func (p *OpenAIProvider) callAPI(ctx context.Context, req *openaiRequest) (strin
 	}
 
 	p.log.WithFields(logrus.Fields{
-		"status_code":   resp.StatusCode,
-		"content_type":  resp.Header.Get("Content-Type"),
-		"body_length":   len(body),
-		"body_preview":  truncateString(string(body), 200),
+		"status_code":  resp.StatusCode,
+		"content_type": resp.Header.Get("Content-Type"),
+		"body_length":  len(body),
+		"body_preview": truncateString(string(body), 200),
 	}).Debug("Received OpenAI API response")
 
 	if resp.StatusCode != http.StatusOK {
@@ -340,11 +340,11 @@ func (p *OpenAIProvider) callAPI(ctx context.Context, req *openaiRequest) (strin
 	}
 
 	p.log.WithFields(logrus.Fields{
-		"content_length": len(content),
-		"prompt_tokens":  usage.InputTokens,
+		"content_length":    len(content),
+		"prompt_tokens":     usage.InputTokens,
 		"completion_tokens": usage.OutputTokens,
-		"total_tokens":   usage.TotalTokens,
-		"finish_reason":  choice.FinishReason,
+		"total_tokens":      usage.TotalTokens,
+		"finish_reason":     choice.FinishReason,
 	}).Debug("Successfully parsed OpenAI response")
 
 	return content, usage, nil
@@ -464,11 +464,11 @@ func (p *OpenAIProvider) setHeaders(req *http.Request) {
 // OpenAI API request/response types
 
 type openaiRequest struct {
-	Model              string          `json:"model"`
+	Model               string          `json:"model"`
 	MaxCompletionTokens int             `json:"max_completion_tokens,omitempty"`
-	Temperature        float64         `json:"temperature,omitempty"`
-	Messages           []openaiMessage `json:"messages"`
-	Stream             bool            `json:"stream,omitempty"`
+	Temperature         float64         `json:"temperature,omitempty"`
+	Messages            []openaiMessage `json:"messages"`
+	Stream              bool            `json:"stream,omitempty"`
 }
 
 type openaiMessage struct {

@@ -194,8 +194,8 @@ func (p *OpenRouterProvider) AnalyzeStream(ctx context.Context, req *AnalysisReq
 func (p *OpenRouterProvider) Health(ctx context.Context) error {
 	// Simple health check: send a minimal request
 	req := &openrouterRequest{
-		Model:      p.config.Model,
-		MaxTokens:  10,
+		Model:     p.config.Model,
+		MaxTokens: 10,
 		Messages: []openrouterMessage{
 			{Role: "user", Content: "test"},
 		},
@@ -455,11 +455,11 @@ func (p *OpenRouterProvider) setHeaders(req *http.Request) {
 // These follow the OpenAI-compatible format
 
 type openrouterRequest struct {
-	Model       string               `json:"model"`
-	MaxTokens   int                  `json:"max_tokens,omitempty"`
-	Temperature float64              `json:"temperature,omitempty"`
-	Messages    []openrouterMessage  `json:"messages"`
-	Stream      bool                 `json:"stream,omitempty"`
+	Model       string              `json:"model"`
+	MaxTokens   int                 `json:"max_tokens,omitempty"`
+	Temperature float64             `json:"temperature,omitempty"`
+	Messages    []openrouterMessage `json:"messages"`
+	Stream      bool                `json:"stream,omitempty"`
 }
 
 type openrouterMessage struct {

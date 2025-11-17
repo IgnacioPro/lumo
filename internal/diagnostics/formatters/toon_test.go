@@ -10,10 +10,10 @@ import (
 
 func TestNewToonFormatter(t *testing.T) {
 	tests := []struct {
-		name         string
-		opts         []ToonFormatterOption
-		wantIndent   int
-		wantLengthM  bool
+		name        string
+		opts        []ToonFormatterOption
+		wantIndent  int
+		wantLengthM bool
 	}{
 		{
 			name:        "default options",
