@@ -87,21 +87,21 @@ func (p *GeminiProvider) Analyze(ctx context.Context, req *AnalysisRequest) (*An
 		return nil, fmt.Errorf("failed to build analysis prompt: %w", err)
 	}
 
-	// Build request body
-	requestBody := map[string]interface{}{
-		"contents": []map[string]interface{}{
+	// Build request body using typed struct
+	requestBody := geminiRequest{
+		Contents: []geminiContent{
 			{
-				"role": "user",
-				"parts": []map[string]string{
+				Role: "user",
+				Parts: []geminiPart{
 					{
-						"text": systemPrompt + "\n\n" + userPrompt,
+						Text: systemPrompt + "\n\n" + userPrompt,
 					},
 				},
 			},
 		},
-		"generationConfig": map[string]interface{}{
-			"temperature":    p.config.Temperature,
-			"maxOutputTokens": p.config.MaxTokens,
+		GenerationConfig: geminiGenerationConfig{
+			Temperature:     p.config.Temperature,
+			MaxOutputTokens: p.config.MaxTokens,
 		},
 	}
 
@@ -160,23 +160,8 @@ func (p *GeminiProvider) Analyze(ctx context.Context, req *AnalysisRequest) (*An
 		}
 	}
 
-	// Parse response
-	var geminiResp struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-			FinishReason string `json:"finishReason"`
-		} `json:"candidates"`
-		UsageMetadata struct {
-			PromptTokenCount     int `json:"promptTokenCount"`
-			CandidatesTokenCount int `json:"candidatesTokenCount"`
-			TotalTokenCount      int `json:"totalTokenCount"`
-		} `json:"usageMetadata"`
-	}
-
+	// Parse response using typed struct
+	var geminiResp geminiResponse
 	if err := json.Unmarshal(respBody, &geminiResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
@@ -228,21 +213,21 @@ func (p *GeminiProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest
 			return
 		}
 
-		// Build request body with streaming enabled
-		requestBody := map[string]interface{}{
-			"contents": []map[string]interface{}{
+		// Build request body with streaming enabled using typed struct
+		requestBody := geminiRequest{
+			Contents: []geminiContent{
 				{
-					"role": "user",
-					"parts": []map[string]string{
+					Role: "user",
+					Parts: []geminiPart{
 						{
-							"text": systemPrompt + "\n\n" + userPrompt,
+							Text: systemPrompt + "\n\n" + userPrompt,
 						},
 					},
 				},
 			},
-			"generationConfig": map[string]interface{}{
-				"temperature":     p.config.Temperature,
-				"maxOutputTokens": p.config.MaxTokens,
+			GenerationConfig: geminiGenerationConfig{
+				Temperature:     p.config.Temperature,
+				MaxOutputTokens: p.config.MaxTokens,
 			},
 		}
 
@@ -318,17 +303,8 @@ func (p *GeminiProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest
 				break
 			}
 
-			// Parse the JSON chunk
-			var chunkData struct {
-				Candidates []struct {
-					Content struct {
-						Parts []struct {
-							Text string `json:"text"`
-						} `json:"parts"`
-					} `json:"content"`
-				} `json:"candidates"`
-			}
-
+			// Parse the JSON chunk using typed struct
+			var chunkData geminiStreamChunk
 			if err := json.Unmarshal([]byte(data), &chunkData); err != nil {
 				p.log.WithError(err).Warn("Failed to parse stream chunk")
 				continue
@@ -389,4 +365,51 @@ func (p *GeminiProvider) Health(ctx context.Context) error {
 
 	body, _ := io.ReadAll(resp.Body)
 	return fmt.Errorf("health check failed with status %d: %s", resp.StatusCode, string(body))
+}
+
+// Gemini API request/response types
+
+type geminiRequest struct {
+	Contents         []geminiContent        `json:"contents"`
+	GenerationConfig geminiGenerationConfig `json:"generationConfig"`
+}
+
+type geminiContent struct {
+	Role  string        `json:"role"`
+	Parts []geminiPart `json:"parts"`
+}
+
+type geminiPart struct {
+	Text string `json:"text"`
+}
+
+type geminiGenerationConfig struct {
+	Temperature     float64 `json:"temperature"`
+	MaxOutputTokens int     `json:"maxOutputTokens"`
+}
+
+type geminiResponse struct {
+	Candidates []struct {
+		Content struct {
+			Parts []struct {
+				Text string `json:"text"`
+			} `json:"parts"`
+		} `json:"content"`
+		FinishReason string `json:"finishReason"`
+	} `json:"candidates"`
+	UsageMetadata struct {
+		PromptTokenCount     int `json:"promptTokenCount"`
+		CandidatesTokenCount int `json:"candidatesTokenCount"`
+		TotalTokenCount      int `json:"totalTokenCount"`
+	} `json:"usageMetadata"`
+}
+
+type geminiStreamChunk struct {
+	Candidates []struct {
+		Content struct {
+			Parts []struct {
+				Text string `json:"text"`
+			} `json:"parts"`
+		} `json:"content"`
+	} `json:"candidates"`
 }
