@@ -195,14 +195,14 @@ func FilterAuditLog(entries []AuditEntry, criteria AuditFilter) []AuditEntry {
 
 // AuditFilter defines criteria for filtering audit log entries.
 type AuditFilter struct {
-	ActionID   string         // Filter by action ID
-	Category   ActionCategory // Filter by category
-	Risk       RiskLevel      // Filter by risk level
-	Status     ActionStatus   // Filter by status
-	User       string         // Filter by user
-	Hostname   string         // Filter by hostname
-	Since      time.Time      // Only entries after this time
-	Before     time.Time      // Only entries before this time
+	ActionID string         // Filter by action ID
+	Category ActionCategory // Filter by category
+	Risk     RiskLevel      // Filter by risk level
+	Status   ActionStatus   // Filter by status
+	User     string         // Filter by user
+	Hostname string         // Filter by hostname
+	Since    time.Time      // Only entries after this time
+	Before   time.Time      // Only entries before this time
 }
 
 // Matches returns true if an audit entry matches the filter criteria.
@@ -236,13 +236,13 @@ func (f AuditFilter) Matches(entry AuditEntry) bool {
 
 // AuditSummary provides statistics from audit log entries.
 type AuditSummary struct {
-	TotalEntries   int                         `json:"total_entries"`
-	ByStatus       map[ActionStatus]int        `json:"by_status"`
-	ByRisk         map[RiskLevel]int           `json:"by_risk"`
-	ByCategory     map[ActionCategory]int      `json:"by_category"`
-	SuccessRate    float64                     `json:"success_rate"`
-	AverageDuration time.Duration              `json:"average_duration"`
-	TimeRange      struct {
+	TotalEntries    int                    `json:"total_entries"`
+	ByStatus        map[ActionStatus]int   `json:"by_status"`
+	ByRisk          map[RiskLevel]int      `json:"by_risk"`
+	ByCategory      map[ActionCategory]int `json:"by_category"`
+	SuccessRate     float64                `json:"success_rate"`
+	AverageDuration time.Duration          `json:"average_duration"`
+	TimeRange       struct {
 		Earliest time.Time `json:"earliest"`
 		Latest   time.Time `json:"latest"`
 	} `json:"time_range"`
