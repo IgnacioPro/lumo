@@ -1,8 +1,8 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-17 (Phase 4.2 Complete - OpenRouter Integration)
+> **Last Updated:** 2025-11-17 (Phase 10 Planned - Messaging & Notifications)
 > **Project Version:** 0.5.0
-> **Current Phase:** Phase 5 Complete (Security + Kubernetes Diagnostics) + Phase 4.2 Complete (OpenRouter) + Phase 8 In Progress (Testing)
+> **Current Phase:** Phase 5 Complete (Security + Kubernetes Diagnostics) + Phase 4.2 Complete (OpenRouter) + Phase 8 In Progress (Testing) + Phase 10 Planned (Messaging)
 
 This document provides comprehensive guidance for AI assistants working on the Lumo codebase.
 
@@ -51,12 +51,14 @@ lumo/
 │   │   │                         # Security: Patch Status, Open Ports, SSH Security, Auth Failures
 │   │   │                         # Specialized: Kubernetes, Proxmox
 │   │   └── formatters/           # Output formatters (text, JSON, TOON)
-│   └── ai/                        # AI providers (8 files, ~2,200 lines) ✅
-│       ├── anthropic.go          # Claude integration
-│       ├── openai.go             # GPT integration
-│       ├── ollama.go             # Local model support
-│       ├── gemini.go             # Google Gemini integration
-│       └── openrouter.go         # OpenRouter integration (in progress)
+│   ├── ai/                        # AI providers (8 files, ~2,200 lines) ✅
+│   │   ├── anthropic.go          # Claude integration
+│   │   ├── openai.go             # GPT integration
+│   │   ├── ollama.go             # Local model support
+│   │   ├── gemini.go             # Google Gemini integration
+│   │   └── openrouter.go         # OpenRouter integration (in progress)
+│   └── notifications/             # Messaging integrations (planned)
+│       └── providers/            # Slack, Teams, Telegram, Discord, etc.
 └── configs/
     └── config.example.yaml        # Configuration template
 
@@ -74,6 +76,7 @@ Total: 46 Go files (~15,500+ lines) + 28 test files (~12,500+ lines) [OpenRouter
 | `internal/diagnostics/` | Core diagnostic runner and interfaces |
 | `internal/diagnostics/checkers/` | Individual check implementations |
 | `internal/ai/` | AI provider integrations |
+| `internal/notifications/` | Messaging/notification providers |
 
 ---
 
@@ -227,10 +230,11 @@ import (
 | Command | Status | Purpose | Key Flags |
 |---------|--------|---------|-----------|
 | `connect` | ✅ Phase 2 | SSH connection | `--port`, `--user`, `--key` |
-| `diagnose` | ✅ Phase 3+4 | System diagnostics + AI | `--checks`, `--format`, `--analyze` |
-| `fix` | ⏳ Phase 5 | Auto-remediation | `--auto-approve`, `--dry-run` |
-| `report` | ⏳ Phase 6 | Report generation | `--format`, `--output` |
-| `serve` | ⏳ Phase 7 | API server | `--port`, `--tls` |
+| `diagnose` | ✅ Phase 3+4 | System diagnostics + AI | `--checks`, `--format`, `--analyze`, `--notify` |
+| `fix` | ⏳ Phase 6 | Auto-remediation | `--auto-approve`, `--dry-run`, `--notify` |
+| `report` | ⏳ Phase 7 | Report generation | `--format`, `--output` |
+| `serve` | ⏳ Phase 9 | API server | `--port`, `--tls` |
+| `notify` | ⏳ Phase 10 | Send notifications | `--provider`, `--test` |
 
 ### Command Registration Pattern
 
@@ -556,11 +560,11 @@ chmod 600 /etc/lumo/key.pem
 - Human-in-the-loop approval
 - Rollback support, audit logging
 
-### ⏳ Phase 6: Reporting (Planned)
+### ⏳ Phase 7: Reporting (Planned)
 - Multiple formats (Markdown, JSON, YAML, HTML)
 - Historical data, trend analysis
 
-### ⏳ Phase 7: API Server (Planned)
+### ⏳ Phase 9: API Server (Planned)
 - REST API + WebSocket
 - Authentication, rate limiting
 - OpenAPI/Swagger docs
@@ -837,6 +841,60 @@ The critical production gaps are now closed. The remaining work to 80% is primar
 - REST API + WebSocket
 - Authentication, rate limiting
 - OpenAPI/Swagger docs
+
+### ⏳ Phase 10: Messaging & Notifications (Planned)
+**Cross-cutting notification system for alerts and team communication**
+
+**Supported Providers:**
+- **Chat:** Slack, Microsoft Teams, Discord, Mattermost, Rocket.Chat
+- **Messaging:** Telegram (Bot API)
+- **Email:** SMTP with HTML/plain text
+- **Incident Management:** PagerDuty, Opsgenie
+- **Generic:** Custom webhooks
+
+**Key Features:**
+- Severity-based routing (critical → PagerDuty+Slack, warning → Slack only)
+- Provider-based interface (similar to AI providers)
+- Rich message formatting (Slack blocks, Teams adaptive cards, Markdown)
+- Retry logic with exponential backoff
+- Integration with diagnostics, remediation, and API events
+- Environment variable configuration for all credentials
+
+**CLI Integration:**
+```bash
+lumo diagnose host --notify slack              # Send results to Slack
+lumo diagnose host --notify-on critical        # Only notify on critical issues
+lumo fix host --interactive --notify teams     # Send approval requests to Teams
+lumo notify test --provider slack              # Test notification config
+```
+
+**Configuration:**
+```yaml
+notifications:
+  enabled: true
+  routing:
+    critical: [pagerduty, slack]
+    error: [slack, email]
+    warning: [slack]
+  providers:
+    slack:
+      webhook_url: env:LUMO_SLACK_WEBHOOK_URL
+      channel: "#lumo-alerts"
+    teams:
+      webhook_url: env:LUMO_TEAMS_WEBHOOK_URL
+    telegram:
+      bot_token: env:LUMO_TELEGRAM_BOT_TOKEN
+      chat_id: env:LUMO_TELEGRAM_CHAT_ID
+    pagerduty:
+      integration_key: env:LUMO_PAGERDUTY_KEY
+```
+
+**Estimated Deliverables:**
+- 10 provider implementations (~2,500 lines)
+- Core notifier + routing (~500 lines)
+- Message formatters (~800 lines)
+- Tests (~2,000 lines)
+- **Total: ~5,800 lines**
 
 ---
 
