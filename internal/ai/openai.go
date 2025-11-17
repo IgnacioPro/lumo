@@ -177,8 +177,8 @@ func (p *OpenAIProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest
 func (p *OpenAIProvider) Health(ctx context.Context) error {
 	// Simple health check: send a minimal request
 	req := &openaiRequest{
-		Model:     p.config.Model,
-		MaxTokens: 10,
+		Model:              p.config.Model,
+		MaxCompletionTokens: 10,
 		Messages: []openaiMessage{
 			{Role: "user", Content: "test"},
 		},
@@ -200,9 +200,9 @@ func (p *OpenAIProvider) Health(ctx context.Context) error {
 // buildRequest constructs an OpenAI API request.
 func (p *OpenAIProvider) buildRequest(systemPrompt, userPrompt string) *openaiRequest {
 	return &openaiRequest{
-		Model:       p.config.Model,
-		MaxTokens:   p.config.MaxTokens,
-		Temperature: p.config.Temperature,
+		Model:              p.config.Model,
+		MaxCompletionTokens: p.config.MaxTokens,
+		Temperature:        p.config.Temperature,
 		Messages: []openaiMessage{
 			{
 				Role:    "system",
@@ -384,11 +384,11 @@ func (p *OpenAIProvider) setHeaders(req *http.Request) {
 // OpenAI API request/response types
 
 type openaiRequest struct {
-	Model       string          `json:"model"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
-	Temperature float64         `json:"temperature,omitempty"`
-	Messages    []openaiMessage `json:"messages"`
-	Stream      bool            `json:"stream,omitempty"`
+	Model              string          `json:"model"`
+	MaxCompletionTokens int             `json:"max_completion_tokens,omitempty"`
+	Temperature        float64         `json:"temperature,omitempty"`
+	Messages           []openaiMessage `json:"messages"`
+	Stream             bool            `json:"stream,omitempty"`
 }
 
 type openaiMessage struct {
