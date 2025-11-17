@@ -21,6 +21,7 @@ const (
 	CategoryNetwork        CheckCategory = "network"
 	CategoryService        CheckCategory = "service"
 	CategorySecurity       CheckCategory = "security"
+	CategoryKubernetes     CheckCategory = "kubernetes"
 	CategoryVirtualization CheckCategory = "virtualization"
 )
 

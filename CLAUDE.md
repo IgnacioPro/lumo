@@ -1,8 +1,8 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-16 (Phase 5 Complete - Security Diagnostics)
-> **Project Version:** 0.4.2
-> **Current Phase:** Phase 5 Complete (Security Diagnostics) + Phase 8 In Progress (Testing)
+> **Last Updated:** 2025-11-16 (Phase 5 Complete - Enhanced Diagnostics including Kubernetes)
+> **Project Version:** 0.5.0
+> **Current Phase:** Phase 5 Complete (Security + Kubernetes Diagnostics) + Phase 8 In Progress (Testing)
 
 This document provides comprehensive guidance for AI assistants working on the Lumo codebase.
 
@@ -14,7 +14,7 @@ This document provides comprehensive guidance for AI assistants working on the L
 
 **Lumo** is an intelligent SRE/DevOps automation agent written in Go that:
 - **Connects** to remote servers via SSH
-- **Diagnoses** system issues (CPU, memory, disk, processes, services, network)
+- **Diagnoses** system issues (CPU, memory, disk, processes, services, network, security, Kubernetes)
 - **Analyzes** problems using AI (Anthropic, OpenAI, Ollama, Gemini)
 - **Remediates** issues automatically with human-in-the-loop approval
 - **Reports** findings in multiple formats (text, JSON, TOON)
@@ -25,7 +25,7 @@ This document provides comprehensive guidance for AI assistants working on the L
 - **Language:** Go 1.25.4
 - **Module Path:** `github.com/ignacio/lumo`
 - **Architecture:** Modular CLI with pluggable backends
-- **Current Status:** Phase 5 complete (SSH + Enhanced Diagnostics + AI with 4 providers + Security Checks + Advanced Memory Metrics)
+- **Current Status:** Phase 5 complete (SSH + 11 Diagnostic Checkers + AI with 4 providers + Security Checks + Kubernetes Native Diagnostics)
 - **License:** MIT
 
 ---
@@ -45,11 +45,11 @@ lumo/
 ├── internal/
 │   ├── config/                    # Configuration management
 │   ├── ssh/                       # SSH client (8 files, 2,410 lines) ✅
-│   ├── diagnostics/               # Diagnostic system (20 files, 7,800+ lines) ✅
-│   │   ├── checkers/             # 11 checkers (6 core + 4 security + 1 virtualization)
+│   ├── diagnostics/               # Diagnostic system (20+ files, 7,800+ lines) ✅
+│   │   ├── checkers/             # 12 checkers (6 core + 4 security + 2 specialized)
 │   │   │                         # Core: CPU, Memory, Disk, Process, Service, Network
 │   │   │                         # Security: Patch Status, Open Ports, SSH Security, Auth Failures
-│   │   │                         # Virtualization: Proxmox
+│   │   │                         # Specialized: Kubernetes, Proxmox
 │   │   └── formatters/           # Output formatters (text, JSON, TOON)
 │   └── ai/                        # AI providers (7 files, 1,964 lines) ✅
 │       ├── anthropic.go          # Claude integration
@@ -59,7 +59,7 @@ lumo/
 └── configs/
     └── config.example.yaml        # Configuration template
 
-Total: 43 Go files (~14,000 lines) + 15 test files (~6,000 lines)
+Total: 44 Go files (~14,800+ lines) + 26 test files (~11,800+ lines)
 ```
 
 **Directory Purposes:**
@@ -87,8 +87,12 @@ Total: 43 Go files (~14,000 lines) + 15 test files (~6,000 lines)
 | **sirupsen/logrus** | v1.9.3 | Structured logging |
 | **golang.org/x/crypto/ssh** | - | SSH client |
 | **cenkalti/backoff/v4** | - | Retry logic |
+| **k8s.io/client-go** | v0.31.3 | Kubernetes native client |
+| **k8s.io/api** | v0.31.3 | Kubernetes API types |
+| **k8s.io/apimachinery** | v0.31.3 | Kubernetes API machinery |
 
 **AI Integration:** Custom HTTP clients for all providers (no external SDKs)
+**Kubernetes:** Native client using official Kubernetes Go libraries (no kubectl dependency)
 
 ---
 
@@ -418,10 +422,9 @@ chmod 600 /etc/lumo/key.pem
 | `internal/diagnostics/diagnostics.go` | Diagnostic orchestration | `Checker` interface, `Runner`, parallel execution |
 | `internal/diagnostics/executor.go` | Command execution | `SSHExecutor`, `LocalExecutor` |
 
-### Diagnostic Checkers
+### Diagnostic Checkers (12 Total: 6 Core + 4 Security + 2 Specialized)
 
-#### Core System Checkers (6 Complete)
-
+**Core Checkers:**
 | Checker | Key Metrics |
 |---------|-------------|
 | `cpu.go` | Load average, usage %, core count |
@@ -431,19 +434,18 @@ chmod 600 /etc/lumo/key.pem
 | `service.go` | Failed services, systemd/init/launchd support |
 | `network.go` | Interfaces (Linux `ip`, macOS/BSD `ifconfig` with proper UP/status parsing), connectivity (ICMP/TCP), configurable targets, latency, error classification, active connection counting |
 
-#### Security Checkers (4 Complete)
-
+**Security Checkers:**
 | Checker | Key Metrics |
 |---------|-------------|
-| `patch_status.go` | Available updates, security patches across package managers (apt, yum, dnf, apk, pacman) |
-| `ports.go` | Listening ports, public vs localhost, unexpected ports, configurable whitelisting |
-| `ssh_security.go` | SSH key permissions, sshd_config security validation |
-| `auth_failures.go` | Failed login attempts, brute force detection, suspicious IPs |
+| `patch_status.go` | Available updates, security patches (apt/yum/dnf/apk/pacman) |
+| `open_ports.go` | Listening services, public vs localhost, whitelisting |
+| `ssh_security.go` | SSH key permissions, sshd_config security analysis |
+| `auth_failures.go` | Failed login attempts, brute force detection |
 
-#### Virtualization Checkers (1 Complete - Enhanced)
-
+**Specialized Checkers:**
 | Checker | Key Metrics |
 |---------|-------------|
+| `kubernetes.go` | Nodes (ready/not-ready), Pods (phase, restarts), Deployments/StatefulSets/DaemonSets (replica health), Services (endpoints), PVCs (binding status), Events (recent warnings/errors) |
 | `proxmox.go` | **Core:** Cluster status (quorum, nodes), VMs/containers (running/stopped), storage (usage, health), replication jobs, backup status, HA services, Proxmox daemon health<br>**Enhanced:** Subscription validation, update detection, task history, per-VM/CT performance metrics, boot configuration (OnBoot settings), network interface statistics |
 
 ### AI Providers (All 4 Complete)
@@ -501,7 +503,27 @@ chmod 600 /etc/lumo/key.pem
 - ✅ **Integration:** All 4 checkers registered and working with existing diagnostic framework
 - 4 new checkers, ~1,400 lines of code
 
-### ✅ Phase 5.1: Virtualization Platform Support (Complete - 2025-11-16)
+### ✅ Phase 5.1: Specialized Platform Checkers (Complete - 2025-11-16)
+
+#### Kubernetes Diagnostics
+- ✅ **Native Kubernetes Client:** Direct API access using k8s.io/client-go (no kubectl dependency)
+- ✅ **8 Resource Types Monitored:** Nodes, Pods, Deployments, StatefulSets, DaemonSets, Services, PVCs, Events
+- ✅ **Interface-Based Design:** Uses kubernetes.Interface for testability with fake clients
+- ✅ **Comprehensive Health Checks:**
+  - Node readiness and conditions
+  - Pod phase tracking and restart counts
+  - Workload replica health (Deployments, StatefulSets, DaemonSets)
+  - Service endpoint validation
+  - PVC binding status
+  - Recent event monitoring (configurable lookback)
+- ✅ **Granular Configuration:** Individual check toggles, namespace filtering, event lookback period
+- ✅ **Conditional Registration:** Opt-in model, disabled by default, zero overhead when not used
+- ✅ **Full Testing:** 13 test cases (100% passing), mock-based testing with fake Kubernetes clientset
+- ✅ **Documentation:** Comprehensive implementation report (1,717 lines) in REPORTS/
+- 1 new checker, 846 lines production code + 660 lines tests
+- See: REPORTS/kubernetes-diagnostics-implementation-2025-11-16.md
+
+#### Proxmox VE Platform Support
 - ✅ **Proxmox VE Checker:** Comprehensive monitoring for Proxmox Virtual Environment
   - Cluster health: Quorum status, node membership, online/offline detection
   - VM/Container status: Running/stopped VMs and LXC containers with resource metrics
