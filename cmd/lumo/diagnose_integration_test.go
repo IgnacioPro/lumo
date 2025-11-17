@@ -42,9 +42,9 @@ func TestRunDiagnostics_Localhost(t *testing.T) {
 	err := runDiagnostics(cmd, []string{"localhost"})
 
 	// Close write end and read captured output
-	w.Close()
+	_ = w.Close()
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 	output := buf.String()
 
 	// Verify no error
@@ -116,10 +116,10 @@ func TestRunDiagnostics_LocalhostWithFormat(t *testing.T) {
 			err := runDiagnostics(cmd, []string{"localhost"})
 
 			// Restore stdout and capture output
-			w.Close()
+			_ = w.Close()
 			os.Stdout = oldStdout
 			var buf bytes.Buffer
-			io.Copy(&buf, r)
+			_, _ = io.Copy(&buf, r)
 			output := buf.String()
 
 			if err != nil {
@@ -158,10 +158,10 @@ func TestRunDiagnostics_LocalhostWithSpecificChecks(t *testing.T) {
 	err := runDiagnostics(cmd, []string{"localhost"})
 
 	// Restore stdout and capture output
-	w.Close()
+	_ = w.Close()
 	os.Stdout = oldStdout
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 	output := buf.String()
 
 	if err != nil {
@@ -203,10 +203,10 @@ func TestRunDiagnostics_NoArgs(t *testing.T) {
 	err := runDiagnostics(cmd, []string{})
 
 	// Restore stdout
-	w.Close()
+	_ = w.Close()
 	os.Stdout = oldStdout
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 
 	if err != nil {
 		t.Errorf("runDiagnostics() error = %v, want nil (should default to localhost)", err)
@@ -268,9 +268,9 @@ func TestRunDiagnostics_UserHostFormat(t *testing.T) {
 			err := runDiagnostics(cmd, []string{tt.hostArg})
 
 			// Restore stdout
-			w.Close()
+			_ = w.Close()
 			os.Stdout = oldStdout
-			io.Copy(io.Discard, r) // Drain pipe
+			_, _ = io.Copy(io.Discard, r) // Drain pipe
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("runDiagnostics() error = %v, wantErr %v", err, tt.wantErr)

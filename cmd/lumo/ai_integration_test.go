@@ -36,7 +36,7 @@ func TestRunAIAnalysis_Ollama(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockResponse)
+		_ = json.NewEncoder(w).Encode(mockResponse)
 	}))
 	defer server.Close()
 
@@ -110,10 +110,10 @@ func TestRunAIAnalysis_WithFocusAreas(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Capture request body
-		json.NewDecoder(r.Body).Decode(&receivedRequest)
+		_ = json.NewDecoder(r.Body).Decode(&receivedRequest)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mockResponse)
+		_ = json.NewEncoder(w).Encode(mockResponse)
 	}))
 	defer server.Close()
 

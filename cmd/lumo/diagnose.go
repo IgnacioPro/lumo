@@ -156,7 +156,7 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 		if err := sshClient.Connect(hostname, port, username); err != nil {
 			return fmt.Errorf("failed to connect: %w", err)
 		}
-		defer sshClient.Disconnect()
+		defer func() { _ = sshClient.Disconnect() }()
 
 		log.Info("Connected successfully")
 

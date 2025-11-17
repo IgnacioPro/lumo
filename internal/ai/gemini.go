@@ -141,7 +141,7 @@ func (p *GeminiProvider) Analyze(ctx context.Context, req *AnalysisRequest) (*An
 			Retryable: true,
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read response body
 	respBody, err := io.ReadAll(resp.Body)
@@ -315,7 +315,7 @@ func (p *GeminiProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest
 			}
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -401,7 +401,7 @@ func (p *GeminiProvider) Health(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("health check failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusOK {
 		// Model exists (404 for GET on generateContent endpoint is expected, 200 means model info)
