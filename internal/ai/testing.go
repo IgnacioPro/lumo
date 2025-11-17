@@ -87,9 +87,9 @@ func (m *MockProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest, 
 
 	// Call callback with mock chunks
 	if callback != nil {
-		callback("Mock")
-		callback(" streaming")
-		callback(" response")
+		_ = callback("Mock")
+		_ = callback(" streaming")
+		_ = callback(" response")
 	}
 
 	// Return same as Analyze

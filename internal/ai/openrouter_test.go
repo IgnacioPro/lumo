@@ -178,7 +178,7 @@ func TestOpenRouterProvider_Analyze(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -279,7 +279,7 @@ func TestOpenRouterProvider_Analyze_EmptyContent(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -360,7 +360,7 @@ func TestOpenRouterProvider_Analyze_Refusal(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -458,10 +458,10 @@ func TestOpenRouterProvider_Health(t *testing.T) {
 						},
 					}
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(resp)
+					_ = json.NewEncoder(w).Encode(resp)
 				} else {
 					w.WriteHeader(tt.statusCode)
-					w.Write([]byte(`{"error": "server error"}`))
+					_, _ = w.Write([]byte(`{"error": "server error"}`))
 				}
 			}))
 			defer server.Close()

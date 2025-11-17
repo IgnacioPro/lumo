@@ -86,12 +86,12 @@ func trySSHAgent() (ssh.AuthMethod, error) {
 	// Test if agent has any keys
 	signers, err := agentClient.Signers()
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("failed to get signers from SSH agent: %w", err)
 	}
 
 	if len(signers) == 0 {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("SSH agent has no keys loaded")
 	}
 
@@ -163,7 +163,7 @@ func tryInteractive(user, host string) ssh.AuthMethod {
 			if echos[i] {
 				// Echo is enabled, read normally
 				fmt.Printf("%s ", question)
-				fmt.Scanln(&answer)
+				_, _ = fmt.Scanln(&answer)
 			} else {
 				// Echo is disabled, read password securely
 				fmt.Printf("%s ", question)
@@ -261,7 +261,9 @@ func getKeyFromAgent() (ssh.Signer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to SSH agent: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	agentClient := agent.NewClient(conn)
 	signers, err := agentClient.Signers()

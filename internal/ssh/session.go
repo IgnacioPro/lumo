@@ -105,7 +105,9 @@ func (s *Session) executeCommand(command string, options *CommandOptions, result
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
-	defer session.Close()
+	defer func() {
+		_ = session.Close()
+	}()
 
 	// Set up output buffers
 	var stdout, stderr bytes.Buffer
@@ -113,7 +115,7 @@ func (s *Session) executeCommand(command string, options *CommandOptions, result
 	session.Stderr = &stderr
 
 	// Set up environment variables if specified
-	if options.Env != nil && len(options.Env) > 0 {
+	if len(options.Env) > 0 {
 		for key, value := range options.Env {
 			if err := session.Setenv(key, value); err != nil {
 				s.logger.Warnf("Failed to set environment variable %s: %v", key, err)
@@ -219,14 +221,16 @@ func (s *Session) executeStreamCommand(command string, stdout, stderr io.Writer,
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
-	defer session.Close()
+	defer func() {
+		_ = session.Close()
+	}()
 
 	// Set up output streams
 	session.Stdout = stdout
 	session.Stderr = stderr
 
 	// Set up environment variables if specified
-	if options.Env != nil && len(options.Env) > 0 {
+	if len(options.Env) > 0 {
 		for key, value := range options.Env {
 			if err := session.Setenv(key, value); err != nil {
 				s.logger.Warnf("Failed to set environment variable %s: %v", key, err)
@@ -358,7 +362,7 @@ func (s *Session) executeCommandWithInput(command string, input io.Reader, optio
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	// Set up output buffers
 	var stdout, stderr bytes.Buffer

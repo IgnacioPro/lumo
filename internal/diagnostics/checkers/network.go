@@ -320,9 +320,10 @@ func (n *NetworkChecker) parseIfconfig(output string) ([]NetworkInterface, error
 					statusVal := fields[len(fields)-1]
 					currentIface.Status = statusVal
 					// Override state based on actual status
-					if statusVal == "active" {
+					switch statusVal {
+					case "active":
 						currentIface.State = "up"
-					} else if statusVal == "inactive" {
+					case "inactive":
 						currentIface.State = "down"
 					}
 				}
