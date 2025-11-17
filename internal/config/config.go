@@ -187,9 +187,9 @@ func DefaultConfig() *Config {
 				},
 			},
 			Kubernetes: KubernetesConfig{
-				Enabled:           false, // Disabled by default, enable via config or --checks kubernetes
-				KubeconfigPath:    "",    // Use default ~/.kube/config
-				Context:           "",    // Use current context
+				Enabled:           false,      // Disabled by default, enable via config or --checks kubernetes
+				KubeconfigPath:    "",         // Use default ~/.kube/config
+				Context:           "",         // Use current context
 				Namespaces:        []string{}, // All namespaces
 				CheckNodes:        true,
 				CheckPods:         true,
@@ -237,8 +237,8 @@ func (c *Config) Validate() error {
 			"openai":    true,
 			"ollama":    true,
 			"gemini":    true,
-			"local":     true,  // Alias for ollama
-			"google":    true,  // Alias for gemini
+			"local":     true, // Alias for ollama
+			"google":    true, // Alias for gemini
 		}
 		if !validProviders[c.AI.Provider] {
 			return fmt.Errorf("unsupported AI provider: %s (supported: anthropic, openai, ollama, gemini)", c.AI.Provider)

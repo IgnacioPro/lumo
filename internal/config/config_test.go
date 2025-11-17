@@ -166,10 +166,10 @@ func TestValidate(t *testing.T) {
 
 func TestGetModelForProvider(t *testing.T) {
 	tests := []struct {
-		name   string
-		config AIConfig
+		name     string
+		config   AIConfig
 		provider string
-		want   string
+		want     string
 	}{
 		{
 			name:     "uses explicit Model field",

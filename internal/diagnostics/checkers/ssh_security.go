@@ -47,11 +47,11 @@ type SSHKeyIssue struct {
 
 // SSHDConfigIssue represents a security issue in sshd_config
 type SSHDConfigIssue struct {
-	Setting     string `json:"setting"`
-	CurrentValue string `json:"current_value"`
+	Setting          string `json:"setting"`
+	CurrentValue     string `json:"current_value"`
 	RecommendedValue string `json:"recommended_value"`
-	Issue       string `json:"issue"`
-	Severity    string `json:"severity"`
+	Issue            string `json:"issue"`
+	Severity         string `json:"severity"`
 }
 
 // Run executes the SSH security check
@@ -320,11 +320,11 @@ func (s *SSHSecurityChecker) checkSSHDConfig(ctx context.Context, executor diagn
 	if value, exists := config["PermitRootLogin"]; exists {
 		if value != "no" && value != "prohibit-password" && value != "without-password" {
 			issues = append(issues, SSHDConfigIssue{
-				Setting:     "PermitRootLogin",
-				CurrentValue: value,
+				Setting:          "PermitRootLogin",
+				CurrentValue:     value,
 				RecommendedValue: "no or prohibit-password",
-				Issue:       "Root login should be disabled or restricted to key-based auth only",
-				Severity:    "critical",
+				Issue:            "Root login should be disabled or restricted to key-based auth only",
+				Severity:         "critical",
 			})
 		}
 	}
@@ -333,11 +333,11 @@ func (s *SSHSecurityChecker) checkSSHDConfig(ctx context.Context, executor diagn
 	if value, exists := config["PasswordAuthentication"]; exists {
 		if value == "yes" {
 			issues = append(issues, SSHDConfigIssue{
-				Setting:     "PasswordAuthentication",
-				CurrentValue: value,
+				Setting:          "PasswordAuthentication",
+				CurrentValue:     value,
 				RecommendedValue: "no",
-				Issue:       "Password authentication should be disabled, use key-based auth",
-				Severity:    "warning",
+				Issue:            "Password authentication should be disabled, use key-based auth",
+				Severity:         "warning",
 			})
 		}
 	}
@@ -346,11 +346,11 @@ func (s *SSHSecurityChecker) checkSSHDConfig(ctx context.Context, executor diagn
 	if value, exists := config["PermitEmptyPasswords"]; exists {
 		if value == "yes" {
 			issues = append(issues, SSHDConfigIssue{
-				Setting:     "PermitEmptyPasswords",
-				CurrentValue: value,
+				Setting:          "PermitEmptyPasswords",
+				CurrentValue:     value,
 				RecommendedValue: "no",
-				Issue:       "Empty passwords should never be permitted",
-				Severity:    "critical",
+				Issue:            "Empty passwords should never be permitted",
+				Severity:         "critical",
 			})
 		}
 	}
@@ -359,11 +359,11 @@ func (s *SSHSecurityChecker) checkSSHDConfig(ctx context.Context, executor diagn
 	if value, exists := config["X11Forwarding"]; exists {
 		if value == "yes" {
 			issues = append(issues, SSHDConfigIssue{
-				Setting:     "X11Forwarding",
-				CurrentValue: value,
+				Setting:          "X11Forwarding",
+				CurrentValue:     value,
 				RecommendedValue: "no",
-				Issue:       "X11Forwarding should be disabled on production servers",
-				Severity:    "warning",
+				Issue:            "X11Forwarding should be disabled on production servers",
+				Severity:         "warning",
 			})
 		}
 	}
@@ -372,11 +372,11 @@ func (s *SSHSecurityChecker) checkSSHDConfig(ctx context.Context, executor diagn
 	if value, exists := config["PubkeyAuthentication"]; exists {
 		if value == "no" {
 			issues = append(issues, SSHDConfigIssue{
-				Setting:     "PubkeyAuthentication",
-				CurrentValue: value,
+				Setting:          "PubkeyAuthentication",
+				CurrentValue:     value,
 				RecommendedValue: "yes",
-				Issue:       "Public key authentication should be enabled",
-				Severity:    "warning",
+				Issue:            "Public key authentication should be enabled",
+				Severity:         "warning",
 			})
 		}
 	}
