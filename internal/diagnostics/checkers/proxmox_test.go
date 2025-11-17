@@ -2,6 +2,7 @@ package checkers
 
 import (
 	"context"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -950,7 +951,7 @@ TOTAL    USED     AVAIL    RAW USED     %RAW USED
 			checker.parseCephDF(tt.input, info)
 
 			// Allow 1% tolerance for floating point
-			if abs := tt.expectedUsedPct - info.UsedPercent; abs > 1.0 && abs < -1.0 {
+			if abs := tt.expectedUsedPct - info.UsedPercent; math.Abs(abs) > 1.0 {
 				t.Errorf("expected used percent %.2f%%, got %.2f%%",
 					tt.expectedUsedPct, info.UsedPercent)
 			}
