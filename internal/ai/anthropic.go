@@ -111,8 +111,17 @@ func (p *AnthropicProvider) Analyze(ctx context.Context, req *AnalysisRequest) (
 	}
 
 	// Parse response
+	p.log.WithFields(logrus.Fields{
+		"content_length": len(respContent),
+		"content_preview": truncateString(respContent, 300),
+	}).Debug("Parsing AI response content")
+
 	response, err := ParseAnalysisResponse(respContent, p.Name(), p.config.Model)
 	if err != nil {
+		p.log.WithFields(logrus.Fields{
+			"error": err.Error(),
+			"content_length": len(respContent),
+		}).Error("Failed to parse analysis response")
 		return nil, &Error{
 			Op:       "parse_response",
 			Provider: p.Name(),
@@ -222,6 +231,11 @@ func (p *AnthropicProvider) callAPI(ctx context.Context, req *anthropicRequest) 
 		return "", nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	p.log.WithFields(logrus.Fields{
+		"endpoint": p.config.Endpoint,
+		"model":    req.Model,
+	}).Debug("Sending Anthropic API request")
+
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.Endpoint, bytes.NewReader(reqBody))
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to create request: %w", err)
@@ -240,8 +254,23 @@ func (p *AnthropicProvider) callAPI(ctx context.Context, req *anthropicRequest) 
 	}
 	defer resp.Body.Close()
 
+	// Read the entire response body for logging and parsing
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	p.log.WithFields(logrus.Fields{
+		"status_code":  resp.StatusCode,
+		"content_type": resp.Header.Get("Content-Type"),
+		"body_length":  len(body),
+	}).Debug("Received Anthropic API response")
+
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		p.log.WithFields(logrus.Fields{
+			"status_code": resp.StatusCode,
+			"body":        string(body),
+		}).Error("Anthropic API returned non-OK status")
 		return "", nil, &Error{
 			Op:        "api_call",
 			Provider:  p.Name(),
@@ -251,8 +280,13 @@ func (p *AnthropicProvider) callAPI(ctx context.Context, req *anthropicRequest) 
 	}
 
 	var apiResp anthropicResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		return "", nil, fmt.Errorf("failed to decode response: %w", err)
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		p.log.WithFields(logrus.Fields{
+			"error":        err.Error(),
+			"body_length":  len(body),
+			"body_preview": truncateString(string(body), 500),
+		}).Error("Failed to parse Anthropic response JSON")
+		return "", nil, fmt.Errorf("failed to decode response: %w (body preview: %s)", err, truncateString(string(body), 200))
 	}
 
 	// Extract content
@@ -269,6 +303,13 @@ func (p *AnthropicProvider) callAPI(ctx context.Context, req *anthropicRequest) 
 		OutputTokens: apiResp.Usage.OutputTokens,
 		TotalTokens:  apiResp.Usage.InputTokens + apiResp.Usage.OutputTokens,
 	}
+
+	p.log.WithFields(logrus.Fields{
+		"content_length":    len(content.String()),
+		"input_tokens":      usage.InputTokens,
+		"output_tokens":     usage.OutputTokens,
+		"total_tokens":      usage.TotalTokens,
+	}).Debug("Successfully parsed Anthropic response")
 
 	return content.String(), usage, nil
 }
