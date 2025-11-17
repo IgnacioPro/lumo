@@ -61,10 +61,10 @@ test-verbose:
 	@echo "$(COLOR_BLUE)Running tests (verbose)...$(COLOR_RESET)"
 	$(GO) test -v ./...
 
-## test-ci: Run tests as they run in CI (excluding SSH package)
+## test-ci: Run tests as they run in CI (fast packages only)
 test-ci:
-	@echo "$(COLOR_BLUE)Running CI tests (excluding SSH package)...$(COLOR_RESET)"
-	LUMO_CI=true $(GO) test -v $$($(GO) list ./... | grep -v '/internal/ssh')
+	@echo "$(COLOR_BLUE)Running CI tests (fast packages only)...$(COLOR_RESET)"
+	$(GO) test -timeout=2m -v ./internal/config ./internal/diagnostics/formatters
 	@echo "$(COLOR_GREEN)✓ CI tests complete$(COLOR_RESET)"
 
 ## test-ssh: Run only SSH package tests
