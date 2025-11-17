@@ -76,31 +76,50 @@ func (s *Suggester) suggestForCheckResult(result *diagnostics.CheckResult) []Act
 func (s *Suggester) suggestServiceActions(result *diagnostics.CheckResult) []Action {
 	var suggestions []Action
 
-	// Parse the check message for failed services
-	// Expected format: "Failed services: service1, service2"
-	if strings.Contains(result.Message, "Failed services:") {
-		parts := strings.Split(result.Message, ":")
-		if len(parts) > 1 {
-			serviceNames := strings.Split(parts[1], ",")
-			for _, serviceName := range serviceNames {
-				serviceName = strings.TrimSpace(serviceName)
-				if serviceName == "" {
-					continue
-				}
+	// Read failed services from result data (stored by service checker)
+	failedServicesData, ok := result.Data["failed_service_names"]
+	if !ok {
+		s.logger.Debug("No failed_service_names data found in service check result")
+		return suggestions
+	}
 
-				// Suggest restarting the failed service using registry
-				action, err := s.registry.Create("service.restart", map[string]interface{}{
-					"service_name": serviceName,
-				})
-				if err != nil {
-					s.logger.WithError(err).Warn("Failed to create restart service action")
-					continue
-				}
-
-				suggestions = append(suggestions, action)
-				s.logger.WithField("service", serviceName).Debug("Suggested restart for failed service")
+	// Convert to string slice
+	var failedServices []string
+	switch v := failedServicesData.(type) {
+	case []string:
+		failedServices = v
+	case []interface{}:
+		// Handle case where it's stored as []interface{}
+		for _, item := range v {
+			if str, ok := item.(string); ok {
+				failedServices = append(failedServices, str)
 			}
 		}
+	default:
+		s.logger.WithField("type", fmt.Sprintf("%T", failedServicesData)).Warn("Unexpected type for failed_service_names")
+		return suggestions
+	}
+
+	s.logger.WithField("failed_services", failedServices).Debug("Found failed services in check result data")
+
+	// Create restart action for each failed service
+	for _, serviceName := range failedServices {
+		serviceName = strings.TrimSpace(serviceName)
+		if serviceName == "" {
+			continue
+		}
+
+		// Suggest restarting the failed service using registry
+		action, err := s.registry.Create("service.restart", map[string]interface{}{
+			"service_name": serviceName,
+		})
+		if err != nil {
+			s.logger.WithError(err).Warn("Failed to create restart service action")
+			continue
+		}
+
+		suggestions = append(suggestions, action)
+		s.logger.WithField("service", serviceName).Debug("Suggested restart for failed service")
 	}
 
 	return suggestions
