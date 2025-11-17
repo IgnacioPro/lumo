@@ -129,8 +129,9 @@ func (s *Suggester) suggestServiceActions(result *diagnostics.CheckResult) []Act
 func (s *Suggester) suggestDiskActions(result *diagnostics.CheckResult) []Action {
 	var suggestions []Action
 
-	// Check if it's a disk space issue
-	if !strings.Contains(result.Message, "usage") && !strings.Contains(result.Message, "disk") {
+	// Check if it's a disk space issue (case-insensitive)
+	lowerMsg := strings.ToLower(result.Message)
+	if !strings.Contains(lowerMsg, "usage") && !strings.Contains(lowerMsg, "disk") {
 		return suggestions
 	}
 
