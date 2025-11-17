@@ -19,7 +19,7 @@ COLOR_GREEN=\033[32m
 COLOR_YELLOW=\033[33m
 COLOR_BLUE=\033[34m
 
-.PHONY: help build run clean test test-verbose fmt vet lint install coverage coverage-report coverage-html deps check all diagnose-local diagnose-local-json version
+.PHONY: help build run clean test test-verbose test-ci test-ssh fmt vet lint install coverage coverage-report coverage-html deps check all diagnose-local diagnose-local-json version
 
 # Default target
 .DEFAULT_GOAL := help
@@ -60,6 +60,18 @@ test:
 test-verbose:
 	@echo "$(COLOR_BLUE)Running tests (verbose)...$(COLOR_RESET)"
 	$(GO) test -v ./...
+
+## test-ci: Run tests as they run in CI (excluding SSH package)
+test-ci:
+	@echo "$(COLOR_BLUE)Running CI tests (excluding SSH package)...$(COLOR_RESET)"
+	LUMO_CI=true $(GO) test -v $$($(GO) list ./... | grep -v '/internal/ssh')
+	@echo "$(COLOR_GREEN)✓ CI tests complete$(COLOR_RESET)"
+
+## test-ssh: Run only SSH package tests
+test-ssh:
+	@echo "$(COLOR_BLUE)Running SSH package tests...$(COLOR_RESET)"
+	$(GO) test -v ./internal/ssh/...
+	@echo "$(COLOR_GREEN)✓ SSH tests complete$(COLOR_RESET)"
 
 ## coverage: Run tests with coverage report
 coverage:
