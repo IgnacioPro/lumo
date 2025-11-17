@@ -1,7 +1,6 @@
 <div align="center">
 
 <img src=".github/images/lumo-logo.png" alt="Lumo Logo" width="200"/>
-
 # 🔦 Lumo
 
 **Intelligent SRE/DevOps Automation Agent**
