@@ -327,7 +327,7 @@ func runAIAnalysis(cfg *config.Config, report *diagnostics.Report, hostname stri
 
 	// Build analysis request
 	req := &ai.AnalysisRequest{
-		Report:         report,
+		Report: report,
 		SystemInfo: ai.SystemInfo{
 			Hostname: hostname,
 		},
@@ -503,9 +503,9 @@ func isLocalhost(hostname string) bool {
 	localhostPatterns := []string{
 		"localhost",
 		"127.0.0.1",
-		"::1",           // IPv6 localhost
-		"0.0.0.0",       // All interfaces (treated as local)
-		"",              // Empty hostname (treated as local)
+		"::1",     // IPv6 localhost
+		"0.0.0.0", // All interfaces (treated as local)
+		"",        // Empty hostname (treated as local)
 		"localhost.localdomain",
 	}
 

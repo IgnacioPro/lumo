@@ -193,9 +193,9 @@ func TestCommandOptions(t *testing.T) {
 
 func TestDefaultConstants(t *testing.T) {
 	tests := []struct {
-		name  string
-		got   time.Duration
-		want  time.Duration
+		name string
+		got  time.Duration
+		want time.Duration
 	}{
 		{"DefaultCommandTimeout", DefaultCommandTimeout, 5 * time.Minute},
 		{"DefaultConnectionTimeout", DefaultConnectionTimeout, 30 * time.Second},
