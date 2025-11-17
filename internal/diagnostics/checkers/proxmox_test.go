@@ -802,13 +802,13 @@ func TestProxmoxChecker_ParseCephOSDStat(t *testing.T) {
 	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
 
 	tests := []struct {
-		name            string
-		input           string
-		expectedTotal   int
-		expectedUp      int
-		expectedIn      int
-		expectedDown    int
-		expectedOut     int
+		name          string
+		input         string
+		expectedTotal int
+		expectedUp    int
+		expectedIn    int
+		expectedDown  int
+		expectedOut   int
 	}{
 		{
 			name:          "all OSDs healthy",
@@ -913,9 +913,9 @@ func TestProxmoxChecker_ParseCephDF(t *testing.T) {
 	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
 
 	tests := []struct {
-		name               string
-		input              string
-		expectedUsedPct    float64
+		name                 string
+		input                string
+		expectedUsedPct      float64
 		expectedNonZeroTotal bool
 	}{
 		{
@@ -923,7 +923,7 @@ func TestProxmoxChecker_ParseCephDF(t *testing.T) {
 			input: `--- GLOBAL ---
 TOTAL     USED       AVAIL      RAW USED     %RAW USED
 100 GiB   50 GiB     50 GiB     50 GiB       50.00%`,
-			expectedUsedPct:    50.0,
+			expectedUsedPct:      50.0,
 			expectedNonZeroTotal: true,
 		},
 		{
@@ -931,7 +931,7 @@ TOTAL     USED       AVAIL      RAW USED     %RAW USED
 			input: `--- GLOBAL ---
 TOTAL      USED        AVAIL       RAW USED     %RAW USED
 1000 GiB   850 GiB     150 GiB     850 GiB      85.00%`,
-			expectedUsedPct:    85.0,
+			expectedUsedPct:      85.0,
 			expectedNonZeroTotal: true,
 		},
 		{
@@ -939,7 +939,7 @@ TOTAL      USED        AVAIL       RAW USED     %RAW USED
 			input: `--- GLOBAL ---
 TOTAL    USED     AVAIL    RAW USED     %RAW USED
 10 TiB   5 TiB    5 TiB    5 TiB        50.00%`,
-			expectedUsedPct:    50.0,
+			expectedUsedPct:      50.0,
 			expectedNonZeroTotal: true,
 		},
 	}
@@ -1549,5 +1549,187 @@ func TestProxmoxChecker_Run_NoResourcePools(t *testing.T) {
 
 	if len(poolInfo.Pools) != 0 {
 		t.Errorf("expected empty pools slice, got %d entries", len(poolInfo.Pools))
+	}
+}
+
+func TestProxmoxChecker_GetNodeStatus(t *testing.T) {
+	tests := []struct {
+		name             string
+		nodeName         string
+		mockOutput       string
+		mockExitCode     int
+		expectedStatus   string
+		expectedCPUUsage float64
+		expectedCPUCount int
+		expectedMemTotal int64
+		expectedMemUsed  int64
+		expectedUptime   int64
+		expectIssues     bool
+	}{
+		{
+			name:     "valid node status with all fields",
+			nodeName: "pve1",
+			mockOutput: `{
+				"cpu": 0.45,
+				"cpus": 8,
+				"memory": {
+					"total": 16777216000,
+					"used": 8388608000
+				},
+				"uptime": 864000
+			}`,
+			mockExitCode:     0,
+			expectedStatus:   "online",
+			expectedCPUUsage: 45.0,
+			expectedCPUCount: 8,
+			expectedMemTotal: 16777216000,
+			expectedMemUsed:  8388608000,
+			expectedUptime:   864000,
+			expectIssues:     false,
+		},
+		{
+			name:     "minimal valid node status",
+			nodeName: "pve2",
+			mockOutput: `{
+				"cpu": 0.25,
+				"cpus": 4,
+				"memory": {
+					"total": 8589934592,
+					"used": 2147483648
+				},
+				"uptime": 3600
+			}`,
+			mockExitCode:     0,
+			expectedStatus:   "online",
+			expectedCPUUsage: 25.0,
+			expectedCPUCount: 4,
+			expectedMemTotal: 8589934592,
+			expectedMemUsed:  2147483648,
+			expectedUptime:   3600,
+			expectIssues:     false,
+		},
+		{
+			name:           "node offline",
+			nodeName:       "pve3",
+			mockOutput:     "",
+			mockExitCode:   1,
+			expectedStatus: "offline",
+			expectIssues:   false,
+		},
+		{
+			name:           "invalid JSON response",
+			nodeName:       "pve4",
+			mockOutput:     `{"invalid json`,
+			mockExitCode:   0,
+			expectedStatus: "online",
+			expectIssues:   true,
+		},
+		{
+			name:     "zero CPU usage",
+			nodeName: "pve5",
+			mockOutput: `{
+				"cpu": 0.0,
+				"cpus": 16,
+				"memory": {
+					"total": 33554432000,
+					"used": 1073741824
+				},
+				"uptime": 1000
+			}`,
+			mockExitCode:     0,
+			expectedStatus:   "online",
+			expectedCPUUsage: 0.0,
+			expectedCPUCount: 16,
+			expectedMemTotal: 33554432000,
+			expectedMemUsed:  1073741824,
+			expectedUptime:   1000,
+			expectIssues:     false,
+		},
+		{
+			name:     "high CPU usage",
+			nodeName: "pve6",
+			mockOutput: `{
+				"cpu": 0.98,
+				"cpus": 12,
+				"memory": {
+					"total": 67108864000,
+					"used": 60129542144
+				},
+				"uptime": 2592000
+			}`,
+			mockExitCode:     0,
+			expectedStatus:   "online",
+			expectedCPUUsage: 98.0,
+			expectedCPUCount: 12,
+			expectedMemTotal: 67108864000,
+			expectedMemUsed:  60129542144,
+			expectedUptime:   2592000,
+			expectIssues:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			executor := &proxmoxMockExecutor{
+				responses: map[string]proxmoxMockResponse{
+					"pvesh get /nodes/" + tt.nodeName + "/status": {
+						stdout:   tt.mockOutput,
+						stderr:   "",
+						exitCode: tt.mockExitCode,
+					},
+				},
+			}
+
+			checker := NewProxmoxChecker(false, false, false, false, false, false, false)
+			entry, issues := checker.getNodeStatus(context.Background(), executor, tt.nodeName)
+
+			if entry == nil {
+				t.Fatal("expected non-nil entry")
+			}
+
+			if entry.Node != tt.nodeName {
+				t.Errorf("expected node name %s, got %s", tt.nodeName, entry.Node)
+			}
+
+			if entry.Status != tt.expectedStatus {
+				t.Errorf("expected status %s, got %s", tt.expectedStatus, entry.Status)
+			}
+
+			if tt.expectedStatus == "online" && !tt.expectIssues {
+				if entry.CPUUsage != tt.expectedCPUUsage {
+					t.Errorf("expected CPU usage %.2f, got %.2f", tt.expectedCPUUsage, entry.CPUUsage)
+				}
+
+				if entry.CPUCount != tt.expectedCPUCount {
+					t.Errorf("expected CPU count %d, got %d", tt.expectedCPUCount, entry.CPUCount)
+				}
+
+				if entry.TotalMemBytes != tt.expectedMemTotal {
+					t.Errorf("expected total memory %d, got %d", tt.expectedMemTotal, entry.TotalMemBytes)
+				}
+
+				if entry.UsedMemBytes != tt.expectedMemUsed {
+					t.Errorf("expected used memory %d, got %d", tt.expectedMemUsed, entry.UsedMemBytes)
+				}
+
+				if entry.Uptime != tt.expectedUptime {
+					t.Errorf("expected uptime %d, got %d", tt.expectedUptime, entry.Uptime)
+				}
+
+				// Verify memory usage percentage calculation
+				expectedMemUsage := float64(tt.expectedMemUsed) / float64(tt.expectedMemTotal) * 100
+				if entry.MemUsage != expectedMemUsage {
+					t.Errorf("expected memory usage %.2f%%, got %.2f%%", expectedMemUsage, entry.MemUsage)
+				}
+			}
+
+			if tt.expectIssues && len(issues) == 0 {
+				t.Error("expected issues but got none")
+			}
+
+			if !tt.expectIssues && len(issues) > 0 {
+				t.Errorf("expected no issues but got: %v", issues)
+			}
+		})
 	}
 }
