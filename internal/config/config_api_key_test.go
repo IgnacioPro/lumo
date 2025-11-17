@@ -16,10 +16,10 @@ func TestGetAPIKeyForProvider(t *testing.T) {
 
 	// Clean up after test
 	defer func() {
-		os.Setenv("LUMO_ANTHROPIC_API_KEY", origAnthropicKey)
-		os.Setenv("LUMO_OPENAI_API_KEY", origOpenAIKey)
-		os.Setenv("LUMO_GEMINI_API_KEY", origGeminiKey)
-		os.Setenv("LUMO_AI_API_KEY", origGenericKey)
+		_ = os.Setenv("LUMO_ANTHROPIC_API_KEY", origAnthropicKey)
+		_ = os.Setenv("LUMO_OPENAI_API_KEY", origOpenAIKey)
+		_ = os.Setenv("LUMO_GEMINI_API_KEY", origGeminiKey)
+		_ = os.Setenv("LUMO_AI_API_KEY", origGenericKey)
 		viper.Reset()
 	}()
 
@@ -104,27 +104,27 @@ func TestGetAPIKeyForProvider(t *testing.T) {
 
 			// Set environment variables
 			if tt.anthropicEnv != "" {
-				os.Setenv("LUMO_ANTHROPIC_API_KEY", tt.anthropicEnv)
+				_ = os.Setenv("LUMO_ANTHROPIC_API_KEY", tt.anthropicEnv)
 			} else {
-				os.Unsetenv("LUMO_ANTHROPIC_API_KEY")
+				_ = os.Unsetenv("LUMO_ANTHROPIC_API_KEY")
 			}
 
 			if tt.openaiEnv != "" {
-				os.Setenv("LUMO_OPENAI_API_KEY", tt.openaiEnv)
+				_ = os.Setenv("LUMO_OPENAI_API_KEY", tt.openaiEnv)
 			} else {
-				os.Unsetenv("LUMO_OPENAI_API_KEY")
+				_ = os.Unsetenv("LUMO_OPENAI_API_KEY")
 			}
 
 			if tt.geminiEnv != "" {
-				os.Setenv("LUMO_GEMINI_API_KEY", tt.geminiEnv)
+				_ = os.Setenv("LUMO_GEMINI_API_KEY", tt.geminiEnv)
 			} else {
-				os.Unsetenv("LUMO_GEMINI_API_KEY")
+				_ = os.Unsetenv("LUMO_GEMINI_API_KEY")
 			}
 
 			if tt.genericEnv != "" {
-				os.Setenv("LUMO_AI_API_KEY", tt.genericEnv)
+				_ = os.Setenv("LUMO_AI_API_KEY", tt.genericEnv)
 			} else {
-				os.Unsetenv("LUMO_AI_API_KEY")
+				_ = os.Unsetenv("LUMO_AI_API_KEY")
 			}
 
 			// Create config
@@ -157,16 +157,16 @@ func TestProviderSwitchingWithoutChangingKeys(t *testing.T) {
 
 	// Clean up after test
 	defer func() {
-		os.Setenv("LUMO_ANTHROPIC_API_KEY", origAnthropicKey)
-		os.Setenv("LUMO_OPENAI_API_KEY", origOpenAIKey)
-		os.Setenv("LUMO_GEMINI_API_KEY", origGeminiKey)
+		_ = os.Setenv("LUMO_ANTHROPIC_API_KEY", origAnthropicKey)
+		_ = os.Setenv("LUMO_OPENAI_API_KEY", origOpenAIKey)
+		_ = os.Setenv("LUMO_GEMINI_API_KEY", origGeminiKey)
 		viper.Reset()
 	}()
 
 	// Set up all provider keys
-	os.Setenv("LUMO_ANTHROPIC_API_KEY", "sk-ant-key")
-	os.Setenv("LUMO_OPENAI_API_KEY", "sk-openai-key")
-	os.Setenv("LUMO_GEMINI_API_KEY", "gemini-key")
+	_ = os.Setenv("LUMO_ANTHROPIC_API_KEY", "sk-ant-key")
+	_ = os.Setenv("LUMO_OPENAI_API_KEY", "sk-openai-key")
+	_ = os.Setenv("LUMO_GEMINI_API_KEY", "gemini-key")
 
 	viper.Reset()
 	viper.AutomaticEnv()

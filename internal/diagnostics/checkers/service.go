@@ -198,11 +198,14 @@ func (s *ServiceChecker) parseSystemdOutput(output string) ([]ServiceInfo, error
 		}
 
 		// Map systemd states to our standard states
-		state := "inactive"
-		if activeState == "active" {
+		var state string
+		switch activeState {
+		case "active":
 			state = "running"
-		} else if activeState == "failed" {
+		case "failed":
 			state = "failed"
+		default:
+			state = "inactive"
 		}
 
 		services = append(services, ServiceInfo{

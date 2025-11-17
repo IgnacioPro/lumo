@@ -262,7 +262,7 @@ func (p *OpenRouterProvider) callAPI(ctx context.Context, req *openrouterRequest
 			Retryable: true,
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read the entire response body for logging and parsing
 	body, err := io.ReadAll(resp.Body)
@@ -366,7 +366,7 @@ func (p *OpenRouterProvider) streamAPI(ctx context.Context, req *openrouterReque
 			Retryable: true,
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
