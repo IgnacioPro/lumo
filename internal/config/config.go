@@ -234,15 +234,16 @@ func (c *Config) Validate() error {
 	// AI validation
 	if c.AI.Enabled {
 		validProviders := map[string]bool{
-			"anthropic": true,
-			"openai":    true,
-			"ollama":    true,
-			"gemini":    true,
-			"local":     true, // Alias for ollama
-			"google":    true, // Alias for gemini
+			"anthropic":  true,
+			"openai":     true,
+			"ollama":     true,
+			"gemini":     true,
+			"openrouter": true,
+			"local":      true, // Alias for ollama
+			"google":     true, // Alias for gemini
 		}
 		if !validProviders[c.AI.Provider] {
-			return fmt.Errorf("unsupported AI provider: %s (supported: anthropic, openai, ollama, gemini)", c.AI.Provider)
+			return fmt.Errorf("unsupported AI provider: %s (supported: anthropic, openai, ollama, gemini, openrouter)", c.AI.Provider)
 		}
 
 		// Validate temperature range
@@ -275,9 +276,10 @@ func (c *Config) Validate() error {
 				providerName = "gemini"
 			}
 			envVar := fmt.Sprintf("LUMO_%s_API_KEY", map[string]string{
-				"anthropic": "ANTHROPIC",
-				"openai":    "OPENAI",
-				"gemini":    "GEMINI",
+				"anthropic":  "ANTHROPIC",
+				"openai":     "OPENAI",
+				"gemini":     "GEMINI",
+				"openrouter": "OPENROUTER",
 			}[providerName])
 			return fmt.Errorf("AI provider %s requires API key (set via %s or LUMO_AI_API_KEY environment variable)", c.AI.Provider, envVar)
 		}
