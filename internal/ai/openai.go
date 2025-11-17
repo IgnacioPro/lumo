@@ -305,14 +305,40 @@ func (p *OpenAIProvider) callAPI(ctx context.Context, req *openaiRequest) (strin
 		TotalTokens:  apiResp.Usage.TotalTokens,
 	}
 
+	choice := apiResp.Choices[0]
+	content := choice.Message.Content
+	refusal := choice.Message.Refusal
+
+	// Handle refusal field (OpenAI content policy)
+	if refusal != "" {
+		p.log.WithFields(logrus.Fields{
+			"refusal":       refusal,
+			"finish_reason": choice.FinishReason,
+		}).Warn("OpenAI refused to generate response")
+		return "", usage, fmt.Errorf("OpenAI refused request: %s", refusal)
+	}
+
+	// Handle empty content (debugging for gpt-5-nano and newer models)
+	if content == "" {
+		p.log.WithFields(logrus.Fields{
+			"model":           apiResp.Model,
+			"finish_reason":   choice.FinishReason,
+			"completion_tokens": usage.OutputTokens,
+			"full_response":   string(body),
+		}).Error("OpenAI returned empty content despite reporting completion tokens")
+		return "", usage, fmt.Errorf("OpenAI returned empty content (model: %s, finish_reason: %s, tokens: %d)",
+			apiResp.Model, choice.FinishReason, usage.OutputTokens)
+	}
+
 	p.log.WithFields(logrus.Fields{
-		"content_length": len(apiResp.Choices[0].Message.Content),
+		"content_length": len(content),
 		"prompt_tokens":  usage.InputTokens,
 		"completion_tokens": usage.OutputTokens,
 		"total_tokens":   usage.TotalTokens,
+		"finish_reason":  choice.FinishReason,
 	}).Debug("Successfully parsed OpenAI response")
 
-	return apiResp.Choices[0].Message.Content, usage, nil
+	return content, usage, nil
 }
 
 // streamAPI makes a streaming API call.
@@ -451,6 +477,7 @@ type openaiResponse struct {
 		Message struct {
 			Role    string `json:"role"`
 			Content string `json:"content"`
+			Refusal string `json:"refusal,omitempty"` // Added for OpenAI content policy
 		} `json:"message"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
@@ -471,6 +498,7 @@ type openaiStreamEvent struct {
 		Delta struct {
 			Role    string `json:"role,omitempty"`
 			Content string `json:"content,omitempty"`
+			Refusal string `json:"refusal,omitempty"` // Added for OpenAI content policy
 		} `json:"delta"`
 		FinishReason string `json:"finish_reason,omitempty"`
 	} `json:"choices"`
