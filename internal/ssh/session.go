@@ -7,7 +7,6 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -18,7 +17,6 @@ import (
 type Session struct {
 	client *ssh.Client
 	logger *logrus.Logger
-	mu     sync.Mutex
 }
 
 // NewSession creates a new session from an SSH client
