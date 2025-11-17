@@ -33,18 +33,18 @@ func NewExecutor(executor diagnostics.CommandExecutor, auditor *Auditor, approve
 
 // ExecutionReport contains the results of executing a remediation plan.
 type ExecutionReport struct {
-	StartTime      time.Time       `json:"start_time"`
-	EndTime        time.Time       `json:"end_time"`
-	Duration       time.Duration   `json:"duration"`
-	TotalActions   int             `json:"total_actions"`
-	Executed       int             `json:"executed"`
-	Succeeded      int             `json:"succeeded"`
-	Failed         int             `json:"failed"`
-	Skipped        int             `json:"skipped"`
-	Rejected       int             `json:"rejected"`
-	RolledBack     int             `json:"rolled_back"`
-	Results        []*ActionResult `json:"results"`
-	DryRun         bool            `json:"dry_run"`
+	StartTime    time.Time       `json:"start_time"`
+	EndTime      time.Time       `json:"end_time"`
+	Duration     time.Duration   `json:"duration"`
+	TotalActions int             `json:"total_actions"`
+	Executed     int             `json:"executed"`
+	Succeeded    int             `json:"succeeded"`
+	Failed       int             `json:"failed"`
+	Skipped      int             `json:"skipped"`
+	Rejected     int             `json:"rejected"`
+	RolledBack   int             `json:"rolled_back"`
+	Results      []*ActionResult `json:"results"`
+	DryRun       bool            `json:"dry_run"`
 }
 
 // ExecutePlan executes a remediation plan and returns a report of the results.
@@ -101,12 +101,12 @@ func (e *Executor) ExecutePlan(ctx context.Context, plan *RemediationPlan) (*Exe
 	report.Duration = report.EndTime.Sub(report.StartTime)
 
 	e.logger.WithFields(logrus.Fields{
-		"duration":   report.Duration,
-		"executed":   report.Executed,
-		"succeeded":  report.Succeeded,
-		"failed":     report.Failed,
-		"skipped":    report.Skipped,
-		"rejected":   report.Rejected,
+		"duration":    report.Duration,
+		"executed":    report.Executed,
+		"succeeded":   report.Succeeded,
+		"failed":      report.Failed,
+		"skipped":     report.Skipped,
+		"rejected":    report.Rejected,
 		"rolled_back": report.RolledBack,
 	}).Info("Remediation plan execution completed")
 

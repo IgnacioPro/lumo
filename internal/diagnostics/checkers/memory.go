@@ -162,13 +162,13 @@ type MemoryStats struct {
 	MinorPageFaults uint64 // Minor page faults (calculated: PageFaults - MajorPageFaults)
 
 	// Memory pressure indicators
-	PagesThrottled     uint64 // Processes throttled due to memory pressure (macOS only)
-	Compressions       uint64 // Memory compression events (macOS only)
-	Decompressions     uint64 // Memory decompression events (macOS only)
-	CompressedPages    uint64 // Pages stored in compressor (macOS only)
-	Swapins            uint64 // Swap-in operations
-	Swapouts           uint64 // Swap-out operations
-	PagesPurged        uint64 // Pages purged from memory (macOS only)
+	PagesThrottled  uint64 // Processes throttled due to memory pressure (macOS only)
+	Compressions    uint64 // Memory compression events (macOS only)
+	Decompressions  uint64 // Memory decompression events (macOS only)
+	CompressedPages uint64 // Pages stored in compressor (macOS only)
+	Swapins         uint64 // Swap-in operations
+	Swapouts        uint64 // Swap-out operations
+	PagesPurged     uint64 // Pages purged from memory (macOS only)
 
 	// Additional metrics
 	FileBackedPages uint64 // File-backed pages (macOS only)
@@ -428,8 +428,8 @@ func (m *MemoryChecker) getMemoryStatsMacOS(ctx context.Context, executor diagno
 			continue
 		}
 
-		rawValues[key] = value          // Store raw page count
-		values[key] = value * pageSize  // Store byte value
+		rawValues[key] = value         // Store raw page count
+		values[key] = value * pageSize // Store byte value
 	}
 
 	// Calculate used memory (active + wired + compressed)

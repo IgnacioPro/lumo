@@ -27,10 +27,10 @@ func TestSeverity_String(t *testing.T) {
 
 func TestSeverity_IsHigherThan(t *testing.T) {
 	tests := []struct {
-		name  string
-		s1    Severity
-		s2    Severity
-		want  bool
+		name string
+		s1   Severity
+		s2   Severity
+		want bool
 	}{
 		{"error > critical", SeverityError, SeverityCritical, true},
 		{"critical > warning", SeverityCritical, SeverityWarning, true},
@@ -176,8 +176,8 @@ func TestEvaluateThresholds(t *testing.T) {
 			result: &CheckResult{
 				Category: CategoryCPU,
 				Metrics: []Metric{
-					{Name: "cpu_usage", Value: 50.0},        // OK
-					{Name: "load_1min", Value: 1.8},         // Warning
+					{Name: "cpu_usage", Value: 50.0}, // OK
+					{Name: "load_1min", Value: 1.8},  // Warning
 				},
 			},
 			want: SeverityWarning,

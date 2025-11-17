@@ -59,11 +59,11 @@ type FailedAuth struct {
 
 // AttackSource represents an IP address with multiple failed attempts
 type AttackSource struct {
-	IP            string `json:"ip"`
-	FailureCount  int    `json:"failure_count"`
-	Users         []string `json:"users_attempted"`
-	FirstAttempt  string `json:"first_attempt"`
-	LastAttempt   string `json:"last_attempt"`
+	IP           string   `json:"ip"`
+	FailureCount int      `json:"failure_count"`
+	Users        []string `json:"users_attempted"`
+	FirstAttempt string   `json:"first_attempt"`
+	LastAttempt  string   `json:"last_attempt"`
 }
 
 // Run executes the auth failures check
@@ -155,9 +155,9 @@ func (a *AuthFailuresChecker) Run(ctx context.Context, executor diagnostics.Comm
 func (a *AuthFailuresChecker) detectAuthLog(ctx context.Context, executor diagnostics.CommandExecutor) (string, error) {
 	// Try common log locations
 	logPaths := []string{
-		"/var/log/auth.log",       // Debian/Ubuntu
-		"/var/log/secure",         // RHEL/CentOS
-		"/var/log/system.log",     // macOS (partial)
+		"/var/log/auth.log",   // Debian/Ubuntu
+		"/var/log/secure",     // RHEL/CentOS
+		"/var/log/system.log", // macOS (partial)
 	}
 
 	for _, path := range logPaths {

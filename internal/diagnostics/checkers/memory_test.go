@@ -517,7 +517,7 @@ func TestMemoryChecker_Name(t *testing.T) {
 	checker := &MemoryChecker{}
 	want := "memory_check"
 	got := checker.Name()
-	
+
 	if got != want {
 		t.Errorf("Name() = %q, want %q", got, want)
 	}
@@ -527,7 +527,7 @@ func TestMemoryChecker_Category(t *testing.T) {
 	checker := &MemoryChecker{}
 	want := diagnostics.CategoryMemory
 	got := checker.Category()
-	
+
 	if got != want {
 		t.Errorf("Category() = %v, want %v", got, want)
 	}
@@ -536,11 +536,11 @@ func TestMemoryChecker_Category(t *testing.T) {
 func TestMemoryChecker_Description(t *testing.T) {
 	checker := &MemoryChecker{}
 	got := checker.Description()
-	
+
 	if got == "" {
 		t.Error("Description() returned empty string")
 	}
-	
+
 	if !strings.Contains(got, "memory") {
 		t.Errorf("Description() = %q, expected to contain 'memory'", got)
 	}
@@ -549,7 +549,7 @@ func TestMemoryChecker_Description(t *testing.T) {
 func TestMemoryChecker_RequiresRoot(t *testing.T) {
 	checker := &MemoryChecker{}
 	got := checker.RequiresRoot()
-	
+
 	// Memory checks should not require root
 	if got {
 		t.Error("RequiresRoot() = true, want false")

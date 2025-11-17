@@ -153,9 +153,9 @@ func (n *NetworkChecker) Run(ctx context.Context, executor diagnostics.CommandEx
 // NetworkInterface holds information about a network interface
 type NetworkInterface struct {
 	Name       string `json:"name"`
-	State      string `json:"state"`       // up, down, inactive, unknown
-	IPAddress  string `json:"ip_address"`  // IPv4 address
-	MACAddress string `json:"mac_address"` // Hardware address
+	State      string `json:"state"`            // up, down, inactive, unknown
+	IPAddress  string `json:"ip_address"`       // IPv4 address
+	MACAddress string `json:"mac_address"`      // Hardware address
 	Status     string `json:"status,omitempty"` // active, inactive, unknown (from status line)
 }
 

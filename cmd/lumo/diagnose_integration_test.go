@@ -70,23 +70,23 @@ func TestRunDiagnostics_Localhost(t *testing.T) {
 // TestRunDiagnostics_LocalhostWithFormat tests different output formats
 func TestRunDiagnostics_LocalhostWithFormat(t *testing.T) {
 	tests := []struct {
-		name           string
-		format         string
+		name             string
+		format           string
 		expectedInOutput string
 	}{
 		{
-			name:           "json format",
-			format:         "json",
+			name:             "json format",
+			format:           "json",
 			expectedInOutput: `"results"`,
 		},
 		{
-			name:           "text format",
-			format:         "text",
+			name:             "text format",
+			format:           "text",
 			expectedInOutput: "DIAGNOSTIC",
 		},
 		{
-			name:           "toon format",
-			format:         "toon",
+			name:             "toon format",
+			format:           "toon",
 			expectedInOutput: "results",
 		},
 	}
@@ -216,9 +216,9 @@ func TestRunDiagnostics_NoArgs(t *testing.T) {
 // TestRunDiagnostics_UserHostFormat tests user@host argument parsing
 func TestRunDiagnostics_UserHostFormat(t *testing.T) {
 	tests := []struct {
-		name     string
-		hostArg  string
-		wantErr  bool
+		name    string
+		hostArg string
+		wantErr bool
 	}{
 		{
 			name:    "localhost",
@@ -326,7 +326,7 @@ func TestDiagnosticRunner_WithMockExecutor(t *testing.T) {
 			Category: diagnostics.CategoryCPU,
 			Severity: diagnostics.SeverityOK,
 			Message:  "Test passed",
-			Data: map[string]interface{}{"test": true},
+			Data:     map[string]interface{}{"test": true},
 		},
 	})
 

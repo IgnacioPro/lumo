@@ -13,13 +13,13 @@ import (
 
 // Mock checker for testing
 type mockChecker struct {
-	name          string
-	category      CheckCategory
-	description   string
-	requiresRoot  bool
-	runFunc       func(ctx context.Context, executor CommandExecutor) (*CheckResult, error)
-	callCount     int
-	mu            sync.Mutex
+	name         string
+	category     CheckCategory
+	description  string
+	requiresRoot bool
+	runFunc      func(ctx context.Context, executor CommandExecutor) (*CheckResult, error)
+	callCount    int
+	mu           sync.Mutex
 }
 
 func (m *mockChecker) Name() string {
