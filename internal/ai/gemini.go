@@ -87,6 +87,24 @@ func (p *GeminiProvider) Analyze(ctx context.Context, req *AnalysisRequest) (*An
 		return nil, fmt.Errorf("failed to build analysis prompt: %w", err)
 	}
 
+	// Estimate token count (rough: ~4 chars per token)
+	fullPrompt := systemPrompt + "\n\n" + userPrompt
+	estimatedTokens := len(fullPrompt) / 4
+
+	// Warn if prompt is very large
+	if estimatedTokens > 10000 {
+		p.log.WithFields(logrus.Fields{
+			"estimated_prompt_tokens": estimatedTokens,
+			"max_output_tokens":       p.config.MaxTokens,
+			"prompt_size_kb":          len(fullPrompt) / 1024,
+		}).Warn("Very large diagnostic payload - consider using --checks to filter specific checks")
+
+		// If estimated tokens + max_tokens might exceed limits
+		if estimatedTokens > 20000 && p.config.MaxTokens < 8192 {
+			p.log.Warn("Prompt may be too large for current max_tokens setting. Consider increasing max_tokens to 8192+ in config.yaml")
+		}
+	}
+
 	// Build request body
 	requestBody := map[string]interface{}{
 		"contents": []map[string]interface{}{
@@ -178,21 +196,66 @@ func (p *GeminiProvider) Analyze(ctx context.Context, req *AnalysisRequest) (*An
 	}
 
 	if err := json.Unmarshal(respBody, &geminiResp); err != nil {
+		p.log.WithField("response_body", string(respBody)).Error("Failed to parse Gemini response JSON")
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("no content in response")
+	// Enhanced error handling for empty responses
+	if len(geminiResp.Candidates) == 0 {
+		previewLen := 500
+		if len(respBody) < previewLen {
+			previewLen = len(respBody)
+		}
+		p.log.WithFields(logrus.Fields{
+			"response_preview": string(respBody[:previewLen]),
+		}).Error("Gemini returned zero candidates - response may have been blocked or filtered")
+		return nil, fmt.Errorf("no candidates in response - check API quota, content filters, or response body in logs")
+	}
+
+	if len(geminiResp.Candidates[0].Content.Parts) == 0 {
+		finishReason := geminiResp.Candidates[0].FinishReason
+		previewLen := 500
+		if len(respBody) < previewLen {
+			previewLen = len(respBody)
+		}
+		p.log.WithFields(logrus.Fields{
+			"finish_reason":    finishReason,
+			"candidates_count": len(geminiResp.Candidates),
+			"response_preview": string(respBody[:previewLen]),
+		}).Error("Gemini candidate has zero content parts")
+		return nil, fmt.Errorf("no content parts in response (finish_reason: %s) - check logs for details", finishReason)
 	}
 
 	content := geminiResp.Candidates[0].Content.Parts[0].Text
 
-	p.log.WithFields(logrus.Fields{
+	// Log warning if content is suspiciously short
+	if len(content) < 50 {
+		p.log.WithFields(logrus.Fields{
+			"content_length": len(content),
+			"content":        content,
+		}).Warn("Gemini returned unusually short content")
+	}
+
+	// Check if Gemini used thinking tokens (Gemini 2.5 Flash extended thinking)
+	thinkingTokensUsed := 0
+	if totalTokens := geminiResp.UsageMetadata.TotalTokenCount; totalTokens > 0 {
+		// thinking_tokens = total - prompt - candidates
+		thinkingTokensUsed = totalTokens - geminiResp.UsageMetadata.PromptTokenCount - geminiResp.UsageMetadata.CandidatesTokenCount
+	}
+
+	logFields := logrus.Fields{
 		"duration":      time.Since(start),
 		"input_tokens":  geminiResp.UsageMetadata.PromptTokenCount,
 		"output_tokens": geminiResp.UsageMetadata.CandidatesTokenCount,
 		"total_tokens":  geminiResp.UsageMetadata.TotalTokenCount,
-	}).Debug("Received response from Gemini API")
+	}
+
+	if thinkingTokensUsed > 0 {
+		logFields["thinking_tokens"] = thinkingTokensUsed
+		logFields["note"] = "Gemini 2.5 Flash used extended thinking mode"
+	}
+
+	p.log.WithFields(logFields).Debug("Received response from Gemini API")
 
 	// Parse AI response
 	analysis, err := ParseAnalysisResponse(content, p.Name(), p.config.Model)
