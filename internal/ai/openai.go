@@ -109,8 +109,17 @@ func (p *OpenAIProvider) Analyze(ctx context.Context, req *AnalysisRequest) (*An
 	}
 
 	// Parse response
+	p.log.WithFields(logrus.Fields{
+		"content_length": len(respContent),
+		"content_preview": truncateString(respContent, 300),
+	}).Debug("Parsing AI response content")
+
 	response, err := ParseAnalysisResponse(respContent, p.Name(), p.config.Model)
 	if err != nil {
+		p.log.WithFields(logrus.Fields{
+			"error": err.Error(),
+			"content_length": len(respContent),
+		}).Error("Failed to parse analysis response")
 		return nil, &Error{
 			Op:       "parse_response",
 			Provider: p.Name(),
@@ -223,6 +232,12 @@ func (p *OpenAIProvider) callAPI(ctx context.Context, req *openaiRequest) (strin
 		return "", nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	p.log.WithFields(logrus.Fields{
+		"endpoint": p.config.Endpoint,
+		"model":    req.Model,
+		"messages": len(req.Messages),
+	}).Debug("Sending OpenAI API request")
+
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.Endpoint, bytes.NewReader(reqBody))
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to create request: %w", err)
@@ -241,8 +256,24 @@ func (p *OpenAIProvider) callAPI(ctx context.Context, req *openaiRequest) (strin
 	}
 	defer resp.Body.Close()
 
+	// Read the entire response body for logging and parsing
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	p.log.WithFields(logrus.Fields{
+		"status_code":   resp.StatusCode,
+		"content_type":  resp.Header.Get("Content-Type"),
+		"body_length":   len(body),
+		"body_preview":  truncateString(string(body), 200),
+	}).Debug("Received OpenAI API response")
+
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		p.log.WithFields(logrus.Fields{
+			"status_code": resp.StatusCode,
+			"body":        string(body),
+		}).Error("OpenAI API returned non-OK status")
 		return "", nil, &Error{
 			Op:        "api_call",
 			Provider:  p.Name(),
@@ -252,11 +283,18 @@ func (p *OpenAIProvider) callAPI(ctx context.Context, req *openaiRequest) (strin
 	}
 
 	var apiResp openaiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		return "", nil, fmt.Errorf("failed to decode response: %w", err)
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		p.log.WithFields(logrus.Fields{
+			"error":        err.Error(),
+			"body_length":  len(body),
+			"body_preview": truncateString(string(body), 500),
+			"body_full":    string(body), // Include full body for debugging
+		}).Error("Failed to parse OpenAI response JSON")
+		return "", nil, fmt.Errorf("failed to decode response: %w (body preview: %s)", err, truncateString(string(body), 200))
 	}
 
 	if len(apiResp.Choices) == 0 {
+		p.log.WithField("response", string(body)).Error("OpenAI returned no choices")
 		return "", nil, fmt.Errorf("no response choices returned")
 	}
 
@@ -266,6 +304,13 @@ func (p *OpenAIProvider) callAPI(ctx context.Context, req *openaiRequest) (strin
 		OutputTokens: apiResp.Usage.CompletionTokens,
 		TotalTokens:  apiResp.Usage.TotalTokens,
 	}
+
+	p.log.WithFields(logrus.Fields{
+		"content_length": len(apiResp.Choices[0].Message.Content),
+		"prompt_tokens":  usage.InputTokens,
+		"completion_tokens": usage.OutputTokens,
+		"total_tokens":   usage.TotalTokens,
+	}).Debug("Successfully parsed OpenAI response")
 
 	return apiResp.Choices[0].Message.Content, usage, nil
 }

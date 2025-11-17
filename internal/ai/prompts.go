@@ -306,6 +306,8 @@ func ParseAnalysisResponse(content string, provider string, model string) (*Anal
 		} `json:"recommendations"`
 	}
 
+	contentLength := len(content)
+
 	// Try to extract JSON from markdown code blocks if present
 	content = strings.TrimSpace(content)
 	if strings.HasPrefix(content, "```json") {
@@ -319,7 +321,14 @@ func ParseAnalysisResponse(content string, provider string, model string) (*Anal
 	}
 
 	if err := json.Unmarshal([]byte(content), &rawResponse); err != nil {
-		return nil, fmt.Errorf("failed to parse AI response: %w", err)
+		// Create detailed error with content preview
+		preview := content
+		if len(preview) > 500 {
+			preview = preview[:500] + "... [truncated]"
+		}
+
+		return nil, fmt.Errorf("failed to parse AI response: %w\nProvider: %s\nModel: %s\nContent length: %d\nContent preview: %s",
+			err, provider, model, contentLength, preview)
 	}
 
 	// Convert to AnalysisResponse
