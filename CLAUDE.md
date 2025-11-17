@@ -1,8 +1,8 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-17 (Phase 10 Planned - Messaging & Notifications)
+> **Last Updated:** 2025-11-17 (Phase 6 Complete - Auto-Remediation)
 > **Project Version:** 0.5.0
-> **Current Phase:** Phase 5 Complete (Security + Kubernetes Diagnostics) + Phase 4.2 Complete (OpenRouter) + Phase 8 In Progress (Testing) + Phase 10 Planned (Messaging)
+> **Current Phase:** Phase 6 Complete (Auto-Remediation) + Phase 4.2 Complete (OpenRouter) + Phase 8 In Progress (Testing)
 
 This document provides comprehensive guidance for AI assistants working on the Lumo codebase.
 
@@ -25,7 +25,7 @@ This document provides comprehensive guidance for AI assistants working on the L
 - **Language:** Go 1.25.4
 - **Module Path:** `github.com/ignacio/lumo`
 - **Architecture:** Modular CLI with pluggable backends
-- **Current Status:** Phase 5 complete (SSH + 11 Diagnostic Checkers + AI with 5 providers + Security Checks + Kubernetes Native Diagnostics) + Phase 4.2 Complete (OpenRouter Integration)
+- **Current Status:** Phase 6 complete (Auto-Remediation with human-in-the-loop approval, risk classification, rollback support) + All diagnostic & AI features operational
 - **License:** MIT
 
 ---
@@ -39,7 +39,7 @@ lumo/
 │   ├── root.go                   # Root command, global flags
 │   ├── connect.go                # SSH connection ✅
 │   ├── diagnose.go               # Diagnostics (localhost + remote) ✅
-│   ├── fix.go                    # Auto-remediation (planned)
+│   ├── fix.go                    # Auto-remediation ✅
 │   ├── report.go                 # Report generation (planned)
 │   └── serve.go                  # API server (planned)
 ├── internal/
@@ -56,13 +56,21 @@ lumo/
 │   │   ├── openai.go             # GPT integration
 │   │   ├── ollama.go             # Local model support
 │   │   ├── gemini.go             # Google Gemini integration
-│   │   └── openrouter.go         # OpenRouter integration (in progress)
+│   │   └── openrouter.go         # OpenRouter integration ✅
+│   ├── remediation/               # Auto-remediation system (11 files, 3,395 lines) ✅
+│   │   ├── remediation.go        # Core types and interfaces
+│   │   ├── actions_*.go          # Action implementations (disk, service, process)
+│   │   ├── executor.go           # Action execution engine
+│   │   ├── approval.go           # Human-in-the-loop approval
+│   │   ├── audit.go              # Audit logging
+│   │   ├── suggestions.go        # Generate actions from diagnostics
+│   │   └── registry.go           # Action registry
 │   └── notifications/             # Messaging integrations (planned)
 │       └── providers/            # Slack, Teams, Telegram, Discord, etc.
 └── configs/
     └── config.example.yaml        # Configuration template
 
-Total: 46 Go files (~15,500+ lines) + 28 test files (~12,500+ lines) [OpenRouter integration complete]
+Total: 54 Go files (~19,000 lines) + 35 test files (~14,800 lines)
 ```
 
 **Directory Purposes:**
@@ -76,7 +84,8 @@ Total: 46 Go files (~15,500+ lines) + 28 test files (~12,500+ lines) [OpenRouter
 | `internal/diagnostics/` | Core diagnostic runner and interfaces |
 | `internal/diagnostics/checkers/` | Individual check implementations |
 | `internal/ai/` | AI provider integrations |
-| `internal/notifications/` | Messaging/notification providers |
+| `internal/remediation/` | Auto-remediation actions, executor, approval, audit |
+| `internal/notifications/` | Messaging/notification providers (planned) |
 
 ---
 
@@ -240,7 +249,7 @@ import (
 |---------|--------|---------|-----------|
 | `connect` | ✅ Phase 2 | SSH connection | `--port`, `--user`, `--key` |
 | `diagnose` | ✅ Phase 3+4 | System diagnostics + AI | `--checks`, `--format`, `--analyze`, `--notify` |
-| `fix` | ⏳ Phase 6 | Auto-remediation | `--auto-approve`, `--dry-run`, `--notify` |
+| `fix` | ✅ Phase 6 | Auto-remediation | `--auto-approve`, `--dry-run`, `--list-actions`, `--skip` |
 | `report` | ⏳ Phase 7 | Report generation | `--format`, `--output` |
 | `serve` | ⏳ Phase 9 | API server | `--port`, `--tls` |
 | `notify` | ⏳ Phase 10 | Send notifications | `--provider`, `--test` |
@@ -473,6 +482,24 @@ chmod 600 /etc/lumo/key.pem
 | `gemini.go` | gemini-2.0-flash-exp | SSE streaming, token tracking | ✅ Complete |
 | `openrouter.go` | anthropic/claude-sonnet-4.5 | Multi-provider routing, unified API, OpenAI-compatible | ✅ Complete |
 
+### Remediation System (Phase 6 - Complete)
+
+| File | Purpose | Key Points |
+|------|---------|-----------|
+| `cmd/lumo/fix.go` | Fix command CLI | Flag handling, plan display, execution orchestration |
+| `remediation.go` | Core types | `Action` interface, `RiskLevel`, `ActionStatus`, `RemediationPlan` |
+| `executor.go` | Execution engine | Action execution, approval integration, error handling, audit logging |
+| `approval.go` | Human-in-the-loop | Interactive approval prompts, auto-approve logic for safe actions |
+| `audit.go` | Audit logging | JSON-formatted audit trail to `~/.lumo/remediation-audit.log` |
+| `suggestions.go` | AI suggester | Generate actions from diagnostic reports, severity-based filtering |
+| `registry.go` | Action registry | Register/lookup actions, default registry with all actions |
+| `actions_disk.go` | Disk cleanup actions | Clean logs, temp files, package caches, journal logs |
+| `actions_service.go` | Service management | Restart failed services (systemd, init, launchd) |
+| `actions_process.go` | Process management | Kill zombies, terminate high resource consumers |
+| `e2e_test.go` | Integration tests | End-to-end workflow testing |
+
+**Total:** 11 files, 3,395 lines
+
 ---
 
 ## Phase Roadmap
@@ -563,11 +590,48 @@ chmod 600 /etc/lumo/key.pem
 - ✅ **Comprehensive tests:** 12 test cases covering all parsing functions and edge cases
 - 1 new checker (~900 lines implementation + ~750 lines tests)
 
-### ⏳ Phase 6: Auto-Remediation (Planned)
-- Remediation action registry
-- Risk classification (safe, moderate, critical)
-- Human-in-the-loop approval
-- Rollback support, audit logging
+### ✅ Phase 6: Auto-Remediation (Complete - 2025-11-17)
+**Full auto-remediation system with human-in-the-loop approval and safety controls**
+
+**Core Infrastructure:**
+- ✅ **Action Interface:** Standardized interface for all remediation actions (Execute, Validate, Rollback)
+- ✅ **Action Registry:** Pluggable registry for managing available actions
+- ✅ **Executor System:** Robust execution engine with error handling and state tracking
+- ✅ **Approval System:** Human-in-the-loop approval for moderate/critical actions
+- ✅ **Audit Logging:** Complete audit trail of all remediation attempts to `~/.lumo/remediation-audit.log`
+- ✅ **Suggester:** Intelligent action generation from diagnostic reports
+
+**Risk Classification:**
+- ✅ **Safe Actions:** Auto-approved based on policy (cleaning temp files, logs)
+- ✅ **Moderate Actions:** User approval required (restarting services, killing processes)
+- ✅ **Critical Actions:** Always require explicit approval (system configuration changes)
+
+**Action Categories (11 files, 3,395 lines):**
+- ✅ **Disk Actions** (`actions_disk.go`): Clean log files, temp directories, package caches, journal logs
+- ✅ **Service Actions** (`actions_service.go`): Restart failed systemd/init/launchd services
+- ✅ **Process Actions** (`actions_process.go`): Kill zombie processes, terminate high CPU/memory processes
+
+**CLI Features:**
+```bash
+lumo fix localhost                    # Detect issues and suggest fixes
+lumo fix host --auto-approve         # Auto-approve safe operations
+lumo fix host --dry-run              # Simulate without executing
+lumo fix host --list-actions         # Show plan without executing
+lumo fix host --skip service,disk    # Skip specific categories
+lumo fix host --audit-log /path      # Custom audit log location
+```
+
+**Safety Features:**
+- ✅ Reversible actions track rollback data
+- ✅ Dry-run mode for testing
+- ✅ Per-action validation before execution
+- ✅ Execution reports with duration, changes, errors
+- ✅ Status tracking (pending, approved, rejected, success, failed, rolled_back)
+
+**Testing:**
+- ✅ E2E integration tests (`e2e_test.go`)
+- ✅ Action-specific unit tests
+- ✅ Full test coverage of suggestion logic
 
 ### ⏳ Phase 7: Reporting (Planned)
 - Multiple formats (Markdown, JSON, YAML, HTML)
