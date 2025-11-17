@@ -174,7 +174,7 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 	thresholds := diagnostics.DefaultThresholds()
 	runner := diagnostics.NewRunner(diagConfig, thresholds, executor, log)
 
-	// Register checkers (Phase 5 Complete: 6 core + 4 security + 1 kubernetes checkers)
+	// Register checkers (Phase 5 Complete: 6 core + 4 security + 2 specialized checkers)
 	log.Debug("Registering diagnostic checkers")
 
 	// Build checker list dynamically
@@ -194,9 +194,11 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 			cfg.Diagnostics.Security.AuthFailureCheck.LookbackHours,
 			cfg.Diagnostics.Security.AuthFailureCheck.FailureThreshold,
 		),
+		// Proxmox virtualization checker (always registered, auto-skips if not installed)
+		checkers.NewProxmoxChecker(false, false, false, false, false, false, false), // All checks enabled
 	}
 
-	// Add Kubernetes checker if enabled
+	// Add Kubernetes checker if enabled in config
 	if cfg.Diagnostics.Kubernetes.Enabled {
 		log.Debug("Kubernetes diagnostics enabled")
 		checkersToRegister = append(checkersToRegister, checkers.NewKubernetesChecker(cfg.Diagnostics.Kubernetes, log))

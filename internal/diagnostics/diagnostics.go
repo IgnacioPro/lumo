@@ -13,15 +13,16 @@ import (
 type CheckCategory string
 
 const (
-	CategoryCPU        CheckCategory = "cpu"
-	CategoryMemory     CheckCategory = "memory"
-	CategoryDisk       CheckCategory = "disk"
-	CategoryProcess    CheckCategory = "process"
-	CategoryLog        CheckCategory = "logs"
-	CategoryNetwork    CheckCategory = "network"
-	CategoryService    CheckCategory = "service"
-	CategorySecurity   CheckCategory = "security"
-	CategoryKubernetes CheckCategory = "kubernetes"
+	CategoryCPU            CheckCategory = "cpu"
+	CategoryMemory         CheckCategory = "memory"
+	CategoryDisk           CheckCategory = "disk"
+	CategoryProcess        CheckCategory = "process"
+	CategoryLog            CheckCategory = "logs"
+	CategoryNetwork        CheckCategory = "network"
+	CategoryService        CheckCategory = "service"
+	CategorySecurity       CheckCategory = "security"
+	CategoryKubernetes     CheckCategory = "kubernetes"
+	CategoryVirtualization CheckCategory = "virtualization"
 )
 
 // CheckStatus represents the execution status of a check
