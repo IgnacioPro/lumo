@@ -1,9 +1,6 @@
 <div align="center">
-
-<img src=".github/images/lumo-logo.png" alt="Lumo Logo" width="500"/>
-
+<img src=".github/images/lumo-logo.png" alt="Lumo Logo" width="300"/><br>
 <h1>🔦 Lumo</h1>
-
 <p><strong>Intelligent SRE/DevOps Automation Agent</strong></p>
 
 [![CI](https://github.com/IgnacioPro/lumo/actions/workflows/ci.yml/badge.svg)](https://github.com/IgnacioPro/lumo/actions/workflows/ci.yml)
