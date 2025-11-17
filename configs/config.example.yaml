@@ -82,6 +82,16 @@ ai:
   # Maximum tokens in AI response
   max_tokens: 4096
 
+  # Reasoning effort for OpenAI reasoning models (o1, o3, gpt-5-nano series)
+  # Controls how much reasoning the model uses before generating the response
+  # Options: low, medium, high
+  # - low: Minimal reasoning, faster responses, lower token usage (~1k-2k reasoning tokens)
+  # - medium: Balanced reasoning and speed (~2k-4k reasoning tokens)
+  # - high: Maximum reasoning, slower but more thorough (~4k-8k reasoning tokens)
+  # Default: empty (uses OpenAI's default, typically "medium")
+  # Note: Only affects OpenAI reasoning models, ignored by other providers
+  reasoning_effort: ""
+
 # Logging Configuration
 logging:
   # Log level: debug, info, warn, error
@@ -245,6 +255,7 @@ diagnostics:
 #   LUMO_AI_ENDPOINT=http://...         # Override endpoint
 #   LUMO_AI_TEMPERATURE=0.7             # Override temperature
 #   LUMO_AI_MAX_TOKENS=2048             # Override max tokens
+#   LUMO_AI_REASONING_EFFORT=low        # Override reasoning effort (for OpenAI reasoning models)
 #
 # Logging:
 #   LUMO_LOGGING_LEVEL=debug
