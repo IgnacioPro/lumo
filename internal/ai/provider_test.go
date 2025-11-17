@@ -149,10 +149,11 @@ func TestSupportedProviders(t *testing.T) {
 
 	// Check that all expected providers are present
 	expectedProviders := map[ProviderType]bool{
-		ProviderAnthropic: true,
-		ProviderOpenAI:    true,
-		ProviderOllama:    true,
-		ProviderGemini:    true,
+		ProviderAnthropic:  true,
+		ProviderOpenAI:     true,
+		ProviderOllama:     true,
+		ProviderGemini:     true,
+		ProviderOpenRouter: true,
 	}
 
 	for _, p := range providers {
@@ -191,6 +192,11 @@ func TestDefaultModelForProvider(t *testing.T) {
 		{
 			name:         "gemini has default model",
 			providerType: ProviderGemini,
+			wantEmpty:    false,
+		},
+		{
+			name:         "openrouter has default model",
+			providerType: ProviderOpenRouter,
 			wantEmpty:    false,
 		},
 		{
