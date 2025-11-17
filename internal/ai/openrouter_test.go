@@ -141,18 +141,20 @@ func TestOpenRouterProvider_Analyze(t *testing.T) {
 			Choices: []struct {
 				Index   int `json:"index"`
 				Message struct {
-					Role    string `json:"role"`
-					Content string `json:"content"`
-					Refusal string `json:"refusal,omitempty"`
+					Role      string `json:"role"`
+					Content   string `json:"content"`
+					Refusal   string `json:"refusal,omitempty"`
+					Reasoning string `json:"reasoning,omitempty"`
 				} `json:"message"`
 				FinishReason string `json:"finish_reason"`
 			}{
 				{
 					Index: 0,
 					Message: struct {
-						Role    string `json:"role"`
-						Content string `json:"content"`
-						Refusal string `json:"refusal,omitempty"`
+						Role      string `json:"role"`
+						Content   string `json:"content"`
+						Refusal   string `json:"refusal,omitempty"`
+						Reasoning string `json:"reasoning,omitempty"`
 					}{
 						Role: "assistant",
 						Content: `{
@@ -248,18 +250,20 @@ func TestOpenRouterProvider_Analyze_EmptyContent(t *testing.T) {
 			Choices: []struct {
 				Index   int `json:"index"`
 				Message struct {
-					Role    string `json:"role"`
-					Content string `json:"content"`
-					Refusal string `json:"refusal,omitempty"`
+					Role      string `json:"role"`
+					Content   string `json:"content"`
+					Refusal   string `json:"refusal,omitempty"`
+					Reasoning string `json:"reasoning,omitempty"`
 				} `json:"message"`
 				FinishReason string `json:"finish_reason"`
 			}{
 				{
 					Index: 0,
 					Message: struct {
-						Role    string `json:"role"`
-						Content string `json:"content"`
-						Refusal string `json:"refusal,omitempty"`
+						Role      string `json:"role"`
+						Content   string `json:"content"`
+						Refusal   string `json:"refusal,omitempty"`
+						Reasoning string `json:"reasoning,omitempty"`
 					}{
 						Role:    "assistant",
 						Content: "",
@@ -328,18 +332,20 @@ func TestOpenRouterProvider_Analyze_Refusal(t *testing.T) {
 			Choices: []struct {
 				Index   int `json:"index"`
 				Message struct {
-					Role    string `json:"role"`
-					Content string `json:"content"`
-					Refusal string `json:"refusal,omitempty"`
+					Role      string `json:"role"`
+					Content   string `json:"content"`
+					Refusal   string `json:"refusal,omitempty"`
+					Reasoning string `json:"reasoning,omitempty"`
 				} `json:"message"`
 				FinishReason string `json:"finish_reason"`
 			}{
 				{
 					Index: 0,
 					Message: struct {
-						Role    string `json:"role"`
-						Content string `json:"content"`
-						Refusal string `json:"refusal,omitempty"`
+						Role      string `json:"role"`
+						Content   string `json:"content"`
+						Refusal   string `json:"refusal,omitempty"`
+						Reasoning string `json:"reasoning,omitempty"`
 					}{
 						Role:    "assistant",
 						Content: "",
@@ -428,18 +434,20 @@ func TestOpenRouterProvider_Health(t *testing.T) {
 						Choices: []struct {
 							Index   int `json:"index"`
 							Message struct {
-								Role    string `json:"role"`
-								Content string `json:"content"`
-								Refusal string `json:"refusal,omitempty"`
+								Role      string `json:"role"`
+								Content   string `json:"content"`
+								Refusal   string `json:"refusal,omitempty"`
+								Reasoning string `json:"reasoning,omitempty"`
 							} `json:"message"`
 							FinishReason string `json:"finish_reason"`
 						}{
 							{
 								Index: 0,
 								Message: struct {
-									Role    string `json:"role"`
-									Content string `json:"content"`
-									Refusal string `json:"refusal,omitempty"`
+									Role      string `json:"role"`
+									Content   string `json:"content"`
+									Refusal   string `json:"refusal,omitempty"`
+									Reasoning string `json:"reasoning,omitempty"`
 								}{
 									Role:    "assistant",
 									Content: "test",

@@ -303,14 +303,15 @@ func runAIAnalysis(cfg *config.Config, report *diagnostics.Report, hostname stri
 
 	// Build provider config
 	providerConfig := &ai.ProviderConfig{
-		Name:        string(providerType),
-		APIKey:      cfg.AI.GetAPIKeyForProvider(cfg.AI.Provider),
-		Model:       cfg.AI.GetModelForProvider(cfg.AI.Provider),
-		Endpoint:    cfg.AI.Endpoint,
-		Timeout:     cfg.AI.Timeout,
-		MaxRetries:  cfg.AI.MaxRetries,
-		Temperature: cfg.AI.Temperature,
-		MaxTokens:   cfg.AI.MaxTokens,
+		Name:            string(providerType),
+		APIKey:          cfg.AI.GetAPIKeyForProvider(cfg.AI.Provider),
+		Model:           cfg.AI.GetModelForProvider(cfg.AI.Provider),
+		Endpoint:        cfg.AI.Endpoint,
+		Timeout:         cfg.AI.Timeout,
+		MaxRetries:      cfg.AI.MaxRetries,
+		Temperature:     cfg.AI.Temperature,
+		MaxTokens:       cfg.AI.MaxTokens,
+		ReasoningEffort: cfg.AI.ReasoningEffort,
 	}
 
 	// Create provider

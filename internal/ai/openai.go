@@ -211,7 +211,7 @@ func (p *OpenAIProvider) Health(ctx context.Context) error {
 
 // buildRequest constructs an OpenAI API request.
 func (p *OpenAIProvider) buildRequest(systemPrompt, userPrompt string) *openaiRequest {
-	return &openaiRequest{
+	req := &openaiRequest{
 		Model:               p.config.Model,
 		MaxCompletionTokens: p.config.MaxTokens,
 		Temperature:         p.config.Temperature,
@@ -226,6 +226,17 @@ func (p *OpenAIProvider) buildRequest(systemPrompt, userPrompt string) *openaiRe
 			},
 		},
 	}
+
+	// Add reasoning_effort if configured (for reasoning models like o1, o3, gpt-5-nano)
+	if p.config.ReasoningEffort != "" {
+		req.ReasoningEffort = p.config.ReasoningEffort
+		p.log.WithFields(logrus.Fields{
+			"model":            p.config.Model,
+			"reasoning_effort": p.config.ReasoningEffort,
+		}).Debug("Using reasoning effort configuration")
+	}
+
+	return req
 }
 
 // callAPI makes a non-streaming API call.
@@ -257,7 +268,7 @@ func (p *OpenAIProvider) callAPI(ctx context.Context, req *openaiRequest) (strin
 			Retryable: true,
 		}
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer resp.Body.Close()
 
 	// Read the entire response body for logging and parsing
 	body, err := io.ReadAll(resp.Body)
@@ -373,7 +384,7 @@ func (p *OpenAIProvider) streamAPI(ctx context.Context, req *openaiRequest, ch c
 			Retryable: true,
 		}
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -469,6 +480,7 @@ type openaiRequest struct {
 	Temperature         float64         `json:"temperature,omitempty"`
 	Messages            []openaiMessage `json:"messages"`
 	Stream              bool            `json:"stream,omitempty"`
+	ReasoningEffort     string          `json:"reasoning_effort,omitempty"` // For reasoning models: "low", "medium", "high"
 }
 
 type openaiMessage struct {

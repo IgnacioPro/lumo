@@ -32,16 +32,17 @@ type SSHConfig struct {
 
 // AIConfig contains AI provider settings
 type AIConfig struct {
-	Provider    string            `mapstructure:"provider"`
-	APIKey      string            `mapstructure:"api_key"`
-	Model       string            `mapstructure:"model"`
-	Models      map[string]string `mapstructure:"models"`   // Per-provider model overrides
-	Endpoint    string            `mapstructure:"endpoint"` // Custom endpoint (optional)
-	Timeout     time.Duration     `mapstructure:"timeout"`
-	MaxRetries  int               `mapstructure:"max_retries"`
-	Temperature float64           `mapstructure:"temperature"` // 0.0-1.0 (default 1.0)
-	MaxTokens   int               `mapstructure:"max_tokens"`  // Maximum response tokens
-	Enabled     bool              `mapstructure:"enabled"`     // Enable/disable AI analysis
+	Provider        string            `mapstructure:"provider"`
+	APIKey          string            `mapstructure:"api_key"`
+	Model           string            `mapstructure:"model"`
+	Models          map[string]string `mapstructure:"models"`   // Per-provider model overrides
+	Endpoint        string            `mapstructure:"endpoint"` // Custom endpoint (optional)
+	Timeout         time.Duration     `mapstructure:"timeout"`
+	MaxRetries      int               `mapstructure:"max_retries"`
+	Temperature     float64           `mapstructure:"temperature"`      // 0.0-1.0 (default 1.0)
+	MaxTokens       int               `mapstructure:"max_tokens"`       // Maximum response tokens
+	ReasoningEffort string            `mapstructure:"reasoning_effort"` // For OpenAI reasoning models: "low", "medium", "high"
+	Enabled         bool              `mapstructure:"enabled"`          // Enable/disable AI analysis
 }
 
 // LoggingConfig contains logging settings
@@ -233,15 +234,16 @@ func (c *Config) Validate() error {
 	// AI validation
 	if c.AI.Enabled {
 		validProviders := map[string]bool{
-			"anthropic": true,
-			"openai":    true,
-			"ollama":    true,
-			"gemini":    true,
-			"local":     true, // Alias for ollama
-			"google":    true, // Alias for gemini
+			"anthropic":  true,
+			"openai":     true,
+			"ollama":     true,
+			"gemini":     true,
+			"openrouter": true,
+			"local":      true, // Alias for ollama
+			"google":     true, // Alias for gemini
 		}
 		if !validProviders[c.AI.Provider] {
-			return fmt.Errorf("unsupported AI provider: %s (supported: anthropic, openai, ollama, gemini)", c.AI.Provider)
+			return fmt.Errorf("unsupported AI provider: %s (supported: anthropic, openai, ollama, gemini, openrouter)", c.AI.Provider)
 		}
 
 		// Validate temperature range
@@ -254,6 +256,18 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("AI max_tokens must be positive, got: %d", c.AI.MaxTokens)
 		}
 
+		// Validate reasoning effort (if specified)
+		if c.AI.ReasoningEffort != "" {
+			validEfforts := map[string]bool{
+				"low":    true,
+				"medium": true,
+				"high":   true,
+			}
+			if !validEfforts[c.AI.ReasoningEffort] {
+				return fmt.Errorf("AI reasoning_effort must be 'low', 'medium', or 'high', got: %s", c.AI.ReasoningEffort)
+			}
+		}
+
 		// Validate API key for cloud providers
 		needsAPIKey := c.AI.Provider == "anthropic" || c.AI.Provider == "openai" || c.AI.Provider == "gemini" || c.AI.Provider == "google" || c.AI.Provider == "openrouter"
 		if needsAPIKey && c.AI.GetAPIKeyForProvider(c.AI.Provider) == "" {
@@ -262,9 +276,10 @@ func (c *Config) Validate() error {
 				providerName = "gemini"
 			}
 			envVar := fmt.Sprintf("LUMO_%s_API_KEY", map[string]string{
-				"anthropic": "ANTHROPIC",
-				"openai":    "OPENAI",
-				"gemini":    "GEMINI",
+				"anthropic":  "ANTHROPIC",
+				"openai":     "OPENAI",
+				"gemini":     "GEMINI",
+				"openrouter": "OPENROUTER",
 			}[providerName])
 			return fmt.Errorf("AI provider %s requires API key (set via %s or LUMO_AI_API_KEY environment variable)", c.AI.Provider, envVar)
 		}

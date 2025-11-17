@@ -274,6 +274,7 @@ func (p *OpenRouterProvider) callAPI(ctx context.Context, req *openrouterRequest
 		"status_code":  resp.StatusCode,
 		"content_type": resp.Header.Get("Content-Type"),
 		"body_length":  len(body),
+		"body":         string(body),
 	}).Debug("Received OpenRouter API response")
 
 	if resp.StatusCode != http.StatusOK {
@@ -311,6 +312,12 @@ func (p *OpenRouterProvider) callAPI(ctx context.Context, req *openrouterRequest
 	if apiResp.Choices[0].Message.Refusal != "" {
 		p.log.WithField("refusal", apiResp.Choices[0].Message.Refusal).Warn("OpenRouter refused to respond")
 		return "", nil, fmt.Errorf("content policy refusal: %s", apiResp.Choices[0].Message.Refusal)
+	}
+
+	// For reasoning models (like DeepSeek R1), content may be in the reasoning field
+	if content == "" && apiResp.Choices[0].Message.Reasoning != "" {
+		p.log.Debug("Using reasoning field as content (reasoning model detected)")
+		content = apiResp.Choices[0].Message.Reasoning
 	}
 
 	// Handle empty content
@@ -475,9 +482,10 @@ type openrouterResponse struct {
 	Choices []struct {
 		Index   int `json:"index"`
 		Message struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-			Refusal string `json:"refusal,omitempty"` // OpenAI-compatible content policy field
+			Role      string `json:"role"`
+			Content   string `json:"content"`
+			Refusal   string `json:"refusal,omitempty"`   // OpenAI-compatible content policy field
+			Reasoning string `json:"reasoning,omitempty"` // Reasoning models (DeepSeek R1, etc.)
 		} `json:"message"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
