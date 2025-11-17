@@ -1,8 +1,8 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-17 (Phase 4.2 In Progress - OpenRouter Integration)
+> **Last Updated:** 2025-11-17 (Phase 4.2 Complete - OpenRouter Integration)
 > **Project Version:** 0.5.0
-> **Current Phase:** Phase 5 Complete (Security + Kubernetes Diagnostics) + Phase 4.2 In Progress (OpenRouter) + Phase 8 In Progress (Testing)
+> **Current Phase:** Phase 5 Complete (Security + Kubernetes Diagnostics) + Phase 4.2 Complete (OpenRouter) + Phase 8 In Progress (Testing)
 
 This document provides comprehensive guidance for AI assistants working on the Lumo codebase.
 
@@ -15,7 +15,7 @@ This document provides comprehensive guidance for AI assistants working on the L
 **Lumo** is an intelligent SRE/DevOps automation agent written in Go that:
 - **Connects** to remote servers via SSH
 - **Diagnoses** system issues (CPU, memory, disk, processes, services, network, security, Kubernetes)
-- **Analyzes** problems using AI (Anthropic, OpenAI, Ollama, Gemini, OpenRouter)
+- **Analyzes** problems using AI (5 providers: Anthropic, OpenAI, Ollama, Gemini, OpenRouter)
 - **Remediates** issues automatically with human-in-the-loop approval
 - **Reports** findings in multiple formats (text, JSON, TOON)
 - **Serves** as both a CLI tool and REST API server
@@ -25,7 +25,7 @@ This document provides comprehensive guidance for AI assistants working on the L
 - **Language:** Go 1.25.4
 - **Module Path:** `github.com/ignacio/lumo`
 - **Architecture:** Modular CLI with pluggable backends
-- **Current Status:** Phase 5 complete (SSH + 11 Diagnostic Checkers + AI with 5 providers + Security Checks + Kubernetes Native Diagnostics) + Phase 4.2 In Progress (OpenRouter Integration)
+- **Current Status:** Phase 5 complete (SSH + 11 Diagnostic Checkers + AI with 5 providers + Security Checks + Kubernetes Native Diagnostics) + Phase 4.2 Complete (OpenRouter Integration)
 - **License:** MIT
 
 ---
@@ -60,7 +60,7 @@ lumo/
 └── configs/
     └── config.example.yaml        # Configuration template
 
-Total: 45 Go files (~15,000+ lines) + 27 test files (~12,000+ lines) [OpenRouter integration in progress]
+Total: 46 Go files (~15,500+ lines) + 28 test files (~12,500+ lines) [OpenRouter integration complete]
 ```
 
 **Directory Purposes:**
@@ -92,7 +92,7 @@ Total: 45 Go files (~15,000+ lines) + 27 test files (~12,000+ lines) [OpenRouter
 | **k8s.io/api** | v0.31.3 | Kubernetes API types |
 | **k8s.io/apimachinery** | v0.31.3 | Kubernetes API machinery |
 
-**AI Integration:** Custom HTTP clients for all providers (no external SDKs)
+**AI Integration:** Custom HTTP clients for all 5 providers (no external SDKs)
 **Kubernetes:** Native client using official Kubernetes Go libraries (no kubectl dependency)
 
 ---
@@ -450,7 +450,7 @@ chmod 600 /etc/lumo/key.pem
 | `kubernetes.go` | Nodes (ready/not-ready), Pods (phase, restarts), Deployments/StatefulSets/DaemonSets (replica health), Services (endpoints), PVCs (binding status), Events (recent warnings/errors) |
 | `proxmox.go` | **Core:** Cluster status (quorum, nodes), VMs/containers (running/stopped), storage (usage, health), replication jobs, backup status, HA services, Proxmox daemon health<br>**Enhanced:** Subscription validation, update detection, task history, per-VM/CT performance metrics, boot configuration (OnBoot settings), network interface statistics |
 
-### AI Providers (4 Complete + 1 In Progress)
+### AI Providers (5 Complete)
 
 | Provider | Model | Key Features | Status |
 |----------|-------|-------------|--------|
@@ -458,7 +458,7 @@ chmod 600 /etc/lumo/key.pem
 | `openai.go` | gpt-4-turbo-preview | Function calling, streaming | ✅ Complete |
 | `ollama.go` | llama3.1:8b | Self-hosted, no API key | ✅ Complete |
 | `gemini.go` | gemini-2.0-flash-exp | SSE streaming, token tracking | ✅ Complete |
-| `openrouter.go` | Multiple models via API | Multi-provider routing, unified API | ⏳ In Progress |
+| `openrouter.go` | anthropic/claude-sonnet-4.5 | Multi-provider routing, unified API, OpenAI-compatible | ✅ Complete |
 
 ---
 
@@ -489,15 +489,15 @@ chmod 600 /etc/lumo/key.pem
 - Local execution support (no SSH for localhost)
 - 7 files, 1,964 lines (includes tests)
 
-### ⏳ Phase 4.2: OpenRouter Integration (In Progress - 2025-11-17)
-- ⏳ **OpenRouter Provider:** Add 5th AI provider with multi-model support
-- ⏳ **Unified API:** Access multiple LLM providers through single OpenRouter endpoint
-- ⏳ **Model Flexibility:** Support for Claude, GPT-4, Gemini, and other models via OpenRouter
-- ⏳ **Configuration:** Add `LUMO_OPENROUTER_API_KEY` environment variable support
-- ⏳ **Default Model:** Configure appropriate default model for OpenRouter
-- ⏳ **Testing:** Comprehensive tests following existing provider patterns
-- ⏳ **Documentation:** Update config.example.yaml and usage examples
-- Target: 1 new file (~250-300 lines implementation + tests)
+### ✅ Phase 4.2: OpenRouter Integration (Complete - 2025-11-17)
+- ✅ **OpenRouter Provider:** Added 5th AI provider with multi-model support
+- ✅ **Unified API:** Access multiple LLM providers through single OpenRouter endpoint
+- ✅ **Model Flexibility:** Support for Claude, GPT-4, Gemini, and other models via OpenRouter
+- ✅ **Configuration:** Added `LUMO_OPENROUTER_API_KEY` environment variable support
+- ✅ **Default Model:** Configured `anthropic/claude-sonnet-4.5` as default model
+- ✅ **Testing:** Comprehensive tests following existing provider patterns (8 test cases, 100% passing)
+- ✅ **Documentation:** Updated config.example.yaml and CLAUDE.md with usage examples
+- Delivered: 2 files (openrouter.go: 508 lines, openrouter_test.go: 511 lines)
 
 ### ✅ Phase 4.1: Enhanced Diagnostics (Complete - 2025-11-16)
 - ✅ **Memory enhancements:** Top 10 memory consumers per process
