@@ -208,3 +208,207 @@ func TestGeminiProvider_Analyze(t *testing.T) {
 		t.Errorf("TotalTokens = %d, want 350", analysis.TokensUsed.TotalTokens)
 	}
 }
+
+func TestGeminiProvider_Health(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	tests := []struct {
+		name       string
+		statusCode int
+		wantErr    bool
+		errMsg     string
+	}{
+		{
+			name:       "healthy service",
+			statusCode: http.StatusOK,
+			wantErr:    false,
+		},
+		{
+			name:       "service unavailable",
+			statusCode: http.StatusServiceUnavailable,
+			wantErr:    true,
+			errMsg:     "503",
+		},
+		{
+			name:       "unauthorized",
+			statusCode: http.StatusUnauthorized,
+			wantErr:    true,
+			errMsg:     "401",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.statusCode)
+			}))
+			defer server.Close()
+
+			provider, err := NewGeminiProvider(&ProviderConfig{
+				APIKey: "test-key",
+			}, log)
+			if err != nil {
+				t.Fatalf("Failed to create provider: %v", err)
+			}
+
+			provider.config.Endpoint = server.URL
+			provider.client = server.Client()
+
+			ctx := context.Background()
+			err = provider.Health(ctx)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Health() expected error containing %q, got nil", tt.errMsg)
+					return
+				}
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("Health() error = %q, want error containing %q", err.Error(), tt.errMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Health() unexpected error = %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestGeminiProvider_Analyze_ErrorHandling(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	tests := []struct {
+		name       string
+		statusCode int
+		response   interface{}
+		wantErr    bool
+		errMsg     string
+	}{
+		{
+			name:       "network error - 500",
+			statusCode: http.StatusInternalServerError,
+			response:   map[string]string{"error": "internal error"},
+			wantErr:    true,
+			errMsg:     "500",
+		},
+		{
+			name:       "unauthorized - 401",
+			statusCode: http.StatusUnauthorized,
+			response:   map[string]string{"error": "invalid API key"},
+			wantErr:    true,
+			errMsg:     "401",
+		},
+		{
+			name:       "rate limited - 429",
+			statusCode: http.StatusTooManyRequests,
+			response:   map[string]string{"error": "rate limit exceeded"},
+			wantErr:    true,
+			errMsg:     "429",
+		},
+		{
+			name:       "malformed JSON response",
+			statusCode: http.StatusOK,
+			response:   "not valid json",
+			wantErr:    true,
+			errMsg:     "failed to parse",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.statusCode)
+				if str, ok := tt.response.(string); ok {
+					w.Write([]byte(str))
+				} else {
+					_ = json.NewEncoder(w).Encode(tt.response)
+				}
+			}))
+			defer server.Close()
+
+			provider, err := NewGeminiProvider(&ProviderConfig{
+				APIKey: "test-key",
+			}, log)
+			if err != nil {
+				t.Fatalf("Failed to create provider: %v", err)
+			}
+
+			provider.config.Endpoint = server.URL
+			provider.client = server.Client()
+
+			req := &AnalysisRequest{
+				Report: &diagnostics.Report{
+					Timestamp: time.Now(),
+					Duration:  100 * time.Millisecond,
+					Results:   []*diagnostics.CheckResult{},
+				},
+				SystemInfo: SystemInfo{Hostname: "test-host"},
+			}
+
+			ctx := context.Background()
+			_, err = provider.Analyze(ctx, req)
+
+			if !tt.wantErr {
+				if err != nil {
+					t.Errorf("Analyze() unexpected error = %v", err)
+				}
+				return
+			}
+
+			if err == nil {
+				t.Errorf("Analyze() expected error containing %q, got nil", tt.errMsg)
+				return
+			}
+
+			if !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("Analyze() error = %q, want error containing %q", err.Error(), tt.errMsg)
+			}
+		})
+	}
+}
+
+func TestGeminiProvider_Analyze_ContextCancellation(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Second)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	provider, err := NewGeminiProvider(&ProviderConfig{
+		APIKey: "test-key",
+	}, log)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	provider.config.Endpoint = server.URL
+	provider.client = server.Client()
+
+	req := &AnalysisRequest{
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "test-host"},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	_, err = provider.Analyze(ctx, req)
+
+	if err == nil {
+		t.Error("Analyze() expected context cancellation error, got nil")
+		return
+	}
+
+	if !strings.Contains(err.Error(), "context") && !strings.Contains(err.Error(), "timeout") {
+		t.Errorf("Analyze() error = %q, want context cancellation error", err.Error())
+	}
+}
