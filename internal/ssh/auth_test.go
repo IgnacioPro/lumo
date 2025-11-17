@@ -60,9 +60,9 @@ func TestValidateKeyFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	tests := []struct {
-		name       string
-		setupFile  func() string // returns file path
-		wantErr    bool
+		name        string
+		setupFile   func() string // returns file path
+		wantErr     bool
 		errContains string
 	}{
 		{

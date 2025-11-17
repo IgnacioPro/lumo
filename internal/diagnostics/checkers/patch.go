@@ -141,18 +141,18 @@ func (p *PatchChecker) parseOSRelease(content string) (string, string) {
 
 	// Map OS ID to package manager
 	pkgManagerMap := map[string]string{
-		"ubuntu":  "apt",
-		"debian":  "apt",
+		"ubuntu":    "apt",
+		"debian":    "apt",
 		"linuxmint": "apt",
-		"pop":     "apt",
-		"rhel":    "yum",
-		"centos":  "yum",
-		"fedora":  "dnf",
-		"rocky":   "dnf",
-		"alma":    "dnf",
-		"alpine":  "apk",
-		"arch":    "pacman",
-		"manjaro": "pacman",
+		"pop":       "apt",
+		"rhel":      "yum",
+		"centos":    "yum",
+		"fedora":    "dnf",
+		"rocky":     "dnf",
+		"alma":      "dnf",
+		"alpine":    "apk",
+		"arch":      "pacman",
+		"manjaro":   "pacman",
 	}
 
 	pkgManager := pkgManagerMap[osID]

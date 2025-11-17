@@ -260,13 +260,13 @@ func TestCPUChecker_GetCPUCount(t *testing.T) {
 
 func TestCPUChecker_GetLoadAverage(t *testing.T) {
 	tests := []struct {
-		name      string
-		stdout    string
-		exitCode  int
-		wantLoad1 float64
-		wantLoad5 float64
+		name       string
+		stdout     string
+		exitCode   int
+		wantLoad1  float64
+		wantLoad5  float64
 		wantLoad15 float64
-		wantErr   bool
+		wantErr    bool
 	}{
 		{
 			name:       "Linux /proc/loadavg",
