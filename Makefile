@@ -19,7 +19,7 @@ COLOR_GREEN=\033[32m
 COLOR_YELLOW=\033[33m
 COLOR_BLUE=\033[34m
 
-.PHONY: help build run clean test fmt vet lint install coverage coverage-html deps check all
+.PHONY: help build run clean test test-verbose fmt vet lint install coverage coverage-report coverage-html deps check all diagnose-local diagnose-local-json version
 
 # Default target
 .DEFAULT_GOAL := help
