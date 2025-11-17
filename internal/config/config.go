@@ -136,10 +136,11 @@ func DefaultConfig() *Config {
 			APIKey:   "", // Set via LUMO_AI_API_KEY environment variable
 			Model:    "", // Will use provider-specific default
 			Models: map[string]string{
-				"anthropic": "claude-sonnet-4-5-20250929",
-				"openai":    "gpt-4-turbo-preview",
-				"ollama":    "llama3.1:8b",
-				"gemini":    "gemini-2.0-flash-exp",
+				"anthropic":  "claude-sonnet-4-5-20250929",
+				"openai":     "gpt-4-turbo-preview",
+				"ollama":     "llama3.1:8b",
+				"gemini":     "gemini-2.0-flash-exp",
+				"openrouter": "anthropic/claude-sonnet-4.5",
 			},
 			Endpoint:    "", // Will use provider-specific default
 			Timeout:     120 * time.Second,
@@ -254,7 +255,7 @@ func (c *Config) Validate() error {
 		}
 
 		// Validate API key for cloud providers
-		needsAPIKey := c.AI.Provider == "anthropic" || c.AI.Provider == "openai" || c.AI.Provider == "gemini" || c.AI.Provider == "google"
+		needsAPIKey := c.AI.Provider == "anthropic" || c.AI.Provider == "openai" || c.AI.Provider == "gemini" || c.AI.Provider == "google" || c.AI.Provider == "openrouter"
 		if needsAPIKey && c.AI.GetAPIKeyForProvider(c.AI.Provider) == "" {
 			providerName := c.AI.Provider
 			if providerName == "google" {
@@ -350,6 +351,7 @@ func (c *AIConfig) GetModelForProvider(provider string) string {
 //   - LUMO_OPENAI_API_KEY
 //   - LUMO_GEMINI_API_KEY
 //   - LUMO_OLLAMA_API_KEY (optional, usually not needed)
+//   - LUMO_OPENROUTER_API_KEY
 func (c *AIConfig) GetAPIKeyForProvider(provider string) string {
 	// Normalize provider name (handle aliases)
 	normalizedProvider := provider
@@ -363,10 +365,11 @@ func (c *AIConfig) GetAPIKeyForProvider(provider string) string {
 	// Check provider-specific environment variable first
 	// Viper expects key names without the prefix when using SetEnvPrefix("LUMO")
 	providerEnvVarKey := map[string]string{
-		"anthropic": "anthropic_api_key",
-		"openai":    "openai_api_key",
-		"gemini":    "gemini_api_key",
-		"ollama":    "ollama_api_key",
+		"anthropic":  "anthropic_api_key",
+		"openai":     "openai_api_key",
+		"gemini":     "gemini_api_key",
+		"ollama":     "ollama_api_key",
+		"openrouter": "openrouter_api_key",
 	}[normalizedProvider]
 
 	if key := viper.GetString(providerEnvVarKey); key != "" {
