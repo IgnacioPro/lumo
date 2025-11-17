@@ -1920,63 +1920,33 @@ func (p *ProxmoxChecker) performPoolsCheck(ctx context.Context, executor diagnos
 func (p *ProxmoxChecker) parsePools(output string) []PoolEntry {
 	var pools []PoolEntry
 
-	// Try to parse as JSON first
 	output = strings.TrimSpace(output)
-	if !strings.HasPrefix(output, "[") && !strings.HasPrefix(output, "{") {
-		// Fallback to text parsing if not JSON
-		lines := strings.Split(output, "\n")
-		for i, line := range lines {
-			if i == 0 || strings.TrimSpace(line) == "" {
-				continue
-			}
 
-			fields := strings.Fields(line)
-			if len(fields) >= 1 {
-				pool := PoolEntry{
-					PoolID: fields[0],
-				}
-				if len(fields) >= 2 {
-					pool.Comment = strings.Join(fields[1:], " ")
-				}
-				pools = append(pools, pool)
-			}
+	// Try to parse as JSON first
+	if strings.HasPrefix(output, "[") || strings.HasPrefix(output, "{") {
+		// Use proper JSON unmarshaling
+		if err := json.Unmarshal([]byte(output), &pools); err == nil {
+			return pools
 		}
-		return pools
+		// If JSON parsing fails, fall through to text parsing
 	}
 
-	// JSON parsing - simplified
-	// Format: [{"poolid":"pool1","comment":"description"}]
+	// Fallback to text parsing if not JSON or JSON parsing failed
 	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.Contains(line, "poolid") {
-			pool := PoolEntry{}
+	for i, line := range lines {
+		if i == 0 || strings.TrimSpace(line) == "" {
+			continue
+		}
 
-			// Extract poolid
-			if idx := strings.Index(line, "\"poolid\""); idx != -1 {
-				rest := line[idx+9:]
-				if idx2 := strings.Index(rest, "\""); idx2 != -1 {
-					rest = rest[idx2+1:]
-					if idx3 := strings.Index(rest, "\""); idx3 != -1 {
-						pool.PoolID = rest[:idx3]
-					}
-				}
+		fields := strings.Fields(line)
+		if len(fields) >= 1 {
+			pool := PoolEntry{
+				PoolID: fields[0],
 			}
-
-			// Extract comment
-			if idx := strings.Index(line, "\"comment\""); idx != -1 {
-				rest := line[idx+10:]
-				if idx2 := strings.Index(rest, "\""); idx2 != -1 {
-					rest = rest[idx2+1:]
-					if idx3 := strings.Index(rest, "\""); idx3 != -1 {
-						pool.Comment = rest[:idx3]
-					}
-				}
+			if len(fields) >= 2 {
+				pool.Comment = strings.Join(fields[1:], " ")
 			}
-
-			if pool.PoolID != "" {
-				pools = append(pools, pool)
-			}
+			pools = append(pools, pool)
 		}
 	}
 
