@@ -29,9 +29,10 @@ var diagnoseCmd = &cobra.Command{
   - Process counts, zombies, and resource consumers
   - Service status (systemd, init, launchd)
   - Network interfaces, connectivity, and DNS
+  - Kubernetes cluster health (if enabled in config)
 
 For remote hosts, connects via SSH. For localhost, runs commands directly
-without SSH overhead.
+without SSH overhead. Kubernetes diagnostics use native client (no kubectl).
 
 If no host is specified, defaults to localhost.
 
@@ -41,7 +42,8 @@ Examples:
   lumo diagnose user@example.com             # Remote server via SSH
   lumo diagnose root@192.168.1.10 --port 2222
   lumo diagnose admin@server --checks cpu,memory,disk
-  lumo diagnose --analyze                    # Local with AI analysis`,
+  lumo diagnose --analyze                    # Local with AI analysis
+  lumo diagnose --checks kubernetes          # Kubernetes cluster diagnostics only`,
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runDiagnostics(cmd, args); err != nil {
@@ -61,7 +63,7 @@ func init() {
 	diagnoseCmd.Flags().DurationP("timeout", "t", 30*time.Second, "Connection timeout")
 
 	// Diagnostic flags
-	diagnoseCmd.Flags().StringSliceP("checks", "c", []string{}, "Specific checks to run (cpu, memory, disk, process, service, network)")
+	diagnoseCmd.Flags().StringSliceP("checks", "c", []string{}, "Specific checks to run (cpu, memory, disk, process, service, network, kubernetes)")
 	diagnoseCmd.Flags().BoolP("all", "a", true, "Run all available diagnostic checks")
 	diagnoseCmd.Flags().StringP("format", "f", "text", "Output format (text, json, toon)")
 	diagnoseCmd.Flags().BoolP("no-color", "n", false, "Disable colored output")
@@ -172,9 +174,11 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 	thresholds := diagnostics.DefaultThresholds()
 	runner := diagnostics.NewRunner(diagConfig, thresholds, executor, log)
 
-	// Register checkers (Phase 5 Complete: 6 core + 4 security checkers)
+	// Register checkers (Phase 5 Complete: 6 core + 4 security + 1 kubernetes checkers)
 	log.Debug("Registering diagnostic checkers")
-	runner.RegisterCheckers(
+
+	// Build checker list dynamically
+	checkersToRegister := []diagnostics.Checker{
 		// Core system checkers
 		checkers.NewCPUChecker(thresholds.CPU),
 		checkers.NewMemoryChecker(thresholds.Memory),
@@ -190,7 +194,15 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 			cfg.Diagnostics.Security.AuthFailureCheck.LookbackHours,
 			cfg.Diagnostics.Security.AuthFailureCheck.FailureThreshold,
 		),
-	)
+	}
+
+	// Add Kubernetes checker if enabled
+	if cfg.Diagnostics.Kubernetes.Enabled {
+		log.Debug("Kubernetes diagnostics enabled")
+		checkersToRegister = append(checkersToRegister, checkers.NewKubernetesChecker(cfg.Diagnostics.Kubernetes, log))
+	}
+
+	runner.RegisterCheckers(checkersToRegister...)
 
 	// Run diagnostics
 	log.Info("Running diagnostic checks...")

@@ -177,6 +177,50 @@ diagnostics:
       # If failures exceed this in lookback window, a warning is raised
       failure_threshold: 20
 
+  # Kubernetes cluster diagnostic settings
+  kubernetes:
+    # Enable Kubernetes cluster diagnostics
+    # When enabled, lumo will diagnose Kubernetes cluster health using native client
+    # Requires access to a valid kubeconfig file
+    enabled: false
+
+    # Path to kubeconfig file (leave empty for default ~/.kube/config)
+    kubeconfig_path: ""
+
+    # Kubernetes context to use (leave empty for current context)
+    context: ""
+
+    # Namespaces to check (empty list = check all namespaces)
+    # Examples: ["default", "kube-system", "production"]
+    namespaces: []
+
+    # Node health checks
+    check_nodes: true
+
+    # Pod health checks
+    check_pods: true
+
+    # Deployment health checks
+    check_deployments: true
+
+    # StatefulSet health checks
+    check_statefulsets: true
+
+    # DaemonSet health checks
+    check_daemonsets: true
+
+    # Service endpoint checks
+    check_services: true
+
+    # PersistentVolumeClaim checks
+    check_pvcs: true
+
+    # Recent event monitoring
+    check_events: true
+
+    # How many minutes to look back for Kubernetes events
+    event_lookback_mins: 30
+
 # Environment variables can override these settings:
 # SSH:
 #   LUMO_SSH_PORT=2222
@@ -203,3 +247,9 @@ diagnostics:
 # Logging:
 #   LUMO_LOGGING_LEVEL=debug
 #   LUMO_LOGGING_FORMAT=json
+#
+# Kubernetes:
+#   LUMO_DIAGNOSTICS_KUBERNETES_ENABLED=true
+#   LUMO_DIAGNOSTICS_KUBERNETES_KUBECONFIG_PATH=/path/to/kubeconfig
+#   LUMO_DIAGNOSTICS_KUBERNETES_CONTEXT=my-cluster
+#   LUMO_DIAGNOSTICS_KUBERNETES_EVENT_LOOKBACK_MINS=60
