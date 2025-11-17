@@ -268,7 +268,7 @@ func (p *OpenAIProvider) callAPI(ctx context.Context, req *openaiRequest) (strin
 			Retryable: true,
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read the entire response body for logging and parsing
 	body, err := io.ReadAll(resp.Body)
@@ -384,7 +384,7 @@ func (p *OpenAIProvider) streamAPI(ctx context.Context, req *openaiRequest, ch c
 			Retryable: true,
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
