@@ -185,11 +185,12 @@ func (p *OpenAIProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest
 // Health checks if the OpenAI API is accessible.
 func (p *OpenAIProvider) Health(ctx context.Context) error {
 	// Simple health check: send a minimal request
-	// Note: Use 100 tokens to accommodate models with reasoning capabilities (e.g., gpt-5-nano)
-	// which may use tokens for reasoning before generating content
+	// Note: Use 1000 tokens to accommodate reasoning models (e.g., o1, o3, gpt-5-nano)
+	// which use significant tokens for internal reasoning before generating content.
+	// Previous limit of 100 tokens was insufficient and caused empty responses.
 	req := &openaiRequest{
 		Model:              p.config.Model,
-		MaxCompletionTokens: 100,
+		MaxCompletionTokens: 1000,
 		Messages: []openaiMessage{
 			{Role: "user", Content: "Respond with 'OK'"},
 		},
@@ -320,14 +321,20 @@ func (p *OpenAIProvider) callAPI(ctx context.Context, req *openaiRequest) (strin
 		return "", usage, fmt.Errorf("OpenAI refused request: %s", refusal)
 	}
 
-	// Handle empty content (debugging for gpt-5-nano and newer models)
+	// Handle empty content (can occur with reasoning models that exhaust tokens on reasoning)
 	if content == "" {
 		p.log.WithFields(logrus.Fields{
-			"model":           apiResp.Model,
-			"finish_reason":   choice.FinishReason,
+			"model":             apiResp.Model,
+			"finish_reason":     choice.FinishReason,
 			"completion_tokens": usage.OutputTokens,
-			"full_response":   string(body),
-		}).Error("OpenAI returned empty content despite reporting completion tokens")
+			"full_response":     string(body),
+		}).Error("OpenAI returned empty content")
+
+		// Provide helpful error message based on finish_reason
+		if choice.FinishReason == "length" {
+			return "", usage, fmt.Errorf("OpenAI returned empty content: reasoning model exhausted token limit (model: %s, tokens used: %d). Consider increasing max_tokens or using a model with higher limits",
+				apiResp.Model, usage.OutputTokens)
+		}
 		return "", usage, fmt.Errorf("OpenAI returned empty content (model: %s, finish_reason: %s, tokens: %d)",
 			apiResp.Model, choice.FinishReason, usage.OutputTokens)
 	}
