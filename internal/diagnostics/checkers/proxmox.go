@@ -1194,6 +1194,17 @@ type NodeSummaryEntry struct {
 	Uptime         int64   `json:"uptime_seconds"`
 }
 
+// nodeStatusResponse represents the JSON response from pvesh get /nodes/{node}/status
+type nodeStatusResponse struct {
+	CPU    float64 `json:"cpu"`  // CPU utilization (0-1)
+	CPUs   int     `json:"cpus"` // Number of CPUs (optional, may be in cpuinfo)
+	Memory struct {
+		Total int64 `json:"total"` // Total memory in bytes
+		Used  int64 `json:"used"`  // Used memory in bytes
+	} `json:"memory"`
+	Uptime int64 `json:"uptime"` // Uptime in seconds
+}
+
 // checkSubscription checks Proxmox subscription status
 func (p *ProxmoxChecker) performSubscriptionCheck(ctx context.Context, executor diagnostics.CommandExecutor) (*SubscriptionInfo, []string, error) {
 	var issues []string
@@ -2136,67 +2147,19 @@ func (p *ProxmoxChecker) getNodeStatus(ctx context.Context, executor diagnostics
 
 	entry.Status = "online"
 
-	// Parse status output
-	lines := strings.Split(stdout, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-
-		// CPU usage
-		if strings.Contains(line, "\"cpu\"") {
-			if idx := strings.Index(line, ":"); idx != -1 {
-				valStr := strings.TrimSpace(line[idx+1:])
-				valStr = strings.Trim(valStr, ",")
-				if val, err := strconv.ParseFloat(valStr, 64); err == nil {
-					entry.CPUUsage = val * 100
-				}
-			}
-		}
-
-		// CPU count
-		if strings.Contains(line, "\"cpuinfo\"") || strings.Contains(line, "\"cpus\"") {
-			if idx := strings.Index(line, ":"); idx != -1 {
-				valStr := strings.TrimSpace(line[idx+1:])
-				valStr = strings.Trim(valStr, ",")
-				if val, err := strconv.Atoi(valStr); err == nil {
-					entry.CPUCount = val
-				}
-			}
-		}
-
-		// Memory
-		if strings.Contains(line, "\"memory\"") && strings.Contains(line, "\"total\"") {
-			// Total memory
-			if idx := strings.Index(line, ":"); idx != -1 {
-				valStr := strings.TrimSpace(line[idx+1:])
-				valStr = strings.Trim(valStr, ",")
-				if val, err := strconv.ParseInt(valStr, 10, 64); err == nil {
-					entry.TotalMemBytes = val
-				}
-			}
-		}
-
-		if strings.Contains(line, "\"memory\"") && strings.Contains(line, "\"used\"") {
-			// Used memory
-			if idx := strings.Index(line, ":"); idx != -1 {
-				valStr := strings.TrimSpace(line[idx+1:])
-				valStr = strings.Trim(valStr, ",")
-				if val, err := strconv.ParseInt(valStr, 10, 64); err == nil {
-					entry.UsedMemBytes = val
-				}
-			}
-		}
-
-		// Uptime
-		if strings.Contains(line, "\"uptime\"") {
-			if idx := strings.Index(line, ":"); idx != -1 {
-				valStr := strings.TrimSpace(line[idx+1:])
-				valStr = strings.Trim(valStr, ",")
-				if val, err := strconv.ParseInt(valStr, 10, 64); err == nil {
-					entry.Uptime = val
-				}
-			}
-		}
+	// Parse JSON response
+	var status nodeStatusResponse
+	if err := json.Unmarshal([]byte(stdout), &status); err != nil {
+		issues = append(issues, fmt.Sprintf("Failed to parse node status JSON for %s: %v", nodeName, err))
+		return entry, issues
 	}
+
+	// Map parsed data to entry
+	entry.CPUUsage = status.CPU * 100 // Convert 0-1 to 0-100
+	entry.CPUCount = status.CPUs
+	entry.TotalMemBytes = status.Memory.Total
+	entry.UsedMemBytes = status.Memory.Used
+	entry.Uptime = status.Uptime
 
 	// Calculate memory usage percentage
 	if entry.TotalMemBytes > 0 {
