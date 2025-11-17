@@ -87,39 +87,21 @@ func (p *GeminiProvider) Analyze(ctx context.Context, req *AnalysisRequest) (*An
 		return nil, fmt.Errorf("failed to build analysis prompt: %w", err)
 	}
 
-	// Estimate token count (rough: ~4 chars per token)
-	fullPrompt := systemPrompt + "\n\n" + userPrompt
-	estimatedTokens := len(fullPrompt) / 4
-
-	// Warn if prompt is very large
-	if estimatedTokens > 10000 {
-		p.log.WithFields(logrus.Fields{
-			"estimated_prompt_tokens": estimatedTokens,
-			"max_output_tokens":       p.config.MaxTokens,
-			"prompt_size_kb":          len(fullPrompt) / 1024,
-		}).Warn("Very large diagnostic payload - consider using --checks to filter specific checks")
-
-		// If estimated tokens + max_tokens might exceed limits
-		if estimatedTokens > 20000 && p.config.MaxTokens < 8192 {
-			p.log.Warn("Prompt may be too large for current max_tokens setting. Consider increasing max_tokens to 8192+ in config.yaml")
-		}
-	}
-
-	// Build request body
-	requestBody := map[string]interface{}{
-		"contents": []map[string]interface{}{
+	// Build request body using typed struct
+	requestBody := geminiRequest{
+		Contents: []geminiContent{
 			{
-				"role": "user",
-				"parts": []map[string]string{
+				Role: "user",
+				Parts: []geminiPart{
 					{
-						"text": systemPrompt + "\n\n" + userPrompt,
+						Text: systemPrompt + "\n\n" + userPrompt,
 					},
 				},
 			},
 		},
-		"generationConfig": map[string]interface{}{
-			"temperature":    p.config.Temperature,
-			"maxOutputTokens": p.config.MaxTokens,
+		GenerationConfig: geminiGenerationConfig{
+			Temperature:     p.config.Temperature,
+			MaxOutputTokens: p.config.MaxTokens,
 		},
 	}
 
@@ -178,23 +160,8 @@ func (p *GeminiProvider) Analyze(ctx context.Context, req *AnalysisRequest) (*An
 		}
 	}
 
-	// Parse response
-	var geminiResp struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-			FinishReason string `json:"finishReason"`
-		} `json:"candidates"`
-		UsageMetadata struct {
-			PromptTokenCount     int `json:"promptTokenCount"`
-			CandidatesTokenCount int `json:"candidatesTokenCount"`
-			TotalTokenCount      int `json:"totalTokenCount"`
-		} `json:"usageMetadata"`
-	}
-
+	// Parse response using typed struct
+	var geminiResp geminiResponse
 	if err := json.Unmarshal(respBody, &geminiResp); err != nil {
 		p.log.WithField("response_body", string(respBody)).Error("Failed to parse Gemini response JSON")
 		return nil, fmt.Errorf("failed to parse response: %w", err)
@@ -291,21 +258,21 @@ func (p *GeminiProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest
 			return
 		}
 
-		// Build request body with streaming enabled
-		requestBody := map[string]interface{}{
-			"contents": []map[string]interface{}{
+		// Build request body with streaming enabled using typed struct
+		requestBody := geminiRequest{
+			Contents: []geminiContent{
 				{
-					"role": "user",
-					"parts": []map[string]string{
+					Role: "user",
+					Parts: []geminiPart{
 						{
-							"text": systemPrompt + "\n\n" + userPrompt,
+							Text: systemPrompt + "\n\n" + userPrompt,
 						},
 					},
 				},
 			},
-			"generationConfig": map[string]interface{}{
-				"temperature":     p.config.Temperature,
-				"maxOutputTokens": p.config.MaxTokens,
+			GenerationConfig: geminiGenerationConfig{
+				Temperature:     p.config.Temperature,
+				MaxOutputTokens: p.config.MaxTokens,
 			},
 		}
 
@@ -381,17 +348,8 @@ func (p *GeminiProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest
 				break
 			}
 
-			// Parse the JSON chunk
-			var chunkData struct {
-				Candidates []struct {
-					Content struct {
-						Parts []struct {
-							Text string `json:"text"`
-						} `json:"parts"`
-					} `json:"content"`
-				} `json:"candidates"`
-			}
-
+			// Parse the JSON chunk using typed struct
+			var chunkData geminiStreamChunk
 			if err := json.Unmarshal([]byte(data), &chunkData); err != nil {
 				p.log.WithError(err).Warn("Failed to parse stream chunk")
 				continue
@@ -452,4 +410,51 @@ func (p *GeminiProvider) Health(ctx context.Context) error {
 
 	body, _ := io.ReadAll(resp.Body)
 	return fmt.Errorf("health check failed with status %d: %s", resp.StatusCode, string(body))
+}
+
+// Gemini API request/response types
+
+type geminiRequest struct {
+	Contents         []geminiContent        `json:"contents"`
+	GenerationConfig geminiGenerationConfig `json:"generationConfig"`
+}
+
+type geminiContent struct {
+	Role  string        `json:"role"`
+	Parts []geminiPart `json:"parts"`
+}
+
+type geminiPart struct {
+	Text string `json:"text"`
+}
+
+type geminiGenerationConfig struct {
+	Temperature     float64 `json:"temperature"`
+	MaxOutputTokens int     `json:"maxOutputTokens"`
+}
+
+type geminiResponse struct {
+	Candidates []struct {
+		Content struct {
+			Parts []struct {
+				Text string `json:"text"`
+			} `json:"parts"`
+		} `json:"content"`
+		FinishReason string `json:"finishReason"`
+	} `json:"candidates"`
+	UsageMetadata struct {
+		PromptTokenCount     int `json:"promptTokenCount"`
+		CandidatesTokenCount int `json:"candidatesTokenCount"`
+		TotalTokenCount      int `json:"totalTokenCount"`
+	} `json:"usageMetadata"`
+}
+
+type geminiStreamChunk struct {
+	Candidates []struct {
+		Content struct {
+			Parts []struct {
+				Text string `json:"text"`
+			} `json:"parts"`
+		} `json:"content"`
+	} `json:"candidates"`
 }
