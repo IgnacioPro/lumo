@@ -2,9 +2,9 @@
 
 <img src=".github/images/lumo-logo.png" alt="Lumo Logo" width="500"/>
 
-# 🔦 Lumo
+<h1>🔦 Lumo</h1>
 
-**Intelligent SRE/DevOps Automation Agent**
+<p><strong>Intelligent SRE/DevOps Automation Agent</strong></p>
 
 [![CI](https://github.com/IgnacioPro/lumo/actions/workflows/ci.yml/badge.svg)](https://github.com/IgnacioPro/lumo/actions/workflows/ci.yml)
 [![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go)](https://golang.org)
