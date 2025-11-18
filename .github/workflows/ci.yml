@@ -17,8 +17,24 @@ jobs:
       with:
         fetch-depth: 0  # Fetch all history for git diff
 
+    - name: Determine test strategy
+      id: test-strategy
+      run: |
+        # Run full tests on main/master branches or PRs to main/master
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]] || \
+           [[ "${{ github.ref }}" == "refs/heads/master" ]] || \
+           [[ "${{ github.base_ref }}" == "main" ]] || \
+           [[ "${{ github.base_ref }}" == "master" ]]; then
+          echo "run_full_tests=true" >> $GITHUB_OUTPUT
+          echo "Running FULL tests (main branch or PR to main)"
+        else
+          echo "run_full_tests=false" >> $GITHUB_OUTPUT
+          echo "Running PARTIAL tests (feature branch)"
+        fi
+
     - name: Get changed files
       id: changed-files
+      if: steps.test-strategy.outputs.run_full_tests == 'false'
       run: |
         if [ "${{ github.event_name }}" = "pull_request" ]; then
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
@@ -52,22 +68,31 @@ jobs:
         echo "Changed packages: $CHANGED_PACKAGES"
 
     - name: Set up Go
-      if: steps.changed-files.outputs.has_go_changes == 'true'
+      if: steps.test-strategy.outputs.run_full_tests == 'true' || steps.changed-files.outputs.has_go_changes == 'true'
       uses: actions/setup-go@v5
       with:
         go-version: '1.23'
         cache: true
 
     - name: Download dependencies
-      if: steps.changed-files.outputs.has_go_changes == 'true'
+      if: steps.test-strategy.outputs.run_full_tests == 'true' || steps.changed-files.outputs.has_go_changes == 'true'
       run: go mod download
 
     - name: Verify dependencies
-      if: steps.changed-files.outputs.has_go_changes == 'true'
+      if: steps.test-strategy.outputs.run_full_tests == 'true' || steps.changed-files.outputs.has_go_changes == 'true'
       run: go mod verify
 
-    - name: Check formatting
-      if: steps.changed-files.outputs.has_go_changes == 'true'
+    - name: Check formatting (full)
+      if: steps.test-strategy.outputs.run_full_tests == 'true'
+      run: |
+        if [ -n "$(gofmt -l .)" ]; then
+          echo "Go code is not formatted:"
+          gofmt -d .
+          exit 1
+        fi
+
+    - name: Check formatting (changed files only)
+      if: steps.test-strategy.outputs.run_full_tests == 'false' && steps.changed-files.outputs.has_go_changes == 'true'
       run: |
         CHANGED_FILES="${{ steps.changed-files.outputs.changed_go_files }}"
         if [ -z "$CHANGED_FILES" ]; then
@@ -86,8 +111,12 @@ jobs:
         fi
         echo "All changed Go files are properly formatted"
 
-    - name: Run go vet
-      if: steps.changed-files.outputs.has_go_changes == 'true'
+    - name: Run go vet (full)
+      if: steps.test-strategy.outputs.run_full_tests == 'true'
+      run: go vet ./...
+
+    - name: Run go vet (changed packages only)
+      if: steps.test-strategy.outputs.run_full_tests == 'false' && steps.changed-files.outputs.has_go_changes == 'true'
       run: |
         PACKAGES="${{ steps.changed-files.outputs.changed_packages }}"
         if [ -z "$PACKAGES" ]; then
@@ -97,8 +126,12 @@ jobs:
         echo "Running go vet on changed packages: $PACKAGES"
         go vet $PACKAGES
 
-    - name: Run tests on changed packages
-      if: steps.changed-files.outputs.has_go_changes == 'true'
+    - name: Run tests (full)
+      if: steps.test-strategy.outputs.run_full_tests == 'true'
+      run: go test -timeout=2m ./...
+
+    - name: Run tests (changed packages only)
+      if: steps.test-strategy.outputs.run_full_tests == 'false' && steps.changed-files.outputs.has_go_changes == 'true'
       run: |
         PACKAGES="${{ steps.changed-files.outputs.changed_packages }}"
         if [ -z "$PACKAGES" ]; then
@@ -109,11 +142,11 @@ jobs:
         go test -timeout=2m $PACKAGES
 
     - name: Build
-      if: steps.changed-files.outputs.has_go_changes == 'true'
+      if: steps.test-strategy.outputs.run_full_tests == 'true' || steps.changed-files.outputs.has_go_changes == 'true'
       run: go build -v ./cmd/lumo
 
     - name: Skip CI
-      if: steps.changed-files.outputs.has_go_changes == 'false'
+      if: steps.test-strategy.outputs.run_full_tests == 'false' && steps.changed-files.outputs.has_go_changes == 'false'
       run: echo "No Go files changed, skipping CI checks"
 
   build-cross-platform:
@@ -130,40 +163,50 @@ jobs:
       with:
         fetch-depth: 0  # Fetch all history for git diff
 
-    - name: Check for Go file changes
-      id: go-changes
+    - name: Determine build strategy
+      id: build-strategy
       run: |
-        if [ "${{ github.event_name }}" = "pull_request" ]; then
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+        # Always build on main/master or PRs to main/master
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]] || \
+           [[ "${{ github.ref }}" == "refs/heads/master" ]] || \
+           [[ "${{ github.base_ref }}" == "main" ]] || \
+           [[ "${{ github.base_ref }}" == "master" ]]; then
+          echo "should_build=true" >> $GITHUB_OUTPUT
+          echo "Building (main branch or PR to main)"
         else
-          BASE_SHA="${{ github.event.before }}"
-          HEAD_SHA="${{ github.sha }}"
-        fi
+          # For feature branches, check if Go files changed
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+          fi
 
-        CHANGED_GO_FILES=$(git diff --name-only --diff-filter=ACMRT "$BASE_SHA" "$HEAD_SHA" | grep '\.go$' || true)
-        if [ -n "$CHANGED_GO_FILES" ]; then
-          echo "has_changes=true" >> $GITHUB_OUTPUT
-          echo "Go files changed, will run cross-platform builds"
-        else
-          echo "has_changes=false" >> $GITHUB_OUTPUT
-          echo "No Go files changed, skipping cross-platform builds"
+          CHANGED_GO_FILES=$(git diff --name-only --diff-filter=ACMRT "$BASE_SHA" "$HEAD_SHA" | grep '\.go$' || true)
+          if [ -n "$CHANGED_GO_FILES" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "Building (Go files changed in feature branch)"
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            echo "Skipping (no Go files changed in feature branch)"
+          fi
         fi
 
     - name: Set up Go
-      if: steps.go-changes.outputs.has_changes == 'true'
+      if: steps.build-strategy.outputs.should_build == 'true'
       uses: actions/setup-go@v5
       with:
         go-version: '1.23'
         cache: true
 
     - name: Build
-      if: steps.go-changes.outputs.has_changes == 'true'
+      if: steps.build-strategy.outputs.should_build == 'true'
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
       run: go build -v -o lumo-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/lumo
 
     - name: Skip build
-      if: steps.go-changes.outputs.has_changes == 'false'
-      run: echo "No Go files changed, skipping cross-platform build for ${{ matrix.goos }}-${{ matrix.goarch }}"
+      if: steps.build-strategy.outputs.should_build == 'false'
+      run: echo "Skipping cross-platform build for ${{ matrix.goos }}-${{ matrix.goarch }}"
