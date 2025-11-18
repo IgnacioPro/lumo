@@ -140,8 +140,8 @@ deps:
 	$(GO) mod tidy
 	@echo "$(COLOR_GREEN)✓ Dependencies updated$(COLOR_RESET)"
 
-## check: Run fmt, vet, and test
-check: fmt vet test
+## check: Run fmt-check, vet, and test
+check: fmt-check vet test
 	@echo "$(COLOR_GREEN)✓ All checks passed$(COLOR_RESET)"
 
 ## all: Run check and build
