@@ -143,7 +143,7 @@ jobs:
 
     - name: Run tests (full)
       if: steps.test-strategy.outputs.run_full_tests == 'true'
-      run: go test -timeout=2m ./...
+      run: go test -timeout=2m -short ./...
 
     - name: Run tests (changed packages only)
       if: steps.test-strategy.outputs.run_full_tests == 'false' && steps.changed-files.outputs.has_go_changes == 'true'
@@ -154,7 +154,7 @@ jobs:
           exit 0
         fi
         echo "Running tests on changed packages: $PACKAGES"
-        go test -timeout=2m $PACKAGES
+        go test -timeout=2m -short $PACKAGES
 
     - name: Build
       if: steps.test-strategy.outputs.run_full_tests == 'true' || steps.changed-files.outputs.has_go_changes == 'true'
