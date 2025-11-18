@@ -56,12 +56,12 @@ func init() {
 	rootCmd.Flags().Int("metrics-port", 0, "metrics server port")
 
 	// Bind flags to viper
-	viper.BindPFlag("agent.mode", rootCmd.Flags().Lookup("mode"))
-	viper.BindPFlag("agent.schedule", rootCmd.Flags().Lookup("schedule"))
-	viper.BindPFlag("agent.api_endpoint", rootCmd.Flags().Lookup("api-endpoint"))
-	viper.BindPFlag("agent.token", rootCmd.Flags().Lookup("token"))
-	viper.BindPFlag("agent.health_check_port", rootCmd.Flags().Lookup("health-port"))
-	viper.BindPFlag("agent.metrics_port", rootCmd.Flags().Lookup("metrics-port"))
+	_ = viper.BindPFlag("agent.mode", rootCmd.Flags().Lookup("mode"))
+	_ = viper.BindPFlag("agent.schedule", rootCmd.Flags().Lookup("schedule"))
+	_ = viper.BindPFlag("agent.api_endpoint", rootCmd.Flags().Lookup("api-endpoint"))
+	_ = viper.BindPFlag("agent.token", rootCmd.Flags().Lookup("token"))
+	_ = viper.BindPFlag("agent.health_check_port", rootCmd.Flags().Lookup("health-port"))
+	_ = viper.BindPFlag("agent.metrics_port", rootCmd.Flags().Lookup("metrics-port"))
 }
 
 func initConfig() {

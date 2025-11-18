@@ -169,7 +169,11 @@ func (r *Reporter) doWithRetry(method, url string, body []byte, respData interfa
 		}
 
 		// Read response body
-		defer resp.Body.Close()
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				r.logger.WithError(err).Debug("Failed to close response body")
+			}
+		}()
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
 			lastErr = fmt.Errorf("failed to read response body: %w", err)
@@ -262,7 +266,11 @@ func (r *Reporter) IsAvailable() bool {
 	if err != nil {
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			r.logger.WithError(err).Debug("Failed to close response body")
+		}
+	}()
 
 	return resp.StatusCode == http.StatusOK
 }

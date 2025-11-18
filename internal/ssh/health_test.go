@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"golang.org/x/crypto/ssh"
 )
 
 func TestNewHealthChecker(t *testing.T) {
@@ -420,15 +419,5 @@ func TestHealthChecker_ThreadSafety(t *testing.T) {
 	// If we reach here without deadlock or data race, thread safety works
 }
 
-// Mock SSH client for testing (we can't easily create a real one)
-type mockSSHClient struct {
-	*ssh.Client
-	sendRequestErr error
-}
-
-func TestHealthChecker_CheckHealth_WithMockError(t *testing.T) {
-	// This test demonstrates how we would test with a mock,
-	// but we can't easily mock ssh.Client without interface changes
-	// For now, we've tested the nil client path and error handling
-	t.Skip("Skipping mock SSH client test - requires interface refactoring")
-}
+// Note: mockSSHClient removed as it was unused
+// If needed in the future, we would need to refactor to use interfaces

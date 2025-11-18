@@ -115,7 +115,9 @@ func (hc *HealthCheck) healthHandler(w http.ResponseWriter, r *http.Request) {
 		"time":   time.Now().Format(time.RFC3339),
 	}
 
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		hc.logger.WithError(err).Error("Failed to encode health response")
+	}
 }
 
 // readyHandler handles GET /ready (readiness probe)
@@ -143,7 +145,9 @@ func (hc *HealthCheck) readyHandler(w http.ResponseWriter, r *http.Request) {
 		"time":     time.Now().Format(time.RFC3339),
 	}
 
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		hc.logger.WithError(err).Error("Failed to encode ready response")
+	}
 }
 
 // liveHandler handles GET /live (liveness probe)
@@ -157,7 +161,9 @@ func (hc *HealthCheck) liveHandler(w http.ResponseWriter, r *http.Request) {
 		"time":  time.Now().Format(time.RFC3339),
 	}
 
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		hc.logger.WithError(err).Error("Failed to encode live response")
+	}
 }
 
 // statusHandler handles GET /status (detailed status)
@@ -191,5 +197,7 @@ func (hc *HealthCheck) statusHandler(w http.ResponseWriter, r *http.Request) {
 		"time":     time.Now().Format(time.RFC3339),
 	}
 
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		hc.logger.WithError(err).Error("Failed to encode status response")
+	}
 }

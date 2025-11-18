@@ -63,7 +63,9 @@ func NewPostgresDB(config *PostgresConfig, logger *logrus.Logger) (*DB, error) {
 
 	// Test the connection
 	if err := sqlDB.Ping(); err != nil {
-		sqlDB.Close()
+		if closeErr := sqlDB.Close(); closeErr != nil {
+			logger.WithError(closeErr).Warn("Failed to close database connection after ping failure")
+		}
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 

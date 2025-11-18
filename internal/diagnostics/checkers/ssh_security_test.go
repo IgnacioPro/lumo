@@ -482,9 +482,10 @@ PubkeyAuthentication no`,
 			criticalCount := 0
 			warningCount := 0
 			for _, issue := range issues {
-				if issue.Severity == "critical" {
+				switch issue.Severity {
+				case "critical":
 					criticalCount++
-				} else if issue.Severity == "warning" {
+				case "warning":
 					warningCount++
 				}
 			}
