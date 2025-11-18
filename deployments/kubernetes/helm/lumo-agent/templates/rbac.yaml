@@ -1,0 +1,77 @@
+{{- if .Values.rbac.create -}}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "lumo-agent.fullname" . }}-reader
+  labels:
+    {{- include "lumo-agent.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [nodes, nodes/status, nodes/metrics, pods, pods/status, pods/log, services, endpoints, configmaps, secrets, persistentvolumes, persistentvolumeclaims, events]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, daemonsets, statefulsets, replicasets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies, ingresses]
+    verbs: [get, list, watch]
+  - apiGroups: [metrics.k8s.io]
+    resources: [nodes, pods]
+    verbs: [get, list]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "lumo-agent.fullname" . }}-reader-binding
+  labels:
+    {{- include "lumo-agent.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "lumo-agent.fullname" . }}-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "lumo-agent.serviceAccountName" . }}
+    namespace: {{ include "lumo-agent.namespace" . }}
+
+{{- if .Values.rbac.enableRemediation }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "lumo-agent.fullname" . }}-remediator
+  labels:
+    {{- include "lumo-agent.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [delete]
+  - apiGroups: [apps]
+    resources: [deployments, deployments/scale, statefulsets, statefulsets/scale]
+    verbs: [patch, update]
+  - apiGroups: [""]
+    resources: [configmaps, events]
+    verbs: [create, patch, update]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "lumo-agent.fullname" . }}-remediator-binding
+  labels:
+    {{- include "lumo-agent.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "lumo-agent.fullname" . }}-remediator
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "lumo-agent.serviceAccountName" . }}
+    namespace: {{ include "lumo-agent.namespace" . }}
+{{- end }}
+{{- end }}

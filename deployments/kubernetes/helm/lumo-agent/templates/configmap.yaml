@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "lumo-agent.fullname" . }}-config
+  namespace: {{ include "lumo-agent.namespace" . }}
+  labels:
+    {{- include "lumo-agent.labels" . | nindent 4 }}
+data:
+  agent.mode: {{ .Values.agent.mode | quote }}
+  agent.schedule: {{ .Values.agent.schedule | quote }}
+  agent.api-endpoint: {{ .Values.agent.apiEndpoint | quote }}
+  agent.tls-enabled: {{ .Values.agent.tlsEnabled | quote }}
+  agent.enabled-checks: {{ .Values.agent.enabledChecks | quote }}
+  agent.report-format: {{ .Values.agent.reportFormat | quote }}
+  agent.offline-mode: {{ .Values.agent.offlineMode | quote }}
+  agent.health-check-port: {{ .Values.agent.healthCheckPort | quote }}
+  agent.metrics-port: {{ .Values.agent.metricsPort | quote }}
+  agent.kubernetes.enabled: {{ .Values.agent.kubernetes.enabled | quote }}
+  logging.level: {{ .Values.logging.level | quote }}
+  logging.format: {{ .Values.logging.format | quote }}
+
+  config.yaml: |
+    ssh:
+      timeout: {{ .Values.diagnostics.timeout }}
+      retry_attempts: {{ .Values.agent.retry.maxAttempts }}
+      retry_delay: {{ .Values.agent.retry.initialInterval }}
+      known_hosts_file: ""
+      strict_host_key_checking: false
+
+    ai:
+      provider: ""
+      api_key: ""
+      model: ""
+      max_tokens: 4096
+      temperature: 0.7
+      stream: true
+
+    logging:
+      level: {{ .Values.logging.level }}
+      format: {{ .Values.logging.format }}
+      output: stdout
+
+    diagnostics:
+      timeout: {{ .Values.diagnostics.timeout }}
+      parallel: {{ .Values.diagnostics.parallel }}
+      max_workers: {{ .Values.diagnostics.maxWorkers }}
+
+    agent:
+      mode: {{ .Values.agent.mode }}
+      schedule: {{ .Values.agent.schedule | quote }}
+      api_endpoint: {{ .Values.agent.apiEndpoint }}
+      token: ""
+      tls_enabled: {{ .Values.agent.tlsEnabled }}
+      enabled_checks: {{ .Values.agent.enabledChecks | split "," | toJson }}
+      report_format: {{ .Values.agent.reportFormat }}
+      offline_mode: {{ .Values.agent.offlineMode }}
+      health_check_port: {{ .Values.agent.healthCheckPort }}
+      metrics_port: {{ .Values.agent.metricsPort }}
+
+      kubernetes:
+        enabled: {{ .Values.agent.kubernetes.enabled }}
+        scope: {{ .Values.agent.kubernetes.scope }}
+
+      cache:
+        enabled: {{ .Values.agent.cache.enabled }}
+        ttl: {{ .Values.agent.cache.ttl }}
+        max_size: {{ .Values.agent.cache.maxSize }}
+
+      retry:
+        max_attempts: {{ .Values.agent.retry.maxAttempts }}
+        initial_interval: {{ .Values.agent.retry.initialInterval }}
+        max_interval: {{ .Values.agent.retry.maxInterval }}
+        multiplier: {{ .Values.agent.retry.multiplier }}

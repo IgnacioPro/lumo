@@ -1,0 +1,87 @@
+---
+# Service for Lumo Agent Health Endpoints (DaemonSet)
+# Exposes health and metrics endpoints for node agents
+apiVersion: v1
+kind: Service
+metadata:
+  name: lumo-agent-node
+  namespace: lumo-system
+  labels:
+    app.kubernetes.io/name: lumo-agent
+    app.kubernetes.io/component: node-monitor
+    app.kubernetes.io/part-of: lumo
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service for direct pod access
+  selector:
+    app.kubernetes.io/name: lumo-agent
+    app.kubernetes.io/component: node-monitor
+  ports:
+    - name: health
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+
+---
+# Service for Lumo Agent Cluster Monitor
+# Exposes health and metrics endpoints for cluster monitoring
+apiVersion: v1
+kind: Service
+metadata:
+  name: lumo-agent-cluster
+  namespace: lumo-system
+  labels:
+    app.kubernetes.io/name: lumo-agent
+    app.kubernetes.io/component: cluster-monitor
+    app.kubernetes.io/part-of: lumo
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: lumo-agent
+    app.kubernetes.io/component: cluster-monitor
+  ports:
+    - name: health
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+
+---
+# ServiceMonitor for Prometheus Operator (optional)
+# Automatically configures Prometheus to scrape Lumo agent metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: lumo-agent
+  namespace: lumo-system
+  labels:
+    app.kubernetes.io/name: lumo-agent
+    app.kubernetes.io/part-of: lumo
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: lumo-agent
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+      scheme: http

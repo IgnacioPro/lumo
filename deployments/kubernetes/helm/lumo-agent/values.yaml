@@ -1,0 +1,345 @@
+# Default values for lumo-agent
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global settings
+global:
+  # Namespace to deploy Lumo agents (can be overridden)
+  namespace: lumo-system
+
+# Image configuration
+image:
+  repository: ghcr.io/ignacio/lumo-agent
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# DaemonSet configuration (per-node monitoring)
+daemonset:
+  enabled: true
+
+  # Update strategy
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+
+  # Node selector
+  nodeSelector: {}
+
+  # Tolerations (default: run on all nodes including control plane)
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+    - effect: NoExecute
+      operator: Exists
+
+  # Affinity
+  affinity: {}
+
+  # Host access settings
+  hostNetwork: true
+  hostPID: true
+
+  # Priority class
+  priorityClassName: system-node-critical
+
+  # Resource limits
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  # Security context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    fsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 65534
+    capabilities:
+      drop:
+        - ALL
+      add:
+        - NET_RAW
+        - SYS_PTRACE
+
+# Deployment configuration (cluster-wide monitoring)
+deployment:
+  enabled: true
+
+  # Number of replicas for HA
+  replicas: 2
+
+  # Update strategy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+  # Node selector
+  nodeSelector: {}
+
+  # Tolerations
+  tolerations: []
+
+  # Affinity (default: anti-affinity for HA)
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - cluster-monitor
+            topologyKey: kubernetes.io/hostname
+
+  # Resource limits (lower than DaemonSet)
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+  # Security context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    fsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 65534
+    capabilities:
+      drop:
+        - ALL
+
+# Service Account
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: "lumo-agent"
+
+# RBAC configuration
+rbac:
+  # Specifies whether RBAC resources should be created
+  create: true
+
+  # Enable remediation permissions (write access to K8s resources)
+  # WARNING: This grants write permissions. Enable only if auto-remediation is required.
+  enableRemediation: false
+
+# Agent configuration
+agent:
+  # Operational mode: scheduled, on-demand, continuous, hybrid
+  mode: hybrid
+
+  # Cron schedule for periodic diagnostics (used in scheduled/hybrid mode)
+  schedule: "*/5 * * * *"
+
+  # API endpoint for reporting (REQUIRED)
+  apiEndpoint: "https://lumo-api.example.com"
+
+  # TLS configuration
+  tlsEnabled: true
+
+  # Enabled diagnostic checks (comma-separated)
+  # Available: cpu, memory, disk, process, service, network, kubernetes, patch, ports, ssh, auth
+  enabledChecks: "cpu,memory,disk,process,service,network,kubernetes"
+
+  # Report format: text, json, toon
+  # TOON format reduces AI token costs by 30-60%
+  reportFormat: toon
+
+  # Offline mode - continue operation if API unavailable
+  offlineMode: true
+
+  # Health check port
+  healthCheckPort: 8080
+
+  # Prometheus metrics port
+  metricsPort: 9090
+
+  # Kubernetes-specific configuration
+  kubernetes:
+    enabled: true
+    # Scope: node (DaemonSet) or cluster (Deployment)
+    # This is automatically set based on daemonset/deployment
+    scope: auto
+
+  # Cache configuration
+  cache:
+    enabled: true
+    ttl: 5m
+    maxSize: 100
+
+  # Retry configuration
+  retry:
+    maxAttempts: 4
+    initialInterval: 2s
+    maxInterval: 30s
+    multiplier: 2.0
+
+# Logging configuration
+logging:
+  # Log level: debug, info, warn, error
+  level: info
+
+  # Log format: text, json
+  format: json
+
+# Diagnostics configuration
+diagnostics:
+  timeout: 30s
+  parallel: true
+  maxWorkers: 4
+
+# Service configuration
+service:
+  # Service type for node agents
+  node:
+    type: ClusterIP
+    clusterIP: None  # Headless service
+    healthPort: 8080
+    metricsPort: 9090
+
+  # Service type for cluster monitor
+  cluster:
+    type: ClusterIP
+    healthPort: 8080
+    metricsPort: 9090
+
+# NetworkPolicy configuration
+networkPolicy:
+  # Enable NetworkPolicy
+  enabled: true
+
+  # Monitoring namespace for Prometheus
+  monitoringNamespace: monitoring
+
+  # Lumo API namespace
+  apiNamespace: lumo-api
+
+# Prometheus monitoring
+prometheus:
+  # Enable ServiceMonitor for Prometheus Operator
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+
+# Secrets configuration
+# Note: Secrets should be created separately using kubectl or external secret managers
+# These values are placeholders and should NOT contain actual secrets
+secrets:
+  # Name of the secret containing agent token and AI API keys
+  name: lumo-agent-secret
+
+  # Create secret (for development only - use external secret managers in production)
+  create: false
+
+  # Secret data (only used if create: true)
+  # NEVER commit actual secrets to version control
+  data:
+    agentToken: ""
+    anthropicApiKey: ""
+    openaiApiKey: ""
+    geminiApiKey: ""
+    openrouterApiKey: ""
+
+# External secret manager integration (recommended for production)
+externalSecrets:
+  enabled: false
+  backend: ""  # vault, aws, gcp, azure
+
+  # Vault configuration
+  vault:
+    server: ""
+    path: ""
+
+  # AWS Secrets Manager
+  aws:
+    region: ""
+    secretName: ""
+
+# Additional labels to add to all resources
+labels: {}
+
+# Additional annotations to add to all resources
+annotations: {}
+
+# Pod annotations
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
+  prometheus.io/path: "/metrics"
+
+# Liveness probe configuration
+livenessProbe:
+  httpGet:
+    path: /live
+    port: 8080
+    scheme: HTTP
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3
+
+# Readiness probe configuration
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8080
+    scheme: HTTP
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  successThreshold: 1
+  failureThreshold: 3
+
+# Startup probe configuration
+startupProbe:
+  httpGet:
+    path: /health
+    port: 8080
+    scheme: HTTP
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  successThreshold: 1
+  failureThreshold: 12
+
+# Volume configuration
+volumes:
+  # Cache volume size
+  cacheSize: 1Gi  # DaemonSet
+  cacheSizeCluster: 500Mi  # Deployment
