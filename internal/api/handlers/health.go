@@ -10,27 +10,27 @@ import (
 )
 
 // HealthHandler handles health check requests
-type HealthHandler struct{
-	db     *database.DB
-	logger *logrus.Logger
+type HealthHandler struct {
+	db        *database.DB
+	logger    *logrus.Logger
 	startTime time.Time
 }
 
 // NewHealthHandler creates a new health check handler
 func NewHealthHandler(db *database.DB, logger *logrus.Logger) *HealthHandler {
 	return &HealthHandler{
-		db:     db,
-		logger: logger,
+		db:        db,
+		logger:    logger,
 		startTime: time.Now(),
 	}
 }
 
 // HealthResponse represents the health check response
 type HealthResponse struct {
-	Status    string                 `json:"status"`
-	Timestamp time.Time              `json:"timestamp"`
-	Uptime    string                 `json:"uptime"`
-	Version   string                 `json:"version"`
+	Status    string                   `json:"status"`
+	Timestamp time.Time                `json:"timestamp"`
+	Uptime    string                   `json:"uptime"`
+	Version   string                   `json:"version"`
 	Services  map[string]ServiceHealth `json:"services"`
 }
 

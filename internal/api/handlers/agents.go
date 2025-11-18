@@ -28,24 +28,24 @@ func NewAgentsHandler(agentRepo *repository.AgentRepository, logger *logrus.Logg
 
 // RegisterRequest represents an agent registration request
 type RegisterRequest struct {
-	Name               string                        `json:"name"`
-	Hostname           string                        `json:"hostname"`
-	IPAddress          string                        `json:"ip_address,omitempty"`
-	Platform           models.AgentPlatform          `json:"platform"`
-	Architecture       string                        `json:"architecture"`
-	Version            string                        `json:"version"`
-	Capabilities       []string                      `json:"capabilities"`
-	Labels             map[string]interface{}        `json:"labels,omitempty"`
-	KubernetesMetadata *models.KubernetesMetadata    `json:"kubernetes_metadata,omitempty"`
+	Name               string                     `json:"name"`
+	Hostname           string                     `json:"hostname"`
+	IPAddress          string                     `json:"ip_address,omitempty"`
+	Platform           models.AgentPlatform       `json:"platform"`
+	Architecture       string                     `json:"architecture"`
+	Version            string                     `json:"version"`
+	Capabilities       []string                   `json:"capabilities"`
+	Labels             map[string]interface{}     `json:"labels,omitempty"`
+	KubernetesMetadata *models.KubernetesMetadata `json:"kubernetes_metadata,omitempty"`
 }
 
 // RegisterResponse represents the response to an agent registration
 type RegisterResponse struct {
-	AgentID      string               `json:"agent_id"`
-	Name         string               `json:"name"`
-	Hostname     string               `json:"hostname"`
-	Status       models.AgentStatus   `json:"status"`
-	RegisteredAt string               `json:"registered_at"`
+	AgentID      string             `json:"agent_id"`
+	Name         string             `json:"name"`
+	Hostname     string             `json:"hostname"`
+	Status       models.AgentStatus `json:"status"`
+	RegisteredAt string             `json:"registered_at"`
 }
 
 // Register handles POST /api/v1/agents/register
@@ -301,10 +301,10 @@ func (h *AgentsHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.Success(w, map[string]interface{}{
-		"total":         total,
-		"by_status":     counts,
-		"online":        counts[models.AgentStatusOnline],
-		"offline":       counts[models.AgentStatusOffline],
-		"error":         counts[models.AgentStatusError],
+		"total":     total,
+		"by_status": counts,
+		"online":    counts[models.AgentStatusOnline],
+		"offline":   counts[models.AgentStatusOffline],
+		"error":     counts[models.AgentStatusError],
 	})
 }

@@ -13,8 +13,8 @@ import (
 type JobType string
 
 const (
-	JobTypeDiagnostic   JobType = "diagnostic"
-	JobTypeRemediation  JobType = "remediation"
+	JobTypeDiagnostic  JobType = "diagnostic"
+	JobTypeRemediation JobType = "remediation"
 )
 
 // JobStatus represents the current status of a job

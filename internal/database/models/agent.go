@@ -35,20 +35,20 @@ type KubernetesMetadata struct {
 
 // Agent represents a registered agent
 type Agent struct {
-	ID                  uuid.UUID           `json:"id"`
-	Name                string              `json:"name"`
-	Hostname            string              `json:"hostname"`
-	IPAddress           *string             `json:"ip_address,omitempty"`
-	Platform            AgentPlatform       `json:"platform"`
-	Architecture        string              `json:"architecture"`
-	Version             string              `json:"version"`
-	Status              AgentStatus         `json:"status"`
-	Capabilities        []string            `json:"capabilities"`
-	Labels              JSONB               `json:"labels,omitempty"`
-	KubernetesMetadata  *KubernetesMetadata `json:"kubernetes_metadata,omitempty"`
-	LastHeartbeatAt     time.Time           `json:"last_heartbeat_at"`
-	RegisteredAt        time.Time           `json:"registered_at"`
-	UpdatedAt           time.Time           `json:"updated_at"`
+	ID                 uuid.UUID           `json:"id"`
+	Name               string              `json:"name"`
+	Hostname           string              `json:"hostname"`
+	IPAddress          *string             `json:"ip_address,omitempty"`
+	Platform           AgentPlatform       `json:"platform"`
+	Architecture       string              `json:"architecture"`
+	Version            string              `json:"version"`
+	Status             AgentStatus         `json:"status"`
+	Capabilities       []string            `json:"capabilities"`
+	Labels             JSONB               `json:"labels,omitempty"`
+	KubernetesMetadata *KubernetesMetadata `json:"kubernetes_metadata,omitempty"`
+	LastHeartbeatAt    time.Time           `json:"last_heartbeat_at"`
+	RegisteredAt       time.Time           `json:"registered_at"`
+	UpdatedAt          time.Time           `json:"updated_at"`
 }
 
 // IsOnline returns true if the agent is currently online

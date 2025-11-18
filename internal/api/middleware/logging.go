@@ -18,14 +18,14 @@ func Logger(logger *logrus.Logger) func(next http.Handler) http.Handler {
 
 			defer func() {
 				logger.WithFields(logrus.Fields{
-					"method":     r.Method,
-					"path":       r.URL.Path,
-					"query":      r.URL.RawQuery,
-					"status":     ww.Status(),
-					"bytes":      ww.BytesWritten(),
-					"duration":   time.Since(start).Milliseconds(),
+					"method":      r.Method,
+					"path":        r.URL.Path,
+					"query":       r.URL.RawQuery,
+					"status":      ww.Status(),
+					"bytes":       ww.BytesWritten(),
+					"duration":    time.Since(start).Milliseconds(),
 					"remote_addr": r.RemoteAddr,
-					"user_agent": r.UserAgent(),
+					"user_agent":  r.UserAgent(),
 				}).Info("HTTP request")
 			}()
 
