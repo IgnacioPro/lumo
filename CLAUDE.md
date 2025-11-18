@@ -1,7 +1,7 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-18 | **Version:** 0.6.0
-> **Status:** Phases 1-6 Complete | Agent Deployment Planning Complete
+> **Last Updated:** 2025-11-18 | **Version:** 0.7.0
+> **Status:** Phases 1-6 Complete | Phase 7 (API Server) 75% Complete | 80 Go files, 50.4% test coverage
 
 **For detailed examples and tutorials, see [DEVELOPMENT.md](DEVELOPMENT.md)**
 
@@ -31,10 +31,10 @@
 ```
 lumo/
 ├── cmd/
-│   ├── lumo/              # CLI: main, root, connect, diagnose, fix
+│   ├── lumo/              # CLI: main, root, connect, diagnose, fix, serve
 │   └── lumo-agent/        # (Phase 8) Agent daemon: scheduler, reporter, health
 ├── internal/
-│   ├── config/            # Configuration management
+│   ├── config/            # Configuration management (includes API, DB, Cache config)
 │   ├── ssh/               # SSH client (auth, health, retry)
 │   ├── diagnostics/       # Runner + 12 checkers + formatters
 │   │   ├── checkers/      # CPU, Memory, Disk, Process, Service, Network
@@ -43,16 +43,30 @@ lumo/
 │   │   └── formatters/    # text, JSON, TOON
 │   ├── ai/                # 5 providers: Anthropic, OpenAI, Ollama, Gemini, OpenRouter
 │   ├── remediation/       # Actions, executor, approval, audit
+│   ├── api/               # ✅ (Phase 7) API server - 75% complete
+│   │   ├── handlers/      # diagnostics, health, jobs
+│   │   ├── middleware/    # auth, logging, recovery, cors
+│   │   ├── response/      # response utilities
+│   │   ├── router.go      # Chi router with routes
+│   │   └── server.go      # HTTP server with graceful shutdown
+│   ├── database/          # ✅ (Phase 7) PostgreSQL integration
+│   │   ├── models/        # Job, APIKey models
+│   │   ├── repository/    # Job, APIKey repositories
+│   │   ├── migrations/    # SQL migration files
+│   │   ├── migrations.go  # Goose migration runner
+│   │   └── postgres.go    # DB connection pool
+│   ├── cache/             # ✅ (Phase 7) Redis client
+│   │   └── redis.go       # Redis operations
 │   ├── agent/             # (Phase 8) Agent logic, scheduling, caching
-│   ├── server/            # (Phase 7) API server, routes, handlers, WebSocket
 │   └── messaging/         # (Phase 11) Pub/sub: NATS, Kafka, RabbitMQ, Redis
 ├── deployments/
 │   ├── kubernetes/        # (Phase 9) DaemonSet, Deployment, RBAC, Helm
 │   └── systemd/           # (Phase 10) Service units, install scripts, packages
-└── configs/config.example.yaml
+├── configs/config.example.yaml  # Updated with DB and Cache sections
+└── docker-compose.yaml    # ✅ PostgreSQL + Redis for development
 
-Total: 54 Go files + 35 test files | Test Coverage: 50.4%
-(+30 files planned for agent deployment)
+Total: 80 Go files (54 + 26 new) + 35 test files | Test Coverage: 50.4%
+Phase 7: +3,397 LOC across 26 files
 ```
 
 ---
@@ -62,6 +76,8 @@ Total: 54 Go files + 35 test files | Test Coverage: 50.4%
 **Core:** cobra (CLI), viper (config), logrus (logging), x/crypto/ssh, backoff (retry)
 **Kubernetes:** k8s.io/client-go v0.31.3 (native client, no kubectl)
 **AI:** Custom HTTP clients for all 5 providers (no external SDKs)
+**API Server (Phase 7):** Chi router v5, PostgreSQL (lib/pq), Redis (go-redis/v9), goose migrations v3
+**Data:** JSONB for flexible storage, UUID for primary keys, repository pattern
 
 ---
 
@@ -312,16 +328,25 @@ systemctl enable --now lumo-agent
 
 **Phase 6:** Auto-Remediation - Action framework, human-in-the-loop approval, risk classification (safe/moderate/critical), audit logging, actions for disk/service/process management
 
-### ⏳ Planned Phases - Agent Deployment (16 weeks)
+### 🚧 In Progress - Agent Deployment (16 weeks)
 
-**Phase 7: API Server Foundation** (Weeks 1-3)
-- REST API server (`internal/server`)
-- Agent registration and management endpoints
-- JWT authentication + mTLS support
-- Health and metrics endpoints (`/health`, `/metrics`)
-- Basic database integration (PostgreSQL/SQLite)
-- WebSocket support for streaming
-- **Deliverables:** `internal/server/{server,routes,middleware,handlers/}`
+**Phase 7: API Server Foundation** (Weeks 1-3) - **75% COMPLETE** ✅
+- ✅ REST API server (`internal/api/`) with Chi router
+- ✅ PostgreSQL database + Redis cache integration
+- ✅ Database migrations (goose)
+- ✅ API key authentication with scope-based authorization
+- ✅ Health endpoints (`/health`, `/ready`, `/live`)
+- ✅ Job management endpoints (create, list, get, delete)
+- ✅ Diagnostic endpoint (POST /api/v1/diagnostics) with async execution
+- ✅ Repository pattern for database operations
+- ✅ docker-compose.yaml for local development
+- ⏳ Integration tests (pending)
+- ⏳ Agent registration endpoints (pending)
+- ⏳ JWT authentication (pending)
+- ⏳ mTLS support (pending)
+- ⏳ WebSocket support (pending)
+- ⏳ OpenAPI/Swagger documentation (pending)
+- **Status:** 26 files, 3,397 LOC added | See `REPORTS/agent-deployment-consolidated-status.md`
 
 **Phase 8: Agent Daemon** (Weeks 4-6)
 - Agent daemon binary (`cmd/lumo-agent`)
@@ -455,6 +480,39 @@ return fmt.Errorf("context: %w", err)          # Errors
 log.WithFields(logrus.Fields{...}).Info()     # Logging
 formatter := formatters.NewToonFormatter()     # TOON
 builder := ai.NewPromptBuilder()               # AI (TOON enabled)
+```
+
+### API Server Mode (Phase 7 - 75% Complete)
+
+```bash
+# Start development environment (PostgreSQL + Redis)
+docker-compose up -d
+
+# Run API server
+lumo serve --config configs/config.example.yaml
+
+# API Usage Examples
+# (Requires API key in database - see phase-9-api-server-planning.md)
+
+# Health check
+curl http://localhost:8080/api/v1/health
+
+# Run diagnostics
+curl -X POST http://localhost:8080/api/v1/diagnostics \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"target": "localhost", "checks": ["cpu", "memory"]}'
+
+# Get job status
+curl http://localhost:8080/api/v1/jobs/{job-id} \
+  -H "X-API-Key: your-api-key"
+
+# List jobs
+curl http://localhost:8080/api/v1/jobs?status=completed&limit=10 \
+  -H "X-API-Key: your-api-key"
+
+# Database migrations (automatic on server start)
+# Or manually: go run internal/database/migrations.go up
 ```
 
 ### Agent Mode (Phases 7-11)
