@@ -29,9 +29,9 @@ func NewReporter(cfg *config.AgentConfig, logger *logrus.Logger) *Reporter {
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: cfg.TLSInsecure,
 		},
-		MaxIdleConns:        10,
-		IdleConnTimeout:     30 * time.Second,
-		DisableCompression:  false,
+		MaxIdleConns:       10,
+		IdleConnTimeout:    30 * time.Second,
+		DisableCompression: false,
 	}
 
 	httpClient := &http.Client{

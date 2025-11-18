@@ -283,25 +283,25 @@ func DefaultConfig() *Config {
 			TTL:        1 * time.Hour,
 		},
 		Agent: AgentConfig{
-			Mode:             "hybrid",                                // Hybrid mode (scheduled + on-demand)
-			Schedule:         "*/5 * * * *",                           // Every 5 minutes
-			APIEndpoint:      "http://localhost:8080",                 // Default to local API
-			Token:            "",                                       // Set via LUMO_AGENT_TOKEN env var
-			TLSEnabled:       true,                                    // Enable TLS by default
-			TLSInsecure:      false,                                   // Verify TLS certificates
+			Mode:             "hybrid",                                                           // Hybrid mode (scheduled + on-demand)
+			Schedule:         "*/5 * * * *",                                                      // Every 5 minutes
+			APIEndpoint:      "http://localhost:8080",                                            // Default to local API
+			Token:            "",                                                                 // Set via LUMO_AGENT_TOKEN env var
+			TLSEnabled:       true,                                                               // Enable TLS by default
+			TLSInsecure:      false,                                                              // Verify TLS certificates
 			EnabledChecks:    []string{"cpu", "memory", "disk", "process", "service", "network"}, // Core checks
-			ReportFormat:     "toon",                                  // TOON for efficiency
-			OfflineMode:      true,                                    // Continue when API unavailable
-			CachePath:        "/var/lib/lumo-agent/cache",             // Default cache path
-			CacheMaxSize:     1024 * 1024 * 1024,                      // 1 GB
-			CacheTTL:         24 * time.Hour,                          // 24 hours
-			HealthCheckPort:  8080,                                    // Health check port
-			MetricsPort:      9090,                                    // Prometheus metrics port
-			HeartbeatSeconds: 30,                                      // Heartbeat every 30 seconds
-			RetryMaxAttempts: 4,                                       // 4 retry attempts with backoff
-			RetryBaseDelay:   2 * time.Second,                         // Start with 2s delay
+			ReportFormat:     "toon",                                                             // TOON for efficiency
+			OfflineMode:      true,                                                               // Continue when API unavailable
+			CachePath:        "/var/lib/lumo-agent/cache",                                        // Default cache path
+			CacheMaxSize:     1024 * 1024 * 1024,                                                 // 1 GB
+			CacheTTL:         24 * time.Hour,                                                     // 24 hours
+			HealthCheckPort:  8080,                                                               // Health check port
+			MetricsPort:      9090,                                                               // Prometheus metrics port
+			HeartbeatSeconds: 30,                                                                 // Heartbeat every 30 seconds
+			RetryMaxAttempts: 4,                                                                  // 4 retry attempts with backoff
+			RetryBaseDelay:   2 * time.Second,                                                    // Start with 2s delay
 			Kubernetes: KubernetesAgentConfig{
-				Enabled:   false, // Disabled by default
+				Enabled:   false,  // Disabled by default
 				Scope:     "node", // node|cluster
 				Cluster:   "",
 				Namespace: "",
