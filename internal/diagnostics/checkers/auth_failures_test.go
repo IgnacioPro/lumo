@@ -39,53 +39,53 @@ func TestAuthFailuresChecker_Getters(t *testing.T) {
 
 func TestNewAuthFailuresChecker(t *testing.T) {
 	tests := []struct {
-		name              string
-		lookbackHours     int
-		failureThreshold  int
-		wantLookback      int
-		wantThreshold     int
+		name             string
+		lookbackHours    int
+		failureThreshold int
+		wantLookback     int
+		wantThreshold    int
 	}{
 		{
-			name:              "custom values",
-			lookbackHours:     3,
-			failureThreshold:  50,
-			wantLookback:      3,
-			wantThreshold:     50,
+			name:             "custom values",
+			lookbackHours:    3,
+			failureThreshold: 50,
+			wantLookback:     3,
+			wantThreshold:    50,
 		},
 		{
-			name:              "zero lookback uses default",
-			lookbackHours:     0,
-			failureThreshold:  50,
-			wantLookback:      1, // Default
-			wantThreshold:     50,
+			name:             "zero lookback uses default",
+			lookbackHours:    0,
+			failureThreshold: 50,
+			wantLookback:     1, // Default
+			wantThreshold:    50,
 		},
 		{
-			name:              "negative lookback uses default",
-			lookbackHours:     -1,
-			failureThreshold:  50,
-			wantLookback:      1,
-			wantThreshold:     50,
+			name:             "negative lookback uses default",
+			lookbackHours:    -1,
+			failureThreshold: 50,
+			wantLookback:     1,
+			wantThreshold:    50,
 		},
 		{
-			name:              "zero threshold uses default",
-			lookbackHours:     3,
-			failureThreshold:  0,
-			wantLookback:      3,
-			wantThreshold:     20, // Default
+			name:             "zero threshold uses default",
+			lookbackHours:    3,
+			failureThreshold: 0,
+			wantLookback:     3,
+			wantThreshold:    20, // Default
 		},
 		{
-			name:              "negative threshold uses default",
-			lookbackHours:     3,
-			failureThreshold:  -1,
-			wantLookback:      3,
-			wantThreshold:     20,
+			name:             "negative threshold uses default",
+			lookbackHours:    3,
+			failureThreshold: -1,
+			wantLookback:     3,
+			wantThreshold:    20,
 		},
 		{
-			name:              "both zero use defaults",
-			lookbackHours:     0,
-			failureThreshold:  0,
-			wantLookback:      1,
-			wantThreshold:     20,
+			name:             "both zero use defaults",
+			lookbackHours:    0,
+			failureThreshold: 0,
+			wantLookback:     1,
+			wantThreshold:    20,
 		},
 	}
 
@@ -664,8 +664,8 @@ Nov 17 10:30:47 server sshd[1236]: Failed password for admin from 192.168.1.100 
 
 		executor := &mockExecutor{
 			responses: map[string]mockResponse{
-				"test -r /var/log/auth.log":        {stdout: "", exitCode: 0},
-				"tail -n 1000 /var/log/auth.log":   {stdout: logContent, exitCode: 0},
+				"test -r /var/log/auth.log":      {stdout: "", exitCode: 0},
+				"tail -n 1000 /var/log/auth.log": {stdout: logContent, exitCode: 0},
 			},
 		}
 

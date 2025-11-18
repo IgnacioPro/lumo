@@ -85,10 +85,10 @@ func TestSSHSecurityChecker_CheckPrivateKeyPermissions(t *testing.T) {
 	checker := NewSSHSecurityChecker()
 
 	tests := []struct {
-		name        string
-		permissions string
-		filePath    string
-		wantIssue   bool
+		name         string
+		permissions  string
+		filePath     string
+		wantIssue    bool
 		wantSeverity string
 	}{
 		{
@@ -174,10 +174,10 @@ func TestSSHSecurityChecker_CheckPublicKeyPermissions(t *testing.T) {
 	checker := NewSSHSecurityChecker()
 
 	tests := []struct {
-		name        string
-		permissions string
-		filePath    string
-		wantIssue   bool
+		name         string
+		permissions  string
+		filePath     string
+		wantIssue    bool
 		wantSeverity string
 	}{
 		{
@@ -240,10 +240,10 @@ func TestSSHSecurityChecker_CheckSSHDirPermissions(t *testing.T) {
 	checker := NewSSHSecurityChecker()
 
 	tests := []struct {
-		name        string
-		permissions string
-		dirPath     string
-		wantIssue   bool
+		name         string
+		permissions  string
+		dirPath      string
+		wantIssue    bool
 		wantSeverity string
 	}{
 		{
@@ -393,10 +393,10 @@ func TestSSHSecurityChecker_CheckSSHDConfig(t *testing.T) {
 	checker := NewSSHSecurityChecker()
 
 	tests := []struct {
-		name               string
-		config             string
-		wantCriticalCount  int
-		wantWarningCount   int
+		name              string
+		config            string
+		wantCriticalCount int
+		wantWarningCount  int
 	}{
 		{
 			name: "secure config",
@@ -423,20 +423,20 @@ PasswordAuthentication yes`,
 			wantWarningCount:  1, // PasswordAuthentication yes
 		},
 		{
-			name: "empty passwords permitted",
-			config: `PermitEmptyPasswords yes`,
+			name:              "empty passwords permitted",
+			config:            `PermitEmptyPasswords yes`,
 			wantCriticalCount: 1, // PermitEmptyPasswords yes
 			wantWarningCount:  0,
 		},
 		{
-			name: "X11 forwarding enabled",
-			config: `X11Forwarding yes`,
+			name:              "X11 forwarding enabled",
+			config:            `X11Forwarding yes`,
 			wantCriticalCount: 0,
 			wantWarningCount:  1, // X11Forwarding yes
 		},
 		{
-			name: "public key auth disabled",
-			config: `PubkeyAuthentication no`,
+			name:              "public key auth disabled",
+			config:            `PubkeyAuthentication no`,
 			wantCriticalCount: 0,
 			wantWarningCount:  1, // PubkeyAuthentication no
 		},
@@ -451,14 +451,14 @@ PubkeyAuthentication no`,
 			wantWarningCount:  3, // PasswordAuthentication yes, X11Forwarding yes, PubkeyAuthentication no
 		},
 		{
-			name: "prohibit-password is acceptable",
-			config: `PermitRootLogin prohibit-password`,
+			name:              "prohibit-password is acceptable",
+			config:            `PermitRootLogin prohibit-password`,
 			wantCriticalCount: 0,
 			wantWarningCount:  0,
 		},
 		{
-			name: "without-password is acceptable",
-			config: `PermitRootLogin without-password`,
+			name:              "without-password is acceptable",
+			config:            `PermitRootLogin without-password`,
 			wantCriticalCount: 0,
 			wantWarningCount:  0,
 		},
@@ -665,7 +665,7 @@ drwxr-xr-x 5 user user 4096 Nov 17 09:00 ..
 
 		executor := &mockExecutor{
 			responses: map[string]mockResponse{
-				"echo $HOME":         {stdout: "/home/user", exitCode: 0},
+				"echo $HOME":             {stdout: "/home/user", exitCode: 0},
 				"ls -la /home/user/.ssh": {stdout: lsOutput, exitCode: 0},
 			},
 		}
@@ -691,7 +691,7 @@ drwxr-xr-x 5 user user 4096 Nov 17 09:00 ..
 
 		executor := &mockExecutor{
 			responses: map[string]mockResponse{
-				"echo $HOME":         {stdout: "/home/user", exitCode: 0},
+				"echo $HOME":             {stdout: "/home/user", exitCode: 0},
 				"ls -la /home/user/.ssh": {stdout: lsOutput, exitCode: 0},
 			},
 		}
@@ -731,7 +731,7 @@ drwxr-xr-x 5 user user 4096 Nov 17 09:00 ..
 
 		executor := &mockExecutor{
 			responses: map[string]mockResponse{
-				"echo $HOME":         {stdout: "/home/user", exitCode: 0},
+				"echo $HOME":             {stdout: "/home/user", exitCode: 0},
 				"ls -la /home/user/.ssh": {stdout: lsOutput, exitCode: 0},
 			},
 		}
@@ -754,7 +754,7 @@ drwxr-xr-x 5 user user 4096 Nov 17 09:00 ..
 	t.Run("no .ssh directory", func(t *testing.T) {
 		executor := &mockExecutor{
 			responses: map[string]mockResponse{
-				"echo $HOME":         {stdout: "/home/user", exitCode: 0},
+				"echo $HOME":             {stdout: "/home/user", exitCode: 0},
 				"ls -la /home/user/.ssh": {stdout: "", exitCode: 2}, // Directory doesn't exist
 			},
 		}
