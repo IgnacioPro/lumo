@@ -14,6 +14,8 @@ type Config struct {
 	Logging     LoggingConfig     `mapstructure:"logging"`
 	API         APIConfig         `mapstructure:"api"`
 	Diagnostics DiagnosticsConfig `mapstructure:"diagnostics"`
+	Database    DatabaseConfig    `mapstructure:"database"`
+	Cache       CacheConfig       `mapstructure:"cache"`
 }
 
 // SSHConfig contains SSH connection settings
@@ -117,6 +119,29 @@ type KubernetesConfig struct {
 	EventLookbackMins int      `mapstructure:"event_lookback_mins"` // How far back to look for events
 }
 
+// DatabaseConfig contains database connection settings
+type DatabaseConfig struct {
+	Host            string        `mapstructure:"host"`
+	Port            int           `mapstructure:"port"`
+	Name            string        `mapstructure:"name"`
+	User            string        `mapstructure:"user"`
+	Password        string        `mapstructure:"password"` // Prefer LUMO_DATABASE_PASSWORD env var
+	SSLMode         string        `mapstructure:"ssl_mode"`
+	MaxConnections  int           `mapstructure:"max_connections"`
+	MaxIdle         int           `mapstructure:"max_idle"`
+	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
+}
+
+// CacheConfig contains cache (Redis) settings
+type CacheConfig struct {
+	Enabled    bool          `mapstructure:"enabled"`
+	RedisURL   string        `mapstructure:"redis_url"`
+	Password   string        `mapstructure:"password"` // Prefer LUMO_CACHE_PASSWORD env var
+	MaxRetries int           `mapstructure:"max_retries"`
+	PoolSize   int           `mapstructure:"pool_size"`
+	TTL        time.Duration `mapstructure:"ttl"`
+}
+
 // DefaultConfig returns a Config with sensible defaults
 func DefaultConfig() *Config {
 	return &Config{
@@ -202,6 +227,25 @@ func DefaultConfig() *Config {
 				CheckEvents:       true,
 				EventLookbackMins: 30, // Look back 30 minutes for events
 			},
+		},
+		Database: DatabaseConfig{
+			Host:            "localhost",
+			Port:            5432,
+			Name:            "lumo",
+			User:            "lumo",
+			Password:        "", // Set via LUMO_DATABASE_PASSWORD env var
+			SSLMode:         "disable",
+			MaxConnections:  25,
+			MaxIdle:         5,
+			ConnMaxLifetime: 5 * time.Minute,
+		},
+		Cache: CacheConfig{
+			Enabled:    false, // Disabled by default
+			RedisURL:   "redis://localhost:6379/0",
+			Password:   "", // Set via LUMO_CACHE_PASSWORD env var
+			MaxRetries: 3,
+			PoolSize:   10,
+			TTL:        1 * time.Hour,
 		},
 	}
 }
@@ -310,6 +354,39 @@ func (c *Config) Validate() error {
 	}
 	if c.API.TLS && (c.API.CertFile == "" || c.API.KeyFile == "") {
 		return fmt.Errorf("TLS enabled but cert_file or key_file not specified")
+	}
+
+	// Database validation
+	if c.Database.Port < 1 || c.Database.Port > 65535 {
+		return fmt.Errorf("invalid database port: %d", c.Database.Port)
+	}
+	if c.Database.Host == "" {
+		return fmt.Errorf("database host cannot be empty")
+	}
+	if c.Database.Name == "" {
+		return fmt.Errorf("database name cannot be empty")
+	}
+	if c.Database.User == "" {
+		return fmt.Errorf("database user cannot be empty")
+	}
+	validSSLModes := map[string]bool{
+		"disable":     true,
+		"require":     true,
+		"verify-ca":   true,
+		"verify-full": true,
+	}
+	if !validSSLModes[c.Database.SSLMode] {
+		return fmt.Errorf("invalid database ssl_mode: %s (must be disable, require, verify-ca, or verify-full)", c.Database.SSLMode)
+	}
+
+	// Cache validation (only if enabled)
+	if c.Cache.Enabled {
+		if c.Cache.RedisURL == "" {
+			return fmt.Errorf("cache is enabled but redis_url is empty")
+		}
+		if c.Cache.PoolSize < 1 {
+			return fmt.Errorf("cache pool_size must be positive, got: %d", c.Cache.PoolSize)
+		}
 	}
 
 	// Diagnostics validation
