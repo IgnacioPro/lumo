@@ -148,19 +148,19 @@ func (r *Registry) GetInfo(actionID string) (*ActionInfo, error) {
 // registerBuiltInActions registers all built-in remediation actions.
 func (r *Registry) registerBuiltInActions() {
 	// Service actions
-	r.Register("service.restart", NewRestartServiceActionFactory())
-	r.Register("service.start", NewStartServiceActionFactory())
-	r.Register("service.stop", NewStopServiceActionFactory())
+	_ = r.Register("service.restart", NewRestartServiceActionFactory())
+	_ = r.Register("service.start", NewStartServiceActionFactory())
+	_ = r.Register("service.stop", NewStopServiceActionFactory())
 
 	// Disk actions
-	r.Register("disk.clean_logs", NewCleanLogsActionFactory())
-	r.Register("disk.clean_temp", NewCleanTempActionFactory())
-	r.Register("disk.clean_cache", NewCleanCacheActionFactory())
-	r.Register("disk.clean_apt_cache", NewCleanAptCacheActionFactory())
+	_ = r.Register("disk.clean_logs", NewCleanLogsActionFactory())
+	_ = r.Register("disk.clean_temp", NewCleanTempActionFactory())
+	_ = r.Register("disk.clean_cache", NewCleanCacheActionFactory())
+	_ = r.Register("disk.clean_apt_cache", NewCleanAptCacheActionFactory())
 
 	// Process actions
-	r.Register("process.kill", NewKillProcessActionFactory())
-	r.Register("process.kill_graceful", NewKillProcessGracefulActionFactory())
+	_ = r.Register("process.kill", NewKillProcessActionFactory())
+	_ = r.Register("process.kill_graceful", NewKillProcessGracefulActionFactory())
 
 	// Network actions (placeholders for now)
 	// r.Register("network.restart_interface", NewRestartNetworkInterfaceActionFactory())

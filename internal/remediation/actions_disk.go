@@ -100,7 +100,7 @@ func (a *CleanLogsAction) Execute(ctx context.Context, executor diagnostics.Comm
 	// Delete files
 	if !a.dryRun {
 		deleteCmd := fmt.Sprintf("find /var/log -type f -name '*.log' -mtime +%d -delete", a.olderThanDays)
-		stdout, stderr, exitCode, err = executor.ExecuteWithContext(ctx, deleteCmd)
+		_, stderr, exitCode, err := executor.ExecuteWithContext(ctx, deleteCmd)
 		if err != nil || exitCode != 0 {
 			result.Status = StatusFailed
 			result.Message = "Failed to delete old log files"
@@ -206,7 +206,7 @@ func (a *CleanTempAction) Execute(ctx context.Context, executor diagnostics.Comm
 
 	// Delete old temp files
 	deleteCmd := fmt.Sprintf("find /tmp -type f -mtime +%d -delete 2>/dev/null", a.olderThanDays)
-	stdout, stderr, exitCode, err := executor.ExecuteWithContext(ctx, deleteCmd)
+	_, stderr, exitCode, err := executor.ExecuteWithContext(ctx, deleteCmd)
 	if err != nil || exitCode != 0 {
 		result.Status = StatusFailed
 		result.Message = "Failed to clean temp files"
@@ -282,7 +282,7 @@ func (a *CleanCacheAction) Execute(ctx context.Context, executor diagnostics.Com
 
 	// Clean cache
 	cleanCmd := "rm -rf ~/.cache/* 2>/dev/null"
-	stdout, stderr, exitCode, err := executor.ExecuteWithContext(ctx, cleanCmd)
+	_, stderr, exitCode, err := executor.ExecuteWithContext(ctx, cleanCmd)
 	if err != nil || exitCode != 0 {
 		result.Status = StatusFailed
 		result.Message = "Failed to clean cache"
