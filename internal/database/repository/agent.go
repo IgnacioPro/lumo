@@ -238,7 +238,9 @@ func (r *AgentRepository) List(ctx context.Context, filters map[string]interface
 	if err != nil {
 		return nil, fmt.Errorf("failed to list agents: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	agents := []*models.Agent{}
 	for rows.Next() {
@@ -424,7 +426,9 @@ func (r *AgentRepository) CountByStatus(ctx context.Context) (map[models.AgentSt
 	if err != nil {
 		return nil, fmt.Errorf("failed to count agents by status: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	counts := make(map[models.AgentStatus]int)
 	for rows.Next() {

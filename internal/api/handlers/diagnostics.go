@@ -144,7 +144,7 @@ func (h *DiagnosticsHandler) executeDiagnostics(ctx context.Context, job *models
 		if req.KeyPath != "" {
 			if err := sshClientConfig.SetKeyPath(req.KeyPath); err != nil {
 				h.logger.WithError(err).Error("Invalid key path")
-				h.jobRepo.UpdateError(ctx, job.ID, fmt.Sprintf("Invalid key path: %v", err))
+				_ = h.jobRepo.UpdateError(ctx, job.ID, fmt.Sprintf("Invalid key path: %v", err))
 				return
 			}
 		}
@@ -158,7 +158,7 @@ func (h *DiagnosticsHandler) executeDiagnostics(ctx context.Context, job *models
 		sshClient, err := ssh.NewClient(sshClientConfig, h.logger)
 		if err != nil {
 			h.logger.WithError(err).Error("Failed to create SSH client")
-			h.jobRepo.UpdateError(ctx, job.ID, fmt.Sprintf("Failed to create SSH client: %v", err))
+			_ = h.jobRepo.UpdateError(ctx, job.ID, fmt.Sprintf("Failed to create SSH client: %v", err))
 			return
 		}
 
@@ -171,7 +171,7 @@ func (h *DiagnosticsHandler) executeDiagnostics(ctx context.Context, job *models
 
 		if err := sshClient.Connect(req.Target, port, username); err != nil {
 			h.logger.WithError(err).Error("Failed to connect via SSH")
-			h.jobRepo.UpdateError(ctx, job.ID, fmt.Sprintf("Failed to connect: %v", err))
+			_ = h.jobRepo.UpdateError(ctx, job.ID, fmt.Sprintf("Failed to connect: %v", err))
 			return
 		}
 		defer func() {
@@ -197,7 +197,9 @@ func (h *DiagnosticsHandler) executeDiagnostics(ctx context.Context, job *models
 	report, err := runner.RunAll(ctx)
 	if err != nil {
 		h.logger.WithError(err).Error("Diagnostic execution failed")
-		h.jobRepo.UpdateError(ctx, job.ID, fmt.Sprintf("Execution failed: %v", err))
+		if updateErr := h.jobRepo.UpdateError(ctx, job.ID, fmt.Sprintf("Execution failed: %v", err)); updateErr != nil {
+			h.logger.WithError(updateErr).Error("Failed to update job error status")
+		}
 		return
 	}
 
@@ -205,7 +207,9 @@ func (h *DiagnosticsHandler) executeDiagnostics(ctx context.Context, job *models
 	resultJSON, err := json.Marshal(report)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to marshal diagnostic result")
-		h.jobRepo.UpdateError(ctx, job.ID, fmt.Sprintf("Failed to serialize result: %v", err))
+		if updateErr := h.jobRepo.UpdateError(ctx, job.ID, fmt.Sprintf("Failed to serialize result: %v", err)); updateErr != nil {
+			h.logger.WithError(updateErr).Error("Failed to update job error status")
+		}
 		return
 	}
 

@@ -61,7 +61,9 @@ func NewRedisClient(config *RedisConfig, logger *logrus.Logger) (*RedisClient, e
 	defer cancel()
 
 	if err := client.Ping(ctx).Err(); err != nil {
-		client.Close()
+		if closeErr := client.Close(); closeErr != nil {
+			logger.WithError(closeErr).Warn("Failed to close Redis client after ping failure")
+		}
 		return nil, fmt.Errorf("failed to ping redis: %w", err)
 	}
 

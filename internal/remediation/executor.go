@@ -94,7 +94,9 @@ func (e *Executor) ExecutePlan(ctx context.Context, plan *RemediationPlan) (*Exe
 		}
 
 		// Log the result
-		e.auditor.LogAction(action, result)
+		if err := e.auditor.LogAction(action, result); err != nil {
+			e.logger.WithError(err).Warn("Failed to log action to audit log")
+		}
 	}
 
 	report.EndTime = time.Now()
@@ -260,7 +262,9 @@ func (e *Executor) RollbackAction(ctx context.Context, action Action, result *Ac
 		StartTime: time.Now(),
 		EndTime:   time.Now(),
 	}
-	e.auditor.LogAction(action, rollbackResult)
+	if err := e.auditor.LogAction(action, rollbackResult); err != nil {
+		e.logger.WithError(err).Warn("Failed to log rollback action to audit log")
+	}
 
 	return nil
 }
