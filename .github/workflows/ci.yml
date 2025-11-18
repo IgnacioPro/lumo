@@ -156,9 +156,13 @@ jobs:
         echo "Running tests on changed packages: $PACKAGES"
         go test -timeout=2m -short $PACKAGES
 
-    - name: Build
+    - name: Build CLI
       if: steps.test-strategy.outputs.run_full_tests == 'true' || steps.changed-files.outputs.has_go_changes == 'true'
       run: go build -v ./cmd/lumo
+
+    - name: Build Agent
+      if: steps.test-strategy.outputs.run_full_tests == 'true' || steps.changed-files.outputs.has_go_changes == 'true'
+      run: go build -v ./cmd/lumo-agent
 
     - name: Skip CI
       if: steps.test-strategy.outputs.run_full_tests == 'false' && steps.changed-files.outputs.has_go_changes == 'false'
@@ -221,12 +225,19 @@ jobs:
         go-version: '1.23'
         cache: true
 
-    - name: Build
+    - name: Build CLI
       if: steps.build-strategy.outputs.should_build == 'true'
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
       run: go build -v -o lumo-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/lumo
+
+    - name: Build Agent
+      if: steps.build-strategy.outputs.should_build == 'true'
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+      run: go build -v -o lumo-agent-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/lumo-agent
 
     - name: Skip build
       if: steps.build-strategy.outputs.should_build == 'false'
