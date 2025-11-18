@@ -1,7 +1,7 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-18 | **Version:** 1.0.3
-> **Status:** Phases 1-9 Complete ✅ | K8s Deployment Ready 🚀 | CI Green ✅ | 50.4% test coverage
+> **Last Updated:** 2025-11-18 | **Version:** 1.0.4
+> **Status:** Phases 1-10 Complete ✅ | K8s + VM Deployment Ready 🚀 | CI Green ✅ | 50.4% test coverage
 
 **For detailed examples and tutorials, see [DEVELOPMENT.md](DEVELOPMENT.md)**
 
@@ -402,15 +402,43 @@ systemctl enable --now lumo-agent
   - 18 total files created
   - All manifests follow K8s best practices ✅
 
-### 🚧 In Progress - Agent Deployment (Weeks 9-16)
+### ✅ Completed - Phase 10: VM Deployment (Weeks 9-10)
 
-**Phase 10: VM Deployment** (Weeks 9-10)
-- systemd service unit (`lumo-agent.service`)
-- Installation/uninstallation scripts
-- RPM package (CentOS/RHEL/Fedora)
-- DEB package (Ubuntu/Debian)
-- Binary releases (Linux, macOS, Windows)
-- **Deliverables:** `deployments/systemd/{lumo-agent.service,install.sh,uninstall.sh}`, packaging specs
+**Phase 10: VM Deployment** - **100% COMPLETE** ✅
+- ✅ systemd service unit with comprehensive security hardening
+  - `ProtectSystem=strict`, `PrivateTmp=true`, `NoNewPrivileges=true`
+  - Minimal capabilities: `CAP_NET_RAW`, `CAP_SYS_PTRACE`, `CAP_DAC_READ_SEARCH`
+  - System call filtering, resource limits (512M memory, 50% CPU)
+- ✅ Installation script (`install.sh`) with auto-detection and flexible options
+- ✅ Uninstallation script (`uninstall.sh`) with purge/keep options
+- ✅ RPM package specification for RHEL/CentOS/Fedora
+  - Complete spec file with pre/post install scripts
+  - User/group management, systemd integration
+  - Build script (`build-rpm.sh`)
+- ✅ DEB package files for Ubuntu/Debian
+  - debian/control, postinst, prerm, postrm, rules, changelog
+  - debhelper integration, systemd service management
+  - Build script (`build-deb.sh`)
+- ✅ Cross-platform build script (`build.sh`)
+  - Supports 6 platforms: linux (amd64/arm64/arm), darwin (amd64/arm64), windows (amd64)
+  - Checksums generation (SHA256, MD5)
+  - Package building integration
+- ✅ Comprehensive README documentation
+  - Installation methods (script, RPM, DEB, manual)
+  - Configuration and operational modes
+  - Service management, health checks, metrics
+  - Security hardening details
+  - Troubleshooting and uninstallation
+- **Deliverables:**
+  - `deployments/systemd/lumo-agent.service` (hardened systemd unit)
+  - `deployments/systemd/{install.sh,uninstall.sh,build.sh}` (3 scripts)
+  - `deployments/systemd/packaging/rpm/{lumo-agent.spec,build-rpm.sh}` (RPM)
+  - `deployments/systemd/packaging/deb/debian/{control,postinst,prerm,postrm,rules,changelog,compat}` + `build-deb.sh` (DEB)
+  - `deployments/systemd/README.md` (comprehensive guide)
+  - 15 total files created
+  - All scripts tested and documented ✅
+
+### 🚧 In Progress - Agent Deployment (Weeks 11-16)
 
 **Phase 11: Messaging Integration** (Weeks 11-12)
 - Messaging publisher/subscriber (`internal/messaging`)
