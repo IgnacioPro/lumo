@@ -86,7 +86,11 @@ Authentication is required for most endpoints.`,
 		if err != nil {
 			return fmt.Errorf("failed to connect to database: %w", err)
 		}
-		defer db.Close()
+		defer func() {
+			if err := db.Close(); err != nil {
+				log.WithError(err).Warn("Failed to close database connection")
+			}
+		}()
 
 		// Run database migrations
 		if err := database.RunMigrations(db.DB, log); err != nil {

@@ -1,0 +1,18 @@
+lumo-agent (1.0.0-1) stable; urgency=medium
+
+  * Initial release
+  * Agent daemon with multiple operational modes (scheduled, on-demand, continuous, hybrid)
+  * System diagnostics (CPU, memory, disk, processes, services, network)
+  * Security checks (patches, ports, SSH security, auth failures)
+  * Kubernetes and Proxmox monitoring capabilities
+  * AI analysis via multiple providers (Anthropic, OpenAI, Ollama, Gemini, OpenRouter)
+  * TOON format for 30-60% AI token reduction
+  * Auto-remediation with human-in-the-loop approval
+  * Prometheus metrics endpoint (:9090/metrics)
+  * Health check endpoints (:8080/health, /ready, /live)
+  * Security hardening with minimal capabilities (CAP_NET_RAW, CAP_SYS_PTRACE, CAP_DAC_READ_SEARCH)
+  * Support for Kubernetes DaemonSet and VM systemd deployments
+  * Offline mode with local result caching
+  * API reporter with exponential backoff and retry logic
+
+ -- Lumo Team <lumo@example.com>  Mon, 18 Nov 2024 12:00:00 +0000

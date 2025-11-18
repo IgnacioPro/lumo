@@ -544,7 +544,7 @@ func TestOpenRouterProvider_Analyze_ErrorHandling(t *testing.T) {
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tt.statusCode)
 				if str, ok := tt.response.(string); ok {
-					w.Write([]byte(str))
+					_, _ = w.Write([]byte(str))
 				} else {
 					_ = json.NewEncoder(w).Encode(tt.response)
 				}
