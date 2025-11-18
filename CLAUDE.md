@@ -1,7 +1,7 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-18 | **Version:** 1.0.1
-> **Status:** Phases 1-7 Complete ✅ | CI Green ✅ | 35+ API files, 4,800+ LOC, 50.4% test coverage
+> **Last Updated:** 2025-11-18 | **Version:** 1.0.2
+> **Status:** Phases 1-8 Complete ✅ | CI Green ✅ | Agent Daemon Live 🚀 | 50.4% test coverage
 
 **For detailed examples and tutorials, see [DEVELOPMENT.md](DEVELOPMENT.md)**
 
@@ -21,8 +21,8 @@
 **Tech:** Go 1.25.4 | Module: `github.com/ignacio/lumo` | License: MIT
 
 **Architecture Modes:**
-- **CLI Mode (Current):** Pull model - CLI connects to targets via SSH or runs locally
-- **Agent Mode (Planned):** Hybrid push/pull - agents run on infrastructure, report to API/messaging platform
+- **CLI Mode:** Pull model - CLI connects to targets via SSH or runs locally
+- **Agent Mode:** ✅ Hybrid push/pull - agents run on infrastructure, report to API/messaging platform (Phase 8 complete)
 
 ---
 
@@ -32,7 +32,7 @@
 lumo/
 ├── cmd/
 │   ├── lumo/              # CLI: main, root, connect, diagnose, fix, serve
-│   └── lumo-agent/        # (Phase 8) Agent daemon: scheduler, reporter, health
+│   └── lumo-agent/        # ✅ Agent daemon: scheduler, reporter, health, metrics
 ├── internal/
 │   ├── config/            # Configuration management (includes API, DB, Cache config)
 │   ├── ssh/               # SSH client (auth, health, retry)
@@ -57,7 +57,7 @@ lumo/
 │   │   └── postgres.go    # DB connection pool
 │   ├── cache/             # ✅ (Phase 7) Redis client
 │   │   └── redis.go       # Redis operations
-│   ├── agent/             # (Phase 8) Agent logic, scheduling, caching
+│   ├── agent/             # ✅ Agent logic, scheduling, caching, reporter
 │   └── messaging/         # (Phase 11) Pub/sub: NATS, Kafka, RabbitMQ, Redis
 ├── deployments/
 │   ├── kubernetes/        # (Phase 9) DaemonSet, Deployment, RBAC, Helm
@@ -134,23 +134,23 @@ export LUMO_AGENT_MESSAGING_PROVIDER=nats      # nats|kafka|rabbitmq|redis
 
 **Global Flags:** `--config`, `--verbose`/`-v`, `--dry-run`
 
-### lumo CLI (Current)
+### lumo CLI
 
 | Command | Status | Purpose |
 |---------|--------|---------|
 | `connect` | ✅ | SSH connection |
 | `diagnose` | ✅ | System diagnostics + AI analysis |
 | `fix` | ✅ | Auto-remediation with approval |
+| `serve` | ✅ | API server (Phase 7) |
 | `report` | ⏳ | Report generation (planned) |
-| `serve` | ⏳ | API server (Phase 7) |
 
-### lumo-agent Daemon (Phase 8)
+### lumo-agent Daemon
 
 | Command | Status | Purpose |
 |---------|--------|---------|
-| `lumo-agent` | ⏳ | Agent daemon with scheduled/on-demand/continuous modes |
-| `lumo-agent version` | ⏳ | Display agent version |
-| `lumo-agent health` | ⏳ | Check agent health |
+| `lumo-agent` | ✅ | Agent daemon with hybrid scheduled/on-demand/continuous modes |
+| `lumo-agent version` | ✅ | Display agent version |
+| `lumo-agent health` | ✅ | Check agent health status |
 
 ---
 
@@ -310,7 +310,7 @@ systemctl enable --now lumo-agent
 
 ## Phase Roadmap
 
-### ✅ Completed Phases (1-6)
+### ✅ Completed Phases (1-8)
 
 **Phase 1-2:** Foundation (Cobra CLI, Viper config, Logrus logging) + SSH (4 auth methods, retry logic, health monitoring)
 
@@ -357,18 +357,31 @@ systemctl enable --now lumo-agent
 - ⏳ JWT authentication (deferred to Phase 12 - Security Hardening)
 - ⏳ mTLS support (deferred to Phase 12 - Security Hardening)
 - ⏳ WebSocket support (deferred to Phase 13 - Production Readiness)
-- **Status:** 35+ files, 4,800+ LOC | **Phase 8 ready to start!**
+- **Status:** 35+ files, 4,800+ LOC | **Phase 8 complete!** ✅
 
-### 🚧 In Progress - Agent Deployment (Weeks 4-16)
+### ✅ Completed - Phase 8: Agent Daemon (Weeks 4-6)
 
-**Phase 8: Agent Daemon** (Weeks 4-6)
-- Agent daemon binary (`cmd/lumo-agent`)
-- Scheduler for periodic diagnostics (cron-based)
-- API reporter with retry/backoff
-- Local result caching (offline mode)
-- Health check endpoints (`:8080/health`)
-- Prometheus metrics (`:9090/metrics`)
-- **Deliverables:** `cmd/lumo-agent/`, `internal/agent/{agent,config,reporter,scheduler,cache,healthcheck}.go`
+**Phase 8: Agent Daemon** - **100% COMPLETE** ✅
+- ✅ Agent daemon binary (`cmd/lumo-agent`)
+- ✅ Agent configuration in `internal/config/config.go` (AgentConfig struct)
+- ✅ Scheduler for periodic diagnostics (cron-based via `robfig/cron/v3`)
+- ✅ API reporter with retry/backoff (exponential backoff, 4 attempts)
+- ✅ Local result caching (offline mode support)
+- ✅ Health check HTTP endpoints (`:8080/health`, `/ready`, `/live`, `/status`)
+- ✅ Prometheus metrics (`:9090/metrics` with 12+ metrics)
+- ✅ Multiple operational modes: scheduled, on-demand, continuous, hybrid
+- ✅ Agent registration with API server
+- ✅ Heartbeat system (30s intervals)
+- ✅ Graceful shutdown handling
+- ✅ Version and health commands
+- ✅ Comprehensive tests (cache_test.go, scheduler_test.go)
+- **Deliverables:**
+  - `cmd/lumo-agent/{main.go,root.go,version.go,health.go}`
+  - `internal/agent/{agent.go,reporter.go,scheduler.go,cache.go,healthcheck.go,metrics.go}`
+  - Binary size: 65MB
+  - All tests passing ✅
+
+### 🚧 In Progress - Agent Deployment (Weeks 7-16)
 
 **Phase 9: Kubernetes Deployment** (Weeks 7-8)
 - DaemonSet manifest (per-node monitoring)
