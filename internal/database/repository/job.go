@@ -196,7 +196,9 @@ func (r *JobRepository) List(ctx context.Context, opts ListOptions) ([]*models.J
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list jobs: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	jobs := make([]*models.Job, 0, limit)
 	for rows.Next() {

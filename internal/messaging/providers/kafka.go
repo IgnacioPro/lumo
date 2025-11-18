@@ -176,8 +176,13 @@ func (s *KafkaSubscriber) Subscribe(ctx context.Context, topics []string, handle
 				}
 
 				// Parse and handle message
-				s.logger.WithField("topic", t).Debug("Received message from Kafka")
+				s.logger.WithFields(map[string]interface{}{
+					"topic":  t,
+					"key":    string(msg.Key),
+					"offset": msg.Offset,
+				}).Debug("Received message from Kafka")
 				// TODO: Parse msg.Value and call handler
+				_ = msg // Placeholder until handler is implemented
 			}
 		}(topic, reader)
 

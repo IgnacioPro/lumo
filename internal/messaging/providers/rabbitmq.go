@@ -241,8 +241,13 @@ func (s *RabbitMQSubscriber) Subscribe(ctx context.Context, topics []string, han
 		// Handle messages in goroutine
 		go func(t string, deliveries <-chan amqp.Delivery) {
 			for d := range deliveries {
-				s.logger.WithField("topic", t).Debug("Received message from RabbitMQ")
+				s.logger.WithFields(map[string]interface{}{
+					"topic":         t,
+					"delivery_tag":  d.DeliveryTag,
+					"message_count": d.MessageCount,
+				}).Debug("Received message from RabbitMQ")
 				// TODO: Parse d.Body and call handler
+				_ = d // Placeholder until handler is implemented
 			}
 		}(topic, msgs)
 

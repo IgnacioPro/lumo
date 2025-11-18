@@ -1,0 +1,42 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    purge)
+        # Remove user and group on purge
+        if getent passwd lumo-agent >/dev/null; then
+            deluser --system lumo-agent >/dev/null || true
+        fi
+
+        if getent group lumo-agent >/dev/null; then
+            delgroup --system lumo-agent >/dev/null || true
+        fi
+
+        # Remove data and log directories on purge
+        rm -rf /var/lib/lumo-agent || true
+        rm -rf /var/log/lumo-agent || true
+        rm -rf /etc/lumo-agent || true
+
+        # Clean up systemd journal
+        if command -v journalctl >/dev/null 2>&1; then
+            journalctl --rotate >/dev/null 2>&1 || true
+            journalctl --vacuum-time=1s >/dev/null 2>&1 || true
+        fi
+        ;;
+
+    remove)
+        # On remove (not purge), keep config, data, and logs
+        ;;
+
+    upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        ;;
+
+    *)
+        echo "postrm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

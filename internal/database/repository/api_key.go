@@ -151,7 +151,9 @@ func (r *APIKeyRepository) List(ctx context.Context, includeRevoked bool) ([]*mo
 	if err != nil {
 		return nil, fmt.Errorf("failed to list API keys: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	keys := make([]*models.APIKey, 0)
 	for rows.Next() {
@@ -260,7 +262,9 @@ func (r *APIKeyRepository) ValidateAndGet(ctx context.Context, plainKey string) 
 	}
 
 	// Update last used timestamp (fire and forget)
-	go r.UpdateLastUsed(context.Background(), key.ID)
+	go func() {
+		_ = r.UpdateLastUsed(context.Background(), key.ID)
+	}()
 
 	return key, nil
 }

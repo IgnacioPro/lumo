@@ -107,7 +107,9 @@ func (c *Cache) Get(key string) (interface{}, bool, error) {
 	if time.Since(entry.Timestamp) > entry.TTL {
 		c.logger.WithField("key", key).Debug("Cache entry expired")
 		// Remove expired entry
-		os.Remove(filePath)
+		if err := os.Remove(filePath); err != nil {
+			c.logger.WithError(err).Debug("Failed to remove expired cache entry")
+		}
 		return nil, false, nil
 	}
 
