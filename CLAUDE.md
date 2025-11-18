@@ -173,6 +173,8 @@ export LUMO_AI_REASONING_EFFORT=medium  # low|medium|high
 
 **Phase 4.1:** Enhanced Diagnostics - Memory enhancements (top consumers, page faults, pressure indicators), cross-platform metrics
 
+**Phase 4.2:** OpenRouter Integration - Added 5th AI provider with multi-model support, unified API access to multiple LLM providers
+
 **Phase 5:** Security Diagnostics - 4 checkers (Patch Status, Open Ports, SSH Security, Auth Failures)
 
 **Phase 5.1:** Specialized Checkers - Kubernetes (native client, 8 resource types), Proxmox VE (cluster, VMs, storage, HA)
