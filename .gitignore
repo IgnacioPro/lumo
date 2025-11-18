@@ -5,6 +5,7 @@
 *.so
 *.dylib
 /lumo
+/lumo-agent
 dist/
 bin/
 
