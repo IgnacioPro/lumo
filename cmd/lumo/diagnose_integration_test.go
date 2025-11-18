@@ -16,6 +16,10 @@ import (
 
 // TestRunDiagnostics_Localhost tests the complete localhost diagnostic flow
 func TestRunDiagnostics_Localhost(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	// Save original stdout and restore after test
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
@@ -69,6 +73,10 @@ func TestRunDiagnostics_Localhost(t *testing.T) {
 
 // TestRunDiagnostics_LocalhostWithFormat tests different output formats
 func TestRunDiagnostics_LocalhostWithFormat(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	tests := []struct {
 		name             string
 		format           string
@@ -135,6 +143,10 @@ func TestRunDiagnostics_LocalhostWithFormat(t *testing.T) {
 
 // TestRunDiagnostics_LocalhostWithSpecificChecks tests filtering to specific checks
 func TestRunDiagnostics_LocalhostWithSpecificChecks(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	// Capture stdout
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
@@ -180,6 +192,10 @@ func TestRunDiagnostics_LocalhostWithSpecificChecks(t *testing.T) {
 
 // TestRunDiagnostics_NoArgs tests default behavior (should default to localhost)
 func TestRunDiagnostics_NoArgs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	// Capture stdout
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
@@ -215,6 +231,10 @@ func TestRunDiagnostics_NoArgs(t *testing.T) {
 
 // TestRunDiagnostics_UserHostFormat tests user@host argument parsing
 func TestRunDiagnostics_UserHostFormat(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	tests := []struct {
 		name    string
 		hostArg string
