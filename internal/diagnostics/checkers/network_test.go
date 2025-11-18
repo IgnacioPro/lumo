@@ -342,3 +342,175 @@ en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
 		})
 	}
 }
+
+func TestNetworkChecker_ParseProcNetDev(t *testing.T) {
+	checker := NewNetworkChecker(diagnostics.NetworkThresholds{}, nil)
+
+	t.Run("parses /proc/net/dev output", func(t *testing.T) {
+		output := `Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+  eth0: 123456789  654321    5    0    0     0          0         0  987654321  456789    2    0    0     0       0          0
+wlan0: 987654321  123456    0    0    0     0          0         0  123456789  654321    0    0    0     0       0          0
+    lo: 111111111   22222    0    0    0     0          0         0  111111111   22222    0    0    0     0       0          0`
+
+		stats, err := checker.parseProcNetDev(output)
+
+		if err != nil {
+			t.Errorf("parseProcNetDev() unexpected error: %v", err)
+		}
+
+		// Should sum eth0 + wlan0 (lo is skipped)
+		expectedRxBytes := uint64(123456789 + 987654321)
+		if stats.RxBytes != expectedRxBytes {
+			t.Errorf("RxBytes = %d, want %d", stats.RxBytes, expectedRxBytes)
+		}
+
+		expectedRxPackets := uint64(654321 + 123456)
+		if stats.RxPackets != expectedRxPackets {
+			t.Errorf("RxPackets = %d, want %d", stats.RxPackets, expectedRxPackets)
+		}
+
+		expectedRxErrors := uint64(5 + 0)
+		if stats.RxErrors != expectedRxErrors {
+			t.Errorf("RxErrors = %d, want %d", stats.RxErrors, expectedRxErrors)
+		}
+
+		expectedTxBytes := uint64(987654321 + 123456789)
+		if stats.TxBytes != expectedTxBytes {
+			t.Errorf("TxBytes = %d, want %d", stats.TxBytes, expectedTxBytes)
+		}
+
+		expectedTxPackets := uint64(456789 + 654321)
+		if stats.TxPackets != expectedTxPackets {
+			t.Errorf("TxPackets = %d, want %d", stats.TxPackets, expectedTxPackets)
+		}
+
+		expectedTxErrors := uint64(2 + 0)
+		if stats.TxErrors != expectedTxErrors {
+			t.Errorf("TxErrors = %d, want %d", stats.TxErrors, expectedTxErrors)
+		}
+	})
+
+	t.Run("skips loopback interface", func(t *testing.T) {
+		output := `Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo: 111111111   22222    0    0    0     0          0         0  111111111   22222    0    0    0     0       0          0`
+
+		stats, err := checker.parseProcNetDev(output)
+
+		if err != nil {
+			t.Errorf("parseProcNetDev() unexpected error: %v", err)
+		}
+
+		// Should skip loopback, all stats should be 0
+		if stats.RxBytes != 0 || stats.RxPackets != 0 || stats.TxBytes != 0 || stats.TxPackets != 0 {
+			t.Errorf("parseProcNetDev() should skip loopback interface, got non-zero stats: %+v", stats)
+		}
+	})
+
+	t.Run("handles empty output", func(t *testing.T) {
+		stats, err := checker.parseProcNetDev("")
+
+		if err != nil {
+			t.Errorf("parseProcNetDev() unexpected error on empty output: %v", err)
+		}
+
+		// Should return zero stats
+		if stats.RxBytes != 0 || stats.RxPackets != 0 {
+			t.Errorf("parseProcNetDev() should return zero stats for empty output, got: %+v", stats)
+		}
+	})
+
+	t.Run("handles malformed lines", func(t *testing.T) {
+		output := `Inter-|   Receive                                                |  Transmit
+  eth0: 123456789  654321    5
+wlan0: invalid data here`
+
+		stats, err := checker.parseProcNetDev(output)
+
+		// Should not error, just skip malformed lines
+		if err != nil {
+			t.Errorf("parseProcNetDev() unexpected error: %v", err)
+		}
+
+		// Should have zero stats because lines have < 17 fields
+		if stats.RxBytes != 0 {
+			t.Errorf("parseProcNetDev() should skip malformed lines, got RxBytes=%d", stats.RxBytes)
+		}
+	})
+}
+
+func TestNetworkChecker_ParseNetstatStats(t *testing.T) {
+	checker := NewNetworkChecker(diagnostics.NetworkThresholds{}, nil)
+
+	t.Run("parses netstat output", func(t *testing.T) {
+		// netstat -i format with all fields (need at least 10 fields per line)
+		output := `Name  Mtu   Network       Address            Ipkts Ierrs    Opkts Oerrs  Coll  Drop
+lo0   16384 <Link#1>      127.0.0.1         10000     0     9999     0     0     0
+en0   1500  <Link#4>      aa:bb:cc:dd:ee:ff 50000     5    45000     2     0     0
+en1   1500  <Link#5>      11:22:33:44:55:66 30000     1    28000     0     0     0`
+
+		stats, err := checker.parseNetstatStats(output)
+
+		if err != nil {
+			t.Errorf("parseNetstatStats() unexpected error: %v", err)
+		}
+
+		// Should sum all interfaces (fields[4] = Ipkts, fields[5] = Ierrs)
+		expectedRxPackets := uint64(10000 + 50000 + 30000)
+		if stats.RxPackets != expectedRxPackets {
+			t.Errorf("RxPackets = %d, want %d", stats.RxPackets, expectedRxPackets)
+		}
+
+		expectedRxErrors := uint64(0 + 5 + 1)
+		if stats.RxErrors != expectedRxErrors {
+			t.Errorf("RxErrors = %d, want %d", stats.RxErrors, expectedRxErrors)
+		}
+	})
+
+	t.Run("handles empty output", func(t *testing.T) {
+		stats, err := checker.parseNetstatStats("")
+
+		if err != nil {
+			t.Errorf("parseNetstatStats() unexpected error on empty output: %v", err)
+		}
+
+		// Should return zero stats
+		if stats.RxPackets != 0 || stats.RxErrors != 0 {
+			t.Errorf("parseNetstatStats() should return zero stats for empty output, got: %+v", stats)
+		}
+	})
+
+	t.Run("skips short lines", func(t *testing.T) {
+		output := `Name  Mtu   Network
+en0   1500  <Link#4>`
+
+		stats, err := checker.parseNetstatStats(output)
+
+		if err != nil {
+			t.Errorf("parseNetstatStats() unexpected error: %v", err)
+		}
+
+		// Should skip lines with < 10 fields
+		if stats.RxPackets != 0 {
+			t.Errorf("parseNetstatStats() should skip short lines, got RxPackets=%d", stats.RxPackets)
+		}
+	})
+
+	t.Run("handles non-numeric fields", func(t *testing.T) {
+		output := `Name  Mtu   Network       Address            Ipkts Ierrs    Opkts Oerrs  Coll
+en0   1500  <Link#4>      aa:bb:cc:dd:ee:ff INVALID ERROR 45000     2     0`
+
+		stats, err := checker.parseNetstatStats(output)
+
+		// Should not error, just skip non-numeric fields
+		if err != nil {
+			t.Errorf("parseNetstatStats() unexpected error: %v", err)
+		}
+
+		// Should have zero stats because fields can't be parsed as numbers
+		if stats.RxPackets != 0 || stats.RxErrors != 0 {
+			t.Errorf("parseNetstatStats() should skip non-numeric fields, got: %+v", stats)
+		}
+	})
+}

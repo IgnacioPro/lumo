@@ -8,37 +8,42 @@ import (
 
 func TestFormatRiskBadge(t *testing.T) {
 	tests := []struct {
-		name     string
-		risk     remediation.RiskLevel
-		expected string
+		name string
+		risk remediation.RiskLevel
+		want string
 	}{
 		{
-			name:     "safe risk",
-			risk:     remediation.RiskSafe,
-			expected: "✅ SAFE",
+			name: "safe risk",
+			risk: remediation.RiskSafe,
+			want: "✅ SAFE",
 		},
 		{
-			name:     "moderate risk",
-			risk:     remediation.RiskModerate,
-			expected: "⚠️  MODERATE",
+			name: "moderate risk",
+			risk: remediation.RiskModerate,
+			want: "⚠️  MODERATE",
 		},
 		{
-			name:     "critical risk",
-			risk:     remediation.RiskCritical,
-			expected: "⛔ CRITICAL",
+			name: "critical risk",
+			risk: remediation.RiskCritical,
+			want: "⛔ CRITICAL",
 		},
 		{
-			name:     "unknown risk",
-			risk:     remediation.RiskLevel("unknown"),
-			expected: "unknown",
+			name: "unknown risk level",
+			risk: remediation.RiskLevel("unknown"),
+			want: "unknown",
+		},
+		{
+			name: "empty risk level",
+			risk: remediation.RiskLevel(""),
+			want: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := formatRiskBadge(tt.risk)
-			if result != tt.expected {
-				t.Errorf("formatRiskBadge(%q) = %q, want %q", tt.risk, result, tt.expected)
+			got := formatRiskBadge(tt.risk)
+			if got != tt.want {
+				t.Errorf("formatRiskBadge(%q) = %q, want %q", tt.risk, got, tt.want)
 			}
 		})
 	}
@@ -46,47 +51,62 @@ func TestFormatRiskBadge(t *testing.T) {
 
 func TestFormatStatusBadge(t *testing.T) {
 	tests := []struct {
-		name     string
-		status   remediation.ActionStatus
-		expected string
+		name   string
+		status remediation.ActionStatus
+		want   string
 	}{
 		{
-			name:     "success status",
-			status:   remediation.StatusSuccess,
-			expected: "✅ SUCCESS",
+			name:   "success status",
+			status: remediation.StatusSuccess,
+			want:   "✅ SUCCESS",
 		},
 		{
-			name:     "failed status",
-			status:   remediation.StatusFailed,
-			expected: "❌ FAILED",
+			name:   "failed status",
+			status: remediation.StatusFailed,
+			want:   "❌ FAILED",
 		},
 		{
-			name:     "skipped status",
-			status:   remediation.StatusSkipped,
-			expected: "⏭️  SKIPPED",
+			name:   "skipped status",
+			status: remediation.StatusSkipped,
+			want:   "⏭️  SKIPPED",
 		},
 		{
-			name:     "rejected status",
-			status:   remediation.StatusRejected,
-			expected: "🚫 REJECTED",
+			name:   "rejected status",
+			status: remediation.StatusRejected,
+			want:   "🚫 REJECTED",
 		},
 		{
-			name:     "rolled back status",
-			status:   remediation.StatusRolledBack,
-			expected: "↩️  ROLLED BACK",
+			name:   "rolled back status",
+			status: remediation.StatusRolledBack,
+			want:   "↩️  ROLLED BACK",
 		},
 		{
-			name:     "unknown status",
-			status:   remediation.ActionStatus("unknown"),
-			expected: "unknown",
+			name:   "pending status (default case)",
+			status: remediation.StatusPending,
+			want:   "pending",
+		},
+		{
+			name:   "approved status (default case)",
+			status: remediation.StatusApproved,
+			want:   "approved",
+		},
+		{
+			name:   "unknown status",
+			status: remediation.ActionStatus("unknown"),
+			want:   "unknown",
+		},
+		{
+			name:   "empty status",
+			status: remediation.ActionStatus(""),
+			want:   "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := formatStatusBadge(tt.status)
-			if result != tt.expected {
-				t.Errorf("formatStatusBadge(%q) = %q, want %q", tt.status, result, tt.expected)
+			got := formatStatusBadge(tt.status)
+			if got != tt.want {
+				t.Errorf("formatStatusBadge(%q) = %q, want %q", tt.status, got, tt.want)
 			}
 		})
 	}

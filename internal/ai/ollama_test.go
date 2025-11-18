@@ -210,3 +210,319 @@ func TestOllamaProvider_NoAPIKeyRequired(t *testing.T) {
 		t.Error("Provider should be created without API key")
 	}
 }
+
+func TestOllamaProvider_Health(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	tests := []struct {
+		name       string
+		statusCode int
+		wantErr    bool
+		errMsg     string
+	}{
+		{
+			name:       "healthy service",
+			statusCode: http.StatusOK,
+			wantErr:    false,
+		},
+		{
+			name:       "service unavailable",
+			statusCode: http.StatusServiceUnavailable,
+			wantErr:    true,
+			errMsg:     "503",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.statusCode)
+			}))
+			defer server.Close()
+
+			provider, err := NewOllamaProvider(&ProviderConfig{
+				Endpoint: server.URL,
+			}, log)
+			if err != nil {
+				t.Fatalf("Failed to create provider: %v", err)
+			}
+
+			ctx := context.Background()
+			err = provider.Health(ctx)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Health() expected error containing %q, got nil", tt.errMsg)
+					return
+				}
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("Health() error = %q, want error containing %q", err.Error(), tt.errMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Health() unexpected error = %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestOllamaProvider_Analyze_ErrorHandling(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	tests := []struct {
+		name       string
+		statusCode int
+		response   interface{}
+		wantErr    bool
+		errMsg     string
+	}{
+		{
+			name:       "network error - 500",
+			statusCode: http.StatusInternalServerError,
+			response:   map[string]string{"error": "internal error"},
+			wantErr:    true,
+			errMsg:     "500",
+		},
+		{
+			name:       "malformed JSON response",
+			statusCode: http.StatusOK,
+			response:   "not valid json",
+			wantErr:    true,
+			errMsg:     "failed to decode",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.statusCode)
+				if str, ok := tt.response.(string); ok {
+					w.Write([]byte(str))
+				} else {
+					_ = json.NewEncoder(w).Encode(tt.response)
+				}
+			}))
+			defer server.Close()
+
+			provider, err := NewOllamaProvider(&ProviderConfig{
+				Endpoint: server.URL,
+			}, log)
+			if err != nil {
+				t.Fatalf("Failed to create provider: %v", err)
+			}
+
+			req := &AnalysisRequest{
+				Report: &diagnostics.Report{
+					Timestamp: time.Now(),
+					Duration:  100 * time.Millisecond,
+					Results:   []*diagnostics.CheckResult{},
+				},
+				SystemInfo: SystemInfo{Hostname: "test-host"},
+			}
+
+			ctx := context.Background()
+			_, err = provider.Analyze(ctx, req)
+
+			if !tt.wantErr {
+				if err != nil {
+					t.Errorf("Analyze() unexpected error = %v", err)
+				}
+				return
+			}
+
+			if err == nil {
+				t.Errorf("Analyze() expected error containing %q, got nil", tt.errMsg)
+				return
+			}
+
+			if !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("Analyze() error = %q, want error containing %q", err.Error(), tt.errMsg)
+			}
+		})
+	}
+}
+
+func TestOllamaProvider_Analyze_ContextCancellation(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Second)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	provider, err := NewOllamaProvider(&ProviderConfig{
+		Endpoint: server.URL,
+	}, log)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	req := &AnalysisRequest{
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "test-host"},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	_, err = provider.Analyze(ctx, req)
+
+	if err == nil {
+		t.Error("Analyze() expected context cancellation error, got nil")
+		return
+	}
+
+	if !strings.Contains(err.Error(), "context") && !strings.Contains(err.Error(), "timeout") {
+		t.Errorf("Analyze() error = %q, want context cancellation error", err.Error())
+	}
+}
+
+func TestOllamaProvider_AnalyzeStream(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	tests := []struct {
+		name         string
+		serverFunc   func(w http.ResponseWriter, r *http.Request)
+		expectChunks int
+		expectError  bool
+		expectDone   bool
+	}{
+		{
+			name: "successful streaming with multiple chunks",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+
+				// Ollama sends newline-delimited JSON (not SSE)
+				chunks := []string{
+					`{"model":"llama3.1:8b","created_at":"2024-01-01T00:00:00Z","message":{"role":"assistant","content":"System "},"done":false}`,
+					`{"model":"llama3.1:8b","created_at":"2024-01-01T00:00:00Z","message":{"role":"assistant","content":"is "},"done":false}`,
+					`{"model":"llama3.1:8b","created_at":"2024-01-01T00:00:00Z","message":{"role":"assistant","content":"healthy"},"done":false}`,
+					`{"model":"llama3.1:8b","created_at":"2024-01-01T00:00:00Z","message":{"role":"assistant","content":""},"done":true}`,
+				}
+
+				for _, chunk := range chunks {
+					_, _ = w.Write([]byte(chunk + "\n"))
+					if f, ok := w.(http.Flusher); ok {
+						f.Flush()
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+			},
+			expectChunks: 4, // 3 content chunks + 1 done
+			expectError:  false,
+			expectDone:   true,
+		},
+		{
+			name: "streaming with done flag",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+
+				chunks := []string{
+					`{"model":"llama3.1:8b","created_at":"2024-01-01T00:00:00Z","message":{"role":"assistant","content":"Test"},"done":false}`,
+					`{"model":"llama3.1:8b","created_at":"2024-01-01T00:00:00Z","message":{"role":"assistant","content":""},"done":true}`,
+				}
+
+				for _, chunk := range chunks {
+					_, _ = w.Write([]byte(chunk + "\n"))
+					if f, ok := w.(http.Flusher); ok {
+						f.Flush()
+					}
+				}
+			},
+			expectChunks: 2,
+			expectError:  false,
+			expectDone:   true,
+		},
+		{
+			name: "http error status code",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"error": "Internal server error"}`))
+			},
+			expectChunks: 1, // Error chunk
+			expectError:  true,
+			expectDone:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(tt.serverFunc))
+			defer server.Close()
+
+			provider, err := NewOllamaProvider(&ProviderConfig{}, log)
+			if err != nil {
+				t.Fatalf("Failed to create provider: %v", err)
+			}
+
+			provider.config.Endpoint = server.URL
+			provider.client = server.Client()
+
+			req := &AnalysisRequest{
+				Report: &diagnostics.Report{
+					Timestamp: time.Now(),
+					Duration:  100 * time.Millisecond,
+					Results:   []*diagnostics.CheckResult{},
+				},
+				SystemInfo: SystemInfo{Hostname: "test-host"},
+			}
+
+			ctx := context.Background()
+			ch, err := provider.AnalyzeStream(ctx, req)
+
+			if err != nil {
+				t.Fatalf("AnalyzeStream() unexpected error creating stream: %v", err)
+			}
+
+			// Collect all chunks
+			var chunks []StreamChunk
+			for chunk := range ch {
+				chunks = append(chunks, chunk)
+			}
+
+			if len(chunks) < tt.expectChunks {
+				t.Errorf("AnalyzeStream() got %d chunks, want at least %d", len(chunks), tt.expectChunks)
+			}
+
+			// Check for error chunk if expected
+			if tt.expectError {
+				foundError := false
+				for _, chunk := range chunks {
+					if chunk.Error != nil {
+						foundError = true
+						break
+					}
+				}
+				if !foundError {
+					t.Error("AnalyzeStream() expected error chunk, got none")
+				}
+			}
+
+			// Check for done chunk if expected
+			if tt.expectDone {
+				foundDone := false
+				for _, chunk := range chunks {
+					if chunk.Done {
+						foundDone = true
+						break
+					}
+				}
+				if !foundDone {
+					t.Error("AnalyzeStream() expected done chunk, got none")
+				}
+			}
+		})
+	}
+}

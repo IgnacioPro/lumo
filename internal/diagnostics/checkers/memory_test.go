@@ -555,3 +555,257 @@ func TestMemoryChecker_RequiresRoot(t *testing.T) {
 		t.Error("RequiresRoot() = true, want false")
 	}
 }
+
+func TestMemoryChecker_ParseVMStat(t *testing.T) {
+	checker := &MemoryChecker{}
+
+	t.Run("parses vmstat output correctly", func(t *testing.T) {
+		output := `pgfault 1234567
+pgmajfault 12345
+pswpin 5000
+pswpout 6000
+pgpgin 100000
+pgpgout 150000`
+
+		stats := &MemoryStats{}
+		checker.parseVMStat(output, stats)
+
+		if stats.PageFaults != 1234567 {
+			t.Errorf("PageFaults = %d, want 1234567", stats.PageFaults)
+		}
+
+		if stats.MajorPageFaults != 12345 {
+			t.Errorf("MajorPageFaults = %d, want 12345", stats.MajorPageFaults)
+		}
+
+		expectedMinor := uint64(1234567 - 12345)
+		if stats.MinorPageFaults != expectedMinor {
+			t.Errorf("MinorPageFaults = %d, want %d", stats.MinorPageFaults, expectedMinor)
+		}
+
+		if stats.Swapins != 5000 {
+			t.Errorf("Swapins = %d, want 5000", stats.Swapins)
+		}
+
+		if stats.Swapouts != 6000 {
+			t.Errorf("Swapouts = %d, want 6000", stats.Swapouts)
+		}
+	})
+
+	t.Run("handles empty output", func(t *testing.T) {
+		stats := &MemoryStats{}
+		checker.parseVMStat("", stats)
+
+		// Should have zero values
+		if stats.PageFaults != 0 || stats.MajorPageFaults != 0 {
+			t.Errorf("Expected zero values for empty output, got PageFaults=%d, MajorPageFaults=%d",
+				stats.PageFaults, stats.MajorPageFaults)
+		}
+	})
+
+	t.Run("handles malformed lines", func(t *testing.T) {
+		output := `pgfault 1234567
+invalid line without number
+pgmajfault notanumber
+pswpin 5000`
+
+		stats := &MemoryStats{}
+		checker.parseVMStat(output, stats)
+
+		// Should parse valid lines and skip invalid ones
+		if stats.PageFaults != 1234567 {
+			t.Errorf("PageFaults = %d, want 1234567", stats.PageFaults)
+		}
+
+		// Invalid line should result in 0 for that field
+		if stats.MajorPageFaults != 0 {
+			t.Errorf("MajorPageFaults = %d, want 0 (invalid line should be skipped)", stats.MajorPageFaults)
+		}
+
+		if stats.Swapins != 5000 {
+			t.Errorf("Swapins = %d, want 5000", stats.Swapins)
+		}
+	})
+
+	t.Run("calculates minor page faults correctly", func(t *testing.T) {
+		output := `pgfault 1000
+pgmajfault 300`
+
+		stats := &MemoryStats{}
+		checker.parseVMStat(output, stats)
+
+		expectedMinor := uint64(700)
+		if stats.MinorPageFaults != expectedMinor {
+			t.Errorf("MinorPageFaults = %d, want %d (1000 - 300)", stats.MinorPageFaults, expectedMinor)
+		}
+	})
+
+	t.Run("handles case where major >= total", func(t *testing.T) {
+		// Edge case: major page faults somehow >= total (shouldn't happen but test it)
+		output := `pgfault 100
+pgmajfault 150`
+
+		stats := &MemoryStats{}
+		checker.parseVMStat(output, stats)
+
+		// Minor should not be calculated if major >= total
+		if stats.MinorPageFaults != 0 {
+			t.Errorf("MinorPageFaults = %d, want 0 (major >= total)", stats.MinorPageFaults)
+		}
+	})
+}
+
+func TestMemoryChecker_ParseFreeCommand(t *testing.T) {
+	checker := &MemoryChecker{}
+
+	t.Run("parses free output with all fields", func(t *testing.T) {
+		output := `              total        used        free      shared  buff/cache   available
+Mem:       16384000     8192000     2048000      512000     6144000    10240000
+Swap:       4096000     1024000     3072000`
+
+		stats, err := checker.parseFreeCommand(output)
+
+		if err != nil {
+			t.Fatalf("parseFreeCommand() unexpected error: %v", err)
+		}
+
+		if stats.TotalBytes != 16384000 {
+			t.Errorf("TotalBytes = %d, want 16384000", stats.TotalBytes)
+		}
+
+		if stats.UsedBytes != 8192000 {
+			t.Errorf("UsedBytes = %d, want 8192000", stats.UsedBytes)
+		}
+
+		if stats.FreeBytes != 2048000 {
+			t.Errorf("FreeBytes = %d, want 2048000", stats.FreeBytes)
+		}
+
+		if stats.AvailableBytes != 10240000 {
+			t.Errorf("AvailableBytes = %d, want 10240000", stats.AvailableBytes)
+		}
+
+		expectedUsedPercent := float64(8192000) / float64(16384000) * 100.0
+		if stats.UsedPercent != expectedUsedPercent {
+			t.Errorf("UsedPercent = %f, want %f", stats.UsedPercent, expectedUsedPercent)
+		}
+
+		if stats.SwapTotalBytes != 4096000 {
+			t.Errorf("SwapTotalBytes = %d, want 4096000", stats.SwapTotalBytes)
+		}
+
+		if stats.SwapUsedBytes != 1024000 {
+			t.Errorf("SwapUsedBytes = %d, want 1024000", stats.SwapUsedBytes)
+		}
+
+		expectedSwapPercent := float64(1024000) / float64(4096000) * 100.0
+		if stats.SwapUsedPercent != expectedSwapPercent {
+			t.Errorf("SwapUsedPercent = %f, want %f", stats.SwapUsedPercent, expectedSwapPercent)
+		}
+	})
+
+	t.Run("parses output with zero available", func(t *testing.T) {
+		// Test case where available is 0 (low memory situation)
+		output := `              total        used        free      shared  buff/cache   available
+Mem:       16384000     8192000     2048000      512000     6144000           0`
+
+		stats, err := checker.parseFreeCommand(output)
+
+		if err != nil {
+			t.Fatalf("parseFreeCommand() unexpected error: %v", err)
+		}
+
+		// Should parse 0 as valid available bytes
+		if stats.AvailableBytes != 0 {
+			t.Errorf("AvailableBytes = %d, want 0", stats.AvailableBytes)
+		}
+	})
+
+	t.Run("parses output without swap", func(t *testing.T) {
+		output := `              total        used        free      shared  buff/cache   available
+Mem:       16384000     8192000     2048000      512000     6144000    10240000`
+
+		stats, err := checker.parseFreeCommand(output)
+
+		if err != nil {
+			t.Fatalf("parseFreeCommand() unexpected error: %v", err)
+		}
+
+		// Swap fields should be zero
+		if stats.SwapTotalBytes != 0 || stats.SwapUsedBytes != 0 {
+			t.Errorf("Swap fields should be 0 when no swap line, got SwapTotal=%d, SwapUsed=%d",
+				stats.SwapTotalBytes, stats.SwapUsedBytes)
+		}
+	})
+
+	t.Run("handles too few lines", func(t *testing.T) {
+		output := `              total        used        free`
+
+		_, err := checker.parseFreeCommand(output)
+
+		if err == nil {
+			t.Error("parseFreeCommand() expected error for too few lines")
+		}
+	})
+
+	t.Run("handles malformed memory line", func(t *testing.T) {
+		output := `              total        used        free
+Mem:       16384000`
+
+		_, err := checker.parseFreeCommand(output)
+
+		if err == nil {
+			t.Error("parseFreeCommand() expected error for malformed memory line")
+		}
+	})
+
+	t.Run("handles non-numeric total", func(t *testing.T) {
+		output := `              total        used        free      shared  buff/cache   available
+Mem:       INVALID     8192000     2048000      512000     6144000    10240000`
+
+		_, err := checker.parseFreeCommand(output)
+
+		if err == nil {
+			t.Error("parseFreeCommand() expected error for non-numeric total")
+		}
+	})
+
+	t.Run("handles non-numeric used", func(t *testing.T) {
+		output := `              total        used        free      shared  buff/cache   available
+Mem:       16384000     INVALID     2048000      512000     6144000    10240000`
+
+		_, err := checker.parseFreeCommand(output)
+
+		if err == nil {
+			t.Error("parseFreeCommand() expected error for non-numeric used")
+		}
+	})
+
+	t.Run("handles non-numeric free", func(t *testing.T) {
+		output := `              total        used        free      shared  buff/cache   available
+Mem:       16384000     8192000     INVALID      512000     6144000    10240000`
+
+		_, err := checker.parseFreeCommand(output)
+
+		if err == nil {
+			t.Error("parseFreeCommand() expected error for non-numeric free")
+		}
+	})
+
+	t.Run("handles non-numeric available gracefully", func(t *testing.T) {
+		output := `              total        used        free      shared  buff/cache   available
+Mem:       16384000     8192000     2048000      512000     6144000    INVALID`
+
+		stats, err := checker.parseFreeCommand(output)
+
+		// Should not error, just default available to free
+		if err != nil {
+			t.Fatalf("parseFreeCommand() unexpected error: %v", err)
+		}
+
+		if stats.AvailableBytes != stats.FreeBytes {
+			t.Errorf("AvailableBytes = %d, want %d (should default to FreeBytes when invalid)",
+				stats.AvailableBytes, stats.FreeBytes)
+		}
+	})
+}
