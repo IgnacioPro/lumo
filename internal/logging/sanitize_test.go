@@ -8,10 +8,10 @@ import (
 
 func TestSanitizeAPIKeys(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		want     string
-		contains string // substring that should be present
+		name        string
+		input       string
+		want        string
+		contains    string // substring that should be present
 		notContains string // substring that should NOT be present
 	}{
 		{
@@ -145,10 +145,10 @@ func TestSanitizeError(t *testing.T) {
 
 func TestSanitizeMap(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    map[string]interface{}
-		checkKey string
-		contains string
+		name        string
+		input       map[string]interface{}
+		checkKey    string
+		contains    string
 		notContains string
 	}{
 		{

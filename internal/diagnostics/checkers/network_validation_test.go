@@ -180,4 +180,3 @@ func TestValidateNetworkTarget(t *testing.T) {
 		})
 	}
 }
-
