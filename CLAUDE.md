@@ -1,7 +1,7 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-18 | **Version:** 0.7.0
-> **Status:** Phases 1-6 Complete | Phase 7 (API Server) 75% Complete | 80 Go files, 50.4% test coverage
+> **Last Updated:** 2025-11-18 | **Version:** 0.7.1
+> **Status:** Phases 1-6 Complete | Phase 7 (API Server) 90% Complete | 84 Go files, 50.4% test coverage
 
 **For detailed examples and tutorials, see [DEVELOPMENT.md](DEVELOPMENT.md)**
 
@@ -65,8 +65,8 @@ lumo/
 ├── configs/config.example.yaml  # Updated with DB and Cache sections
 └── docker-compose.yaml    # ✅ PostgreSQL + Redis for development
 
-Total: 80 Go files (54 + 26 new) + 35 test files | Test Coverage: 50.4%
-Phase 7: +3,397 LOC across 26 files
+Total: 84 Go files (54 + 30 new) + 35 test files | Test Coverage: 50.4%
+Phase 7: +4,336 LOC across 30 files (jobs, api_keys, agents systems)
 ```
 
 ---
@@ -330,23 +330,23 @@ systemctl enable --now lumo-agent
 
 ### 🚧 In Progress - Agent Deployment (16 weeks)
 
-**Phase 7: API Server Foundation** (Weeks 1-3) - **75% COMPLETE** ✅
+**Phase 7: API Server Foundation** (Weeks 1-3) - **90% COMPLETE** ✅
 - ✅ REST API server (`internal/api/`) with Chi router
 - ✅ PostgreSQL database + Redis cache integration
-- ✅ Database migrations (goose)
+- ✅ Database migrations (goose) - 3 migrations (jobs, api_keys, agents)
 - ✅ API key authentication with scope-based authorization
 - ✅ Health endpoints (`/health`, `/ready`, `/live`)
 - ✅ Job management endpoints (create, list, get, delete)
 - ✅ Diagnostic endpoint (POST /api/v1/diagnostics) with async execution
-- ✅ Repository pattern for database operations
+- ✅ Agent registration system (register, heartbeat, list, get, delete, stats)
+- ✅ Repository pattern for database operations (Job, APIKey, Agent)
 - ✅ docker-compose.yaml for local development
 - ⏳ Integration tests (pending)
-- ⏳ Agent registration endpoints (pending)
-- ⏳ JWT authentication (pending)
-- ⏳ mTLS support (pending)
-- ⏳ WebSocket support (pending)
+- ⏳ JWT authentication (optional - can defer to Phase 12)
+- ⏳ mTLS support (optional - deferred to Phase 12)
+- ⏳ WebSocket support (optional - deferred to Phase 13)
 - ⏳ OpenAPI/Swagger documentation (pending)
-- **Status:** 26 files, 3,397 LOC added | See `REPORTS/agent-deployment-consolidated-status.md`
+- **Status:** 30 files (+4), 4,336 LOC (+939) | Phase 8 ready to start!
 
 **Phase 8: Agent Daemon** (Weeks 4-6)
 - Agent daemon binary (`cmd/lumo-agent`)
@@ -509,6 +509,23 @@ curl http://localhost:8080/api/v1/jobs/{job-id} \
 
 # List jobs
 curl http://localhost:8080/api/v1/jobs?status=completed&limit=10 \
+  -H "X-API-Key: your-api-key"
+
+# Agent registration
+curl -X POST http://localhost:8080/api/v1/agents/register \
+  -H "X-API-Key: your-api-key" \
+  -d '{"name":"agent-01","hostname":"node01","platform":"linux","architecture":"amd64","version":"1.0.0","capabilities":["cpu","memory","disk"]}'
+
+# Agent heartbeat
+curl -X PUT http://localhost:8080/api/v1/agents/{agent-id}/heartbeat \
+  -H "X-API-Key: your-api-key"
+
+# List agents
+curl http://localhost:8080/api/v1/agents?status=online \
+  -H "X-API-Key: your-api-key"
+
+# Agent stats
+curl http://localhost:8080/api/v1/agents/stats \
   -H "X-API-Key: your-api-key"
 
 # Database migrations (automatic on server start)
