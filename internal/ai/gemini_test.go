@@ -412,3 +412,148 @@ func TestGeminiProvider_Analyze_ContextCancellation(t *testing.T) {
 		t.Errorf("Analyze() error = %q, want context cancellation error", err.Error())
 	}
 }
+
+func TestGeminiProvider_AnalyzeStream(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	tests := []struct {
+		name         string
+		serverFunc   func(w http.ResponseWriter, r *http.Request)
+		expectChunks int
+		expectError  bool
+		expectDone   bool
+	}{
+		{
+			name: "successful streaming with multiple chunks",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.WriteHeader(http.StatusOK)
+
+				// Gemini uses SSE format like Anthropic
+				chunks := []string{
+					`data: {"candidates":[{"content":{"parts":[{"text":"System "}]}}]}`,
+					`data: {"candidates":[{"content":{"parts":[{"text":"is "}]}}]}`,
+					`data: {"candidates":[{"content":{"parts":[{"text":"healthy"}]}}]}`,
+					`data: [DONE]`,
+				}
+
+				for _, chunk := range chunks {
+					_, _ = w.Write([]byte(chunk + "\n\n"))
+					if f, ok := w.(http.Flusher); ok {
+						f.Flush()
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+			},
+			expectChunks: 4, // 3 content chunks + 1 done
+			expectError:  false,
+			expectDone:   true,
+		},
+		{
+			name: "streaming with empty content",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.WriteHeader(http.StatusOK)
+
+				chunks := []string{
+					`data: {"candidates":[{"content":{"parts":[{"text":"Test"}]}}]}`,
+					`data: [DONE]`,
+				}
+
+				for _, chunk := range chunks {
+					_, _ = w.Write([]byte(chunk + "\n\n"))
+					if f, ok := w.(http.Flusher); ok {
+						f.Flush()
+					}
+				}
+			},
+			expectChunks: 2,
+			expectError:  false,
+			expectDone:   true,
+		},
+		{
+			name: "http error status code",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(`{"error": {"message": "API key invalid"}}`))
+			},
+			expectChunks: 1, // Error chunk
+			expectError:  true,
+			expectDone:   false, // No done chunk on error
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(tt.serverFunc))
+			defer server.Close()
+
+			provider, err := NewGeminiProvider(&ProviderConfig{
+				APIKey: "test-key",
+			}, log)
+			if err != nil {
+				t.Fatalf("Failed to create provider: %v", err)
+			}
+
+			// Override endpoint to point to test server
+			// Gemini URL format includes model, so we need to strip that
+			provider.config.Endpoint = server.URL
+			provider.client = server.Client()
+
+			req := &AnalysisRequest{
+				Report: &diagnostics.Report{
+					Timestamp: time.Now(),
+					Duration:  100 * time.Millisecond,
+					Results:   []*diagnostics.CheckResult{},
+				},
+				SystemInfo: SystemInfo{Hostname: "test-host"},
+			}
+
+			ctx := context.Background()
+			ch, err := provider.AnalyzeStream(ctx, req)
+
+			if err != nil {
+				t.Fatalf("AnalyzeStream() unexpected error creating stream: %v", err)
+			}
+
+			// Collect all chunks
+			var chunks []StreamChunk
+			for chunk := range ch {
+				chunks = append(chunks, chunk)
+			}
+
+			if len(chunks) < tt.expectChunks {
+				t.Errorf("AnalyzeStream() got %d chunks, want at least %d", len(chunks), tt.expectChunks)
+			}
+
+			// Check for error chunk if expected
+			if tt.expectError {
+				foundError := false
+				for _, chunk := range chunks {
+					if chunk.Error != nil {
+						foundError = true
+						break
+					}
+				}
+				if !foundError {
+					t.Error("AnalyzeStream() expected error chunk, got none")
+				}
+			}
+
+			// Check for done chunk if expected
+			if tt.expectDone {
+				foundDone := false
+				for _, chunk := range chunks {
+					if chunk.Done {
+						foundDone = true
+						break
+					}
+				}
+				if !foundDone {
+					t.Error("AnalyzeStream() expected done chunk, got none")
+				}
+			}
+		})
+	}
+}

@@ -447,6 +447,287 @@ func TestAnthropicProvider_Analyze_ContextCancellation(t *testing.T) {
 	}
 }
 
+func TestAnthropicProvider_AnalyzeStream(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	tests := []struct {
+		name         string
+		serverFunc   func(w http.ResponseWriter, r *http.Request)
+		expectChunks int
+		expectError  bool
+		expectDone   bool
+	}{
+		{
+			name: "successful streaming with multiple chunks",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				// Verify request has stream=true
+				if r.Method != "POST" {
+					t.Errorf("Expected POST request, got %s", r.Method)
+				}
+
+				// Send SSE-formatted streaming response
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.WriteHeader(http.StatusOK)
+
+				// Send multiple content chunks
+				chunks := []string{
+					`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"System "}}`,
+					`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"is "}}`,
+					`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"healthy"}}`,
+					`data: {"type":"message_stop"}`,
+				}
+
+				for _, chunk := range chunks {
+					_, _ = w.Write([]byte(chunk + "\n\n"))
+					if f, ok := w.(http.Flusher); ok {
+						f.Flush()
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+			},
+			expectChunks: 4, // 3 text deltas + 1 final done
+			expectError:  false,
+			expectDone:   true,
+		},
+		{
+			name: "streaming with [DONE] marker",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.WriteHeader(http.StatusOK)
+
+				chunks := []string{
+					`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Test content"}}`,
+					`data: [DONE]`,
+				}
+
+				for _, chunk := range chunks {
+					_, _ = w.Write([]byte(chunk + "\n\n"))
+					if f, ok := w.(http.Flusher); ok {
+						f.Flush()
+					}
+				}
+			},
+			expectChunks: 1,
+			expectError:  false,
+			expectDone:   false, // [DONE] breaks without final chunk
+		},
+		{
+			name: "http error status code",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error": "bad request"}`))
+			},
+			expectChunks: 1, // Error chunk
+			expectError:  true,
+			expectDone:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(tt.serverFunc))
+			defer server.Close()
+
+			provider, err := NewAnthropicProvider(&ProviderConfig{
+				APIKey: "test-key",
+			}, log)
+			if err != nil {
+				t.Fatalf("Failed to create provider: %v", err)
+			}
+
+			provider.config.Endpoint = server.URL
+			provider.client = server.Client()
+
+			req := &AnalysisRequest{
+				Report: &diagnostics.Report{
+					Timestamp: time.Now(),
+					Duration:  100 * time.Millisecond,
+					Results:   []*diagnostics.CheckResult{},
+				},
+				SystemInfo: SystemInfo{Hostname: "test-host"},
+			}
+
+			ctx := context.Background()
+			ch, err := provider.AnalyzeStream(ctx, req)
+
+			if err != nil {
+				t.Fatalf("AnalyzeStream() unexpected error creating stream: %v", err)
+			}
+
+			// Collect all chunks
+			var chunks []StreamChunk
+			for chunk := range ch {
+				chunks = append(chunks, chunk)
+			}
+
+			if len(chunks) < tt.expectChunks {
+				t.Errorf("AnalyzeStream() got %d chunks, want at least %d", len(chunks), tt.expectChunks)
+			}
+
+			// Check for error chunk if expected
+			if tt.expectError {
+				foundError := false
+				for _, chunk := range chunks {
+					if chunk.Error != nil {
+						foundError = true
+						break
+					}
+				}
+				if !foundError {
+					t.Error("AnalyzeStream() expected error chunk, got none")
+				}
+			}
+
+			// Check for done chunk if expected
+			if tt.expectDone {
+				foundDone := false
+				for _, chunk := range chunks {
+					if chunk.Done {
+						foundDone = true
+						break
+					}
+				}
+				if !foundDone {
+					t.Error("AnalyzeStream() expected done chunk, got none")
+				}
+			}
+		})
+	}
+}
+
+func TestAnthropicProvider_AnalyzeStream_ContextCancellation(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	// Create server that streams slowly
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		// Stream slowly to allow cancellation
+		for i := 0; i < 10; i++ {
+			_, _ = w.Write([]byte(`data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"chunk"}}` + "\n\n"))
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+	}))
+	defer server.Close()
+
+	provider, err := NewAnthropicProvider(&ProviderConfig{
+		APIKey: "test-key",
+	}, log)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	provider.config.Endpoint = server.URL
+	provider.client = server.Client()
+
+	req := &AnalysisRequest{
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "test-host"},
+	}
+
+	// Create context that cancels quickly
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	ch, err := provider.AnalyzeStream(ctx, req)
+	if err != nil {
+		t.Fatalf("AnalyzeStream() unexpected error: %v", err)
+	}
+
+	// Stream should end due to context cancellation
+	chunks := 0
+	for range ch {
+		chunks++
+	}
+
+	// Should receive at least one chunk before cancellation
+	if chunks == 0 {
+		t.Error("AnalyzeStream() expected at least one chunk before cancellation")
+	}
+}
+
+func TestAnthropicProvider_CustomHeaders(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	customHeaderKey := "X-Custom-Header"
+	customHeaderValue := "test-value"
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify custom header is present
+		if got := r.Header.Get(customHeaderKey); got != customHeaderValue {
+			t.Errorf("Custom header %s = %q, want %q", customHeaderKey, got, customHeaderValue)
+		}
+
+		// Send valid response
+		resp := anthropicResponse{
+			ID:   "msg_123",
+			Type: "message",
+			Role: "assistant",
+			Content: []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}{
+				{
+					Type: "text",
+					Text: `{"summary": "OK", "overall_health": "healthy", "confidence": 0.9, "findings": [], "recommendations": []}`,
+				},
+			},
+			Model: "claude-sonnet-4-5-20250929",
+			Usage: struct {
+				InputTokens  int `json:"input_tokens"`
+				OutputTokens int `json:"output_tokens"`
+			}{
+				InputTokens:  10,
+				OutputTokens: 10,
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	provider, err := NewAnthropicProvider(&ProviderConfig{
+		APIKey: "test-key",
+		CustomHeaders: map[string]string{
+			customHeaderKey: customHeaderValue,
+		},
+	}, log)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	provider.config.Endpoint = server.URL
+	provider.client = server.Client()
+
+	req := &AnalysisRequest{
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "test-host"},
+	}
+
+	ctx := context.Background()
+	_, err = provider.Analyze(ctx, req)
+
+	if err != nil {
+		t.Errorf("Analyze() with custom headers error = %v", err)
+	}
+}
+
 // testLogWriter writes log output to test output
 type testLogWriter struct {
 	t *testing.T

@@ -635,3 +635,235 @@ func TestOpenRouterProvider_Analyze_ContextCancellation(t *testing.T) {
 		t.Errorf("Analyze() error = %q, want context cancellation error", err.Error())
 	}
 }
+
+func TestOpenRouterProvider_AnalyzeStream(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	tests := []struct {
+		name         string
+		serverFunc   func(w http.ResponseWriter, r *http.Request)
+		expectChunks int
+		expectError  bool
+		expectDone   bool
+	}{
+		{
+			name: "successful streaming with multiple chunks",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.WriteHeader(http.StatusOK)
+
+				// OpenRouter uses OpenAI-compatible SSE format
+				chunks := []string{
+					`data: {"id":"gen-123","object":"chat.completion.chunk","created":1694268190,"model":"anthropic/claude-sonnet-4.5","choices":[{"index":0,"delta":{"content":"System "},"finish_reason":null}]}`,
+					`data: {"id":"gen-123","object":"chat.completion.chunk","created":1694268190,"model":"anthropic/claude-sonnet-4.5","choices":[{"index":0,"delta":{"content":"is "},"finish_reason":null}]}`,
+					`data: {"id":"gen-123","object":"chat.completion.chunk","created":1694268190,"model":"anthropic/claude-sonnet-4.5","choices":[{"index":0,"delta":{"content":"healthy"},"finish_reason":null}]}`,
+					`data: {"id":"gen-123","object":"chat.completion.chunk","created":1694268190,"model":"anthropic/claude-sonnet-4.5","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+				}
+
+				for _, chunk := range chunks {
+					_, _ = w.Write([]byte(chunk + "\n\n"))
+					if f, ok := w.(http.Flusher); ok {
+						f.Flush()
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+			},
+			expectChunks: 4, // 3 content deltas + 1 finish
+			expectError:  false,
+			expectDone:   true,
+		},
+		{
+			name: "streaming with [DONE] marker",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.WriteHeader(http.StatusOK)
+
+				chunks := []string{
+					`data: {"id":"gen-123","object":"chat.completion.chunk","created":1694268190,"model":"anthropic/claude-sonnet-4.5","choices":[{"index":0,"delta":{"content":"Test"},"finish_reason":null}]}`,
+					`data: [DONE]`,
+				}
+
+				for _, chunk := range chunks {
+					_, _ = w.Write([]byte(chunk + "\n\n"))
+					if f, ok := w.(http.Flusher); ok {
+						f.Flush()
+					}
+				}
+			},
+			expectChunks: 2, // 1 content + 1 done
+			expectError:  false,
+			expectDone:   true,
+		},
+		{
+			name: "http error status code",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"error": {"message": "Invalid API key"}}`))
+			},
+			expectChunks: 1, // Error chunk
+			expectError:  true,
+			expectDone:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(tt.serverFunc))
+			defer server.Close()
+
+			provider, err := NewOpenRouterProvider(&ProviderConfig{
+				APIKey: "test-key",
+			}, log)
+			if err != nil {
+				t.Fatalf("Failed to create provider: %v", err)
+			}
+
+			provider.config.Endpoint = server.URL
+			provider.client = server.Client()
+
+			req := &AnalysisRequest{
+				Report: &diagnostics.Report{
+					Timestamp: time.Now(),
+					Duration:  100 * time.Millisecond,
+					Results:   []*diagnostics.CheckResult{},
+				},
+				SystemInfo: SystemInfo{Hostname: "test-host"},
+			}
+
+			ctx := context.Background()
+			ch, err := provider.AnalyzeStream(ctx, req)
+
+			if err != nil {
+				t.Fatalf("AnalyzeStream() unexpected error creating stream: %v", err)
+			}
+
+			// Collect all chunks
+			var chunks []StreamChunk
+			for chunk := range ch {
+				chunks = append(chunks, chunk)
+			}
+
+			if len(chunks) < tt.expectChunks {
+				t.Errorf("AnalyzeStream() got %d chunks, want at least %d", len(chunks), tt.expectChunks)
+			}
+
+			// Check for error chunk if expected
+			if tt.expectError {
+				foundError := false
+				for _, chunk := range chunks {
+					if chunk.Error != nil {
+						foundError = true
+						break
+					}
+				}
+				if !foundError {
+					t.Error("AnalyzeStream() expected error chunk, got none")
+				}
+			}
+
+			// Check for done chunk if expected
+			if tt.expectDone {
+				foundDone := false
+				for _, chunk := range chunks {
+					if chunk.Done {
+						foundDone = true
+						break
+					}
+				}
+				if !foundDone {
+					t.Error("AnalyzeStream() expected done chunk, got none")
+				}
+			}
+		})
+	}
+}
+
+func TestOpenRouterProvider_CustomHeaders(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	customHeaderKey := "X-Custom-Header"
+	customHeaderValue := "test-value"
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify custom header is present
+		if got := r.Header.Get(customHeaderKey); got != customHeaderValue {
+			t.Errorf("Custom header %s = %q, want %q", customHeaderKey, got, customHeaderValue)
+		}
+
+		// Send valid response
+		resp := openrouterResponse{
+			ID:      "gen-123",
+			Model:   "anthropic/claude-sonnet-4.5",
+			Object:  "chat.completion",
+			Created: 1694268190,
+			Choices: []struct {
+				Index   int `json:"index"`
+				Message struct {
+					Role      string `json:"role"`
+					Content   string `json:"content"`
+					Refusal   string `json:"refusal,omitempty"`
+					Reasoning string `json:"reasoning,omitempty"`
+				} `json:"message"`
+				FinishReason string `json:"finish_reason"`
+			}{
+				{
+					Index: 0,
+					Message: struct {
+						Role      string `json:"role"`
+						Content   string `json:"content"`
+						Refusal   string `json:"refusal,omitempty"`
+						Reasoning string `json:"reasoning,omitempty"`
+					}{
+						Role:    "assistant",
+						Content: `{"summary": "OK", "overall_health": "healthy", "confidence": 0.9, "findings": [], "recommendations": []}`,
+					},
+					FinishReason: "stop",
+				},
+			},
+			Usage: struct {
+				PromptTokens     int `json:"prompt_tokens"`
+				CompletionTokens int `json:"completion_tokens"`
+				TotalTokens      int `json:"total_tokens"`
+			}{
+				PromptTokens:     10,
+				CompletionTokens: 10,
+				TotalTokens:      20,
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenRouterProvider(&ProviderConfig{
+		APIKey: "test-key",
+		CustomHeaders: map[string]string{
+			customHeaderKey: customHeaderValue,
+		},
+	}, log)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	provider.config.Endpoint = server.URL
+	provider.client = server.Client()
+
+	req := &AnalysisRequest{
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "test-host"},
+	}
+
+	ctx := context.Background()
+	_, err = provider.Analyze(ctx, req)
+
+	if err != nil {
+		t.Errorf("Analyze() with custom headers error = %v", err)
+	}
+}

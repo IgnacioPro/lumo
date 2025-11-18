@@ -385,3 +385,144 @@ func TestOllamaProvider_Analyze_ContextCancellation(t *testing.T) {
 		t.Errorf("Analyze() error = %q, want context cancellation error", err.Error())
 	}
 }
+
+func TestOllamaProvider_AnalyzeStream(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	tests := []struct {
+		name         string
+		serverFunc   func(w http.ResponseWriter, r *http.Request)
+		expectChunks int
+		expectError  bool
+		expectDone   bool
+	}{
+		{
+			name: "successful streaming with multiple chunks",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+
+				// Ollama sends newline-delimited JSON (not SSE)
+				chunks := []string{
+					`{"model":"llama3.1:8b","created_at":"2024-01-01T00:00:00Z","message":{"role":"assistant","content":"System "},"done":false}`,
+					`{"model":"llama3.1:8b","created_at":"2024-01-01T00:00:00Z","message":{"role":"assistant","content":"is "},"done":false}`,
+					`{"model":"llama3.1:8b","created_at":"2024-01-01T00:00:00Z","message":{"role":"assistant","content":"healthy"},"done":false}`,
+					`{"model":"llama3.1:8b","created_at":"2024-01-01T00:00:00Z","message":{"role":"assistant","content":""},"done":true}`,
+				}
+
+				for _, chunk := range chunks {
+					_, _ = w.Write([]byte(chunk + "\n"))
+					if f, ok := w.(http.Flusher); ok {
+						f.Flush()
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+			},
+			expectChunks: 4, // 3 content chunks + 1 done
+			expectError:  false,
+			expectDone:   true,
+		},
+		{
+			name: "streaming with done flag",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+
+				chunks := []string{
+					`{"model":"llama3.1:8b","created_at":"2024-01-01T00:00:00Z","message":{"role":"assistant","content":"Test"},"done":false}`,
+					`{"model":"llama3.1:8b","created_at":"2024-01-01T00:00:00Z","message":{"role":"assistant","content":""},"done":true}`,
+				}
+
+				for _, chunk := range chunks {
+					_, _ = w.Write([]byte(chunk + "\n"))
+					if f, ok := w.(http.Flusher); ok {
+						f.Flush()
+					}
+				}
+			},
+			expectChunks: 2,
+			expectError:  false,
+			expectDone:   true,
+		},
+		{
+			name: "http error status code",
+			serverFunc: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"error": "Internal server error"}`))
+			},
+			expectChunks: 1, // Error chunk
+			expectError:  true,
+			expectDone:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(tt.serverFunc))
+			defer server.Close()
+
+			provider, err := NewOllamaProvider(&ProviderConfig{}, log)
+			if err != nil {
+				t.Fatalf("Failed to create provider: %v", err)
+			}
+
+			provider.config.Endpoint = server.URL
+			provider.client = server.Client()
+
+			req := &AnalysisRequest{
+				Report: &diagnostics.Report{
+					Timestamp: time.Now(),
+					Duration:  100 * time.Millisecond,
+					Results:   []*diagnostics.CheckResult{},
+				},
+				SystemInfo: SystemInfo{Hostname: "test-host"},
+			}
+
+			ctx := context.Background()
+			ch, err := provider.AnalyzeStream(ctx, req)
+
+			if err != nil {
+				t.Fatalf("AnalyzeStream() unexpected error creating stream: %v", err)
+			}
+
+			// Collect all chunks
+			var chunks []StreamChunk
+			for chunk := range ch {
+				chunks = append(chunks, chunk)
+			}
+
+			if len(chunks) < tt.expectChunks {
+				t.Errorf("AnalyzeStream() got %d chunks, want at least %d", len(chunks), tt.expectChunks)
+			}
+
+			// Check for error chunk if expected
+			if tt.expectError {
+				foundError := false
+				for _, chunk := range chunks {
+					if chunk.Error != nil {
+						foundError = true
+						break
+					}
+				}
+				if !foundError {
+					t.Error("AnalyzeStream() expected error chunk, got none")
+				}
+			}
+
+			// Check for done chunk if expected
+			if tt.expectDone {
+				foundDone := false
+				for _, chunk := range chunks {
+					if chunk.Done {
+						foundDone = true
+						break
+					}
+				}
+				if !foundDone {
+					t.Error("AnalyzeStream() expected done chunk, got none")
+				}
+			}
+		})
+	}
+}
