@@ -1,7 +1,7 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-18 | **Version:** 1.0.0
-> **Status:** Phases 1-6 Complete | **Phase 7 (API Server) 100% Complete** ✅ | 84 Go files, 50.4% test coverage
+> **Last Updated:** 2025-11-18 | **Version:** 1.0.1
+> **Status:** Phases 1-7 Complete ✅ | CI Green ✅ | 35+ API files, 4,800+ LOC, 50.4% test coverage
 
 **For detailed examples and tutorials, see [DEVELOPMENT.md](DEVELOPMENT.md)**
 
@@ -43,8 +43,8 @@ lumo/
 │   │   └── formatters/    # text, JSON, TOON
 │   ├── ai/                # 5 providers: Anthropic, OpenAI, Ollama, Gemini, OpenRouter
 │   ├── remediation/       # Actions, executor, approval, audit
-│   ├── api/               # ✅ (Phase 7) API server - 75% complete
-│   │   ├── handlers/      # diagnostics, health, jobs
+│   ├── api/               # ✅ (Phase 7) API server - 100% complete
+│   │   ├── handlers/      # diagnostics, health, jobs, agents
 │   │   ├── middleware/    # auth, logging, recovery, cors
 │   │   ├── response/      # response utilities
 │   │   ├── router.go      # Chi router with routes
@@ -341,13 +341,23 @@ systemctl enable --now lumo-agent
 - ✅ Agent registration system (register, heartbeat, list, get, delete, stats)
 - ✅ Repository pattern for database operations (Job, APIKey, Agent)
 - ✅ docker-compose.yaml for local development
-- ✅ Integration tests (api_integration_test.go)
+- ✅ Integration tests (api_integration_test.go) - skipped pending full DB setup
 - ✅ OpenAPI 3.0 specification (api/openapi.yaml)
 - ✅ API documentation (api/README.md)
+- ✅ Comprehensive testing guide (`REPORTS/phase-7-testing-guide/`)
+  - Complete testing documentation (TESTING_GUIDE.md)
+  - Automated test script (test-agent-api.sh)
+  - API reference (API_REFERENCE.md)
+  - OpenAPI 3.0 spec (openapi.yaml)
+- ✅ GitHub CI passing (all checks green)
+  - Fixed go.mod dependencies
+  - Fixed code formatting (gofmt)
+  - Fixed config tests
+  - All tests passing
 - ⏳ JWT authentication (deferred to Phase 12 - Security Hardening)
 - ⏳ mTLS support (deferred to Phase 12 - Security Hardening)
 - ⏳ WebSocket support (deferred to Phase 13 - Production Readiness)
-- **Status:** 33 files (+7), 4,336 LOC (+~300) | **Phase 8 ready to start!**
+- **Status:** 35+ files, 4,800+ LOC | **Phase 8 ready to start!**
 
 ### 🚧 In Progress - Agent Deployment (Weeks 4-16)
 
@@ -485,7 +495,7 @@ formatter := formatters.NewToonFormatter()     # TOON
 builder := ai.NewPromptBuilder()               # AI (TOON enabled)
 ```
 
-### API Server Mode (Phase 7 - 75% Complete)
+### API Server Mode (Phase 7 - 100% Complete) ✅
 
 ```bash
 # Start development environment (PostgreSQL + Redis)
