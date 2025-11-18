@@ -9,14 +9,15 @@ import (
 
 // Config represents the complete Lumo configuration
 type Config struct {
-	SSH         SSHConfig         `mapstructure:"ssh"`
-	AI          AIConfig          `mapstructure:"ai"`
-	Logging     LoggingConfig     `mapstructure:"logging"`
-	API         APIConfig         `mapstructure:"api"`
-	Diagnostics DiagnosticsConfig `mapstructure:"diagnostics"`
-	Database    DatabaseConfig    `mapstructure:"database"`
-	Cache       CacheConfig       `mapstructure:"cache"`
-	Agent       AgentConfig       `mapstructure:"agent"`
+	SSH           SSHConfig           `mapstructure:"ssh"`
+	AI            AIConfig            `mapstructure:"ai"`
+	Logging       LoggingConfig       `mapstructure:"logging"`
+	API           APIConfig           `mapstructure:"api"`
+	Diagnostics   DiagnosticsConfig   `mapstructure:"diagnostics"`
+	Database      DatabaseConfig      `mapstructure:"database"`
+	Cache         CacheConfig         `mapstructure:"cache"`
+	Agent         AgentConfig         `mapstructure:"agent"`
+	Notifications NotificationsConfig `mapstructure:"notifications"`
 }
 
 // SSHConfig contains SSH connection settings
@@ -177,6 +178,32 @@ type KubernetesAgentConfig struct {
 	PodName   string `mapstructure:"pod_name"`  // Pod name
 }
 
+// NotificationsConfig contains notification system settings
+type NotificationsConfig struct {
+	Enabled   bool               `mapstructure:"enabled"`   // Enable notifications
+	Notifiers []NotifierConfig   `mapstructure:"notifiers"` // List of configured notifiers
+}
+
+// NotifierConfig contains configuration for a notification provider
+type NotifierConfig struct {
+	Name       string            `mapstructure:"name"`        // User-friendly name
+	Type       string            `mapstructure:"type"`        // slack|telegram|webhook|email
+	Enabled    bool              `mapstructure:"enabled"`     // Enable this notifier
+	WebhookURL string            `mapstructure:"webhook_url"` // Slack/Webhook URL
+	BotToken   string            `mapstructure:"bot_token"`   // Telegram bot token
+	ChatID     string            `mapstructure:"chat_id"`     // Telegram chat ID
+	Headers    map[string]string `mapstructure:"headers"`     // Custom HTTP headers (webhook)
+	Method     string            `mapstructure:"method"`      // HTTP method (webhook)
+	SMTPHost   string            `mapstructure:"smtp_host"`   // SMTP server host
+	SMTPPort   int               `mapstructure:"smtp_port"`   // SMTP server port
+	SMTPUser   string            `mapstructure:"smtp_user"`   // SMTP username
+	SMTPPass   string            `mapstructure:"smtp_pass"`   // SMTP password (prefer env var)
+	From       string            `mapstructure:"from"`        // Email sender
+	To         []string          `mapstructure:"to"`          // Email recipients
+	UseTLS     bool              `mapstructure:"use_tls"`     // Use TLS (email)
+	Timeout    int               `mapstructure:"timeout"`     // Request timeout in seconds
+}
+
 // DefaultConfig returns a Config with sensible defaults
 func DefaultConfig() *Config {
 	return &Config{
@@ -308,6 +335,10 @@ func DefaultConfig() *Config {
 				NodeName:  "",
 				PodName:   "",
 			},
+		},
+		Notifications: NotificationsConfig{
+			Enabled:   false,      // Disabled by default
+			Notifiers: []NotifierConfig{}, // No notifiers configured by default
 		},
 	}
 }
@@ -517,6 +548,56 @@ func (c *Config) Validate() error {
 		}
 		if !validScopes[c.Agent.Kubernetes.Scope] {
 			return fmt.Errorf("invalid agent kubernetes scope: %s (must be node or cluster)", c.Agent.Kubernetes.Scope)
+		}
+	}
+
+	// Notifications validation (only if enabled)
+	if c.Notifications.Enabled {
+		for i, notifier := range c.Notifications.Notifiers {
+			// Validate notifier type
+			validTypes := map[string]bool{
+				"slack":    true,
+				"telegram": true,
+				"webhook":  true,
+				"email":    true,
+			}
+			if !validTypes[notifier.Type] {
+				return fmt.Errorf("notifications.notifiers[%d]: invalid type %s (must be slack, telegram, webhook, or email)", i, notifier.Type)
+			}
+
+			// Skip validation if notifier is disabled
+			if !notifier.Enabled {
+				continue
+			}
+
+			// Type-specific validation
+			switch notifier.Type {
+			case "slack":
+				if notifier.WebhookURL == "" {
+					return fmt.Errorf("notifications.notifiers[%d]: slack requires webhook_url", i)
+				}
+			case "telegram":
+				if notifier.BotToken == "" {
+					return fmt.Errorf("notifications.notifiers[%d]: telegram requires bot_token", i)
+				}
+				if notifier.ChatID == "" {
+					return fmt.Errorf("notifications.notifiers[%d]: telegram requires chat_id", i)
+				}
+			case "webhook":
+				if notifier.WebhookURL == "" {
+					return fmt.Errorf("notifications.notifiers[%d]: webhook requires webhook_url", i)
+				}
+			case "email":
+				if notifier.SMTPHost == "" {
+					return fmt.Errorf("notifications.notifiers[%d]: email requires smtp_host", i)
+				}
+				if notifier.From == "" {
+					return fmt.Errorf("notifications.notifiers[%d]: email requires from address", i)
+				}
+				if len(notifier.To) == 0 {
+					return fmt.Errorf("notifications.notifiers[%d]: email requires at least one recipient", i)
+				}
+			}
 		}
 	}
 
