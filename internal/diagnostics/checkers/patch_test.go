@@ -245,10 +245,10 @@ func TestPatchChecker_ParseAptOutput(t *testing.T) {
 	checker := NewPatchChecker()
 
 	tests := []struct {
-		name               string
-		output             string
-		wantUpdates        []string
-		wantSecurityCount  int
+		name              string
+		output            string
+		wantUpdates       []string
+		wantSecurityCount int
 	}{
 		{
 			name: "with security updates",
@@ -260,8 +260,8 @@ nginx/jammy-security 1.18.0-0ubuntu1.4 amd64 [upgradable from: 1.18.0-0ubuntu1.3
 			wantSecurityCount: 2, // curl and nginx have "security" in their lines
 		},
 		{
-			name: "no updates",
-			output: `Listing...`,
+			name:              "no updates",
+			output:            `Listing...`,
 			wantUpdates:       []string{},
 			wantSecurityCount: 0,
 		},
@@ -393,8 +393,8 @@ nginx-1.24.0-r0 [upgradable from: nginx-1.22.1-r0]`,
 			wantUpdates: []string{},
 		},
 		{
-			name: "single update",
-			output: `busybox-1.36.0-r9 [upgradable from: busybox-1.36.0-r8]`,
+			name:        "single update",
+			output:      `busybox-1.36.0-r9 [upgradable from: busybox-1.36.0-r8]`,
 			wantUpdates: []string{"busybox"},
 		},
 	}
@@ -447,8 +447,8 @@ systemd 253.4-1 -> 253.5-1`,
 			wantUpdates: []string{},
 		},
 		{
-			name: "single update",
-			output: `firefox 114.0-1 -> 114.0.1-1`,
+			name:        "single update",
+			output:      `firefox 114.0-1 -> 114.0.1-1`,
 			wantUpdates: []string{"firefox"},
 		},
 	}
@@ -598,9 +598,9 @@ vim/jammy-updates 2:8.2.3995-1ubuntu2.12 amd64 [upgradable from: 2:8.2.3995-1ubu
 
 		executor := &mockExecutor{
 			responses: map[string]mockResponse{
-				"cat /etc/os-release":    {stdout: osReleaseContent, exitCode: 0},
-				"apt-get update":         {stdout: "", exitCode: 0},
-				"apt list --upgradable":  {stdout: aptOutput, exitCode: 0},
+				"cat /etc/os-release":   {stdout: osReleaseContent, exitCode: 0},
+				"apt-get update":        {stdout: "", exitCode: 0},
+				"apt list --upgradable": {stdout: aptOutput, exitCode: 0},
 			},
 		}
 

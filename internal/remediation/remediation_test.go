@@ -322,13 +322,13 @@ type mockAction struct {
 	category ActionCategory
 }
 
-func (m *mockAction) ID() string                       { return "mock-action" }
-func (m *mockAction) Name() string                     { return "Mock Action" }
-func (m *mockAction) Description() string              { return "Mock description" }
-func (m *mockAction) Category() ActionCategory         { return m.category }
-func (m *mockAction) Risk() RiskLevel                  { return RiskSafe }
-func (m *mockAction) IsReversible() bool               { return true }
-func (m *mockAction) EstimateImpact() string           { return "None" }
+func (m *mockAction) ID() string               { return "mock-action" }
+func (m *mockAction) Name() string             { return "Mock Action" }
+func (m *mockAction) Description() string      { return "Mock description" }
+func (m *mockAction) Category() ActionCategory { return m.category }
+func (m *mockAction) Risk() RiskLevel          { return RiskSafe }
+func (m *mockAction) IsReversible() bool       { return true }
+func (m *mockAction) EstimateImpact() string   { return "None" }
 func (m *mockAction) Validate(ctx context.Context, executor diagnostics.CommandExecutor) error {
 	return nil
 }

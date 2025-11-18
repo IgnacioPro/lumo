@@ -217,7 +217,7 @@ func TestPortsChecker_IsPublicAddress(t *testing.T) {
 	checker := NewPortsChecker(nil)
 
 	tests := []struct {
-		addr   string
+		addr     string
 		isPublic bool
 	}{
 		{"0.0.0.0", true},
@@ -522,7 +522,7 @@ tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      
 
 		executor := &mockExecutor{
 			responses: map[string]mockResponse{
-				"ss -tlnp":      {stdout: "", exitCode: 1},  // ss fails
+				"ss -tlnp":      {stdout: "", exitCode: 1}, // ss fails
 				"netstat -tlnp": {stdout: netstatOutput, exitCode: 0},
 			},
 		}
@@ -591,7 +591,7 @@ func TestPortsChecker_ParseSSOutput_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("malformed line", func(t *testing.T) {
-		output := "LISTEN 0 128"  // Too few fields
+		output := "LISTEN 0 128" // Too few fields
 		ports, err := checker.parseSSOutput(output)
 		if err != nil {
 			t.Errorf("parseSSOutput(malformed) unexpected error: %v", err)
