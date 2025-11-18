@@ -11,6 +11,7 @@ import (
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/ignacio/lumo/internal/diagnostics/checkers"
+	"github.com/ignacio/lumo/internal/messaging"
 	"github.com/sirupsen/logrus"
 )
 
@@ -30,6 +31,7 @@ type Agent struct {
 	scheduler   *Scheduler
 	healthCheck *HealthCheck
 	metrics     *Metrics
+	publisher   messaging.Publisher // Phase 11: Messaging integration
 
 	stopCh chan struct{}
 }
@@ -59,6 +61,13 @@ func New(cfg *config.Config, logger *logrus.Logger) (*Agent, error) {
 	// Create scheduler
 	scheduler := NewScheduler(logger)
 
+	// Create messaging publisher (Phase 11)
+	msgCfg := messaging.FromAgentConfig(&cfg.Agent.Messaging)
+	publisher, err := messaging.NewPublisher(msgCfg, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create messaging publisher: %w", err)
+	}
+
 	// Create agent
 	agent := &Agent{
 		ID:        uuid.New(),
@@ -70,6 +79,7 @@ func New(cfg *config.Config, logger *logrus.Logger) (*Agent, error) {
 		reporter:  reporter,
 		cache:     cache,
 		scheduler: scheduler,
+		publisher: publisher,
 		stopCh:    make(chan struct{}),
 	}
 
@@ -134,6 +144,13 @@ func (a *Agent) Stop() error {
 
 	// Stop scheduler
 	a.scheduler.Stop()
+
+	// Close messaging publisher (Phase 11)
+	if a.publisher != nil {
+		if err := a.publisher.Close(); err != nil {
+			a.logger.WithError(err).Warn("Failed to close messaging publisher")
+		}
+	}
 
 	// Stop health check server
 	if err := a.healthCheck.Stop(); err != nil {
@@ -351,6 +368,24 @@ func (a *Agent) runDiagnostics(ctx context.Context) error {
 		}
 	}
 	a.metrics.RecordDiagnostic("success", time.Since(start), "all")
+
+	// Publish diagnostic results to messaging system (Phase 11)
+	if a.cfg.Agent.Messaging.Enabled && a.publisher != nil {
+		msg := messaging.NewMessage(messaging.TopicDiagnostics, map[string]interface{}{
+			"report":   report,
+			"checks":   a.cfg.Agent.EnabledChecks,
+			"format":   a.cfg.Agent.ReportFormat,
+			"duration": time.Since(start).Seconds(),
+		})
+		msg.AgentID = a.ID.String()
+		msg.Hostname = a.Hostname
+
+		if err := a.publisher.Publish(ctx, msg); err != nil {
+			a.logger.WithError(err).Warn("Failed to publish diagnostic results to messaging system")
+		} else {
+			a.logger.Debug("Published diagnostic results to messaging system")
+		}
+	}
 
 	// Try to submit results to API
 	if a.reporter.IsAvailable() {
