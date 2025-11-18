@@ -17,6 +17,10 @@ import (
 // unlike Anthropic/OpenAI which enforce strict endpoint validation for security.
 // The HTTP provider details are tested separately in internal/ai package tests.
 func TestRunAIAnalysis_Ollama(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	// Create mock Ollama server
 	mockResponse := map[string]interface{}{
 		"model":      "llama3.1:8b",
@@ -89,6 +93,10 @@ func TestRunAIAnalysis_InvalidProvider(t *testing.T) {
 
 // TestRunAIAnalysis_WithFocusAreas tests AI analysis with focus areas using Ollama
 func TestRunAIAnalysis_WithFocusAreas(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	// Create mock Ollama server that captures the request
 	var receivedRequest map[string]interface{}
 
