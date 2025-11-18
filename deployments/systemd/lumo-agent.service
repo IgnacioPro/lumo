@@ -1,0 +1,72 @@
+[Unit]
+Description=Lumo Agent - Intelligent SRE/DevOps Automation Agent
+Documentation=https://github.com/ignacio/lumo
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lumo-agent
+Group=lumo-agent
+
+# Binary and configuration
+ExecStart=/usr/local/bin/lumo-agent
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+
+# Working directory and configuration
+WorkingDirectory=/var/lib/lumo-agent
+Environment="LUMO_CONFIG_FILE=/etc/lumo-agent/config.yaml"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=lumo-agent
+
+# Security Hardening - Filesystem
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/lumo-agent /var/log/lumo-agent
+ReadOnlyPaths=/etc/lumo-agent
+NoNewPrivileges=true
+
+# Security Hardening - Process
+PrivateDevices=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+# Minimal capabilities for diagnostics
+# CAP_NET_RAW: for network diagnostics (ping, traceroute)
+# CAP_SYS_PTRACE: for process monitoring
+# CAP_DAC_READ_SEARCH: for reading system files
+CapabilityBoundingSet=CAP_NET_RAW CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
+AmbientCapabilities=CAP_NET_RAW CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
+
+# System call filtering
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=512
+TasksMax=512
+
+# Memory limits (adjust based on workload)
+MemoryMax=512M
+MemoryHigh=384M
+
+# CPU limits (adjust based on workload)
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target
