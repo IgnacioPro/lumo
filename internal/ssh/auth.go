@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
@@ -231,6 +232,7 @@ func getHostKeyCallback(config *ClientConfig) (ssh.HostKeyCallback, error) {
 	// If strict host key checking is disabled, use insecure callback
 	if !config.StrictHostKeyChecking {
 		fmt.Fprintf(os.Stderr, "⚠️  WARNING: SSH host key verification is DISABLED. Connections are vulnerable to MITM attacks!\n")
+		fmt.Fprintf(os.Stderr, "⚠️  WARNING: Set strict_host_key_checking: true in config for production use!\n")
 		return ssh.InsecureIgnoreHostKey(), nil
 	}
 
@@ -240,10 +242,20 @@ func getHostKeyCallback(config *ClientConfig) (ssh.HostKeyCallback, error) {
 		return ssh.InsecureIgnoreHostKey(), nil
 	}
 
+	// Expand home directory if needed
+	knownHostsPath := config.KnownHostsPath
+	if knownHostsPath[0] == '~' {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get home directory: %w", err)
+		}
+		knownHostsPath = filepath.Join(home, knownHostsPath[1:])
+	}
+
 	// Use known_hosts file for host key verification
-	callback, err := knownhosts.New(config.KnownHostsPath)
+	callback, err := knownhosts.New(knownHostsPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load known_hosts file %s: %w", config.KnownHostsPath, err)
+		return nil, fmt.Errorf("failed to load known_hosts file %s: %w", knownHostsPath, err)
 	}
 
 	return callback, nil

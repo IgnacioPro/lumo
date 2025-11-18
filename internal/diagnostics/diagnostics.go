@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -152,6 +153,14 @@ func (r *Runner) RegisterCheckers(checkers ...Checker) {
 
 // RunAll executes all registered checks and returns a report
 func (r *Runner) RunAll(ctx context.Context) (*Report, error) {
+	// Generate unique session ID for this diagnostic run
+	sessionID := uuid.New().String()
+
+	// Create structured logger with session ID
+	sessionLogger := r.logger.WithFields(logrus.Fields{
+		"session_id": sessionID,
+	})
+
 	r.mu.RLock()
 	checksToRun := r.getChecksToRun()
 	r.mu.RUnlock()
@@ -160,7 +169,7 @@ func (r *Runner) RunAll(ctx context.Context) (*Report, error) {
 		return nil, fmt.Errorf("no checks registered")
 	}
 
-	r.logger.Infof("Running %d diagnostic checks (parallel: %v)", len(checksToRun), r.config.Parallel)
+	sessionLogger.Infof("Starting diagnostic session with %d checks (parallel: %v)", len(checksToRun), r.config.Parallel)
 
 	startTime := time.Now()
 
@@ -175,13 +184,19 @@ func (r *Runner) RunAll(ctx context.Context) (*Report, error) {
 	duration := time.Since(startTime)
 
 	report := &Report{
+		SessionID: sessionID,
 		Timestamp: startTime,
 		Duration:  duration,
 		Results:   results,
 		Summary:   generateSummary(results),
+		Metadata: map[string]interface{}{
+			"session_id": sessionID,
+			"parallel":   r.config.Parallel,
+			"hostname":   "", // Can be set by caller
+		},
 	}
 
-	r.logger.Infof("Diagnostics completed in %v: %d checks, %d OK, %d warnings, %d critical, %d errors",
+	sessionLogger.Infof("Diagnostic session completed in %v: %d checks, %d OK, %d warnings, %d critical, %d errors",
 		duration,
 		report.Summary.TotalChecks,
 		report.Summary.OKCount,

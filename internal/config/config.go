@@ -126,8 +126,8 @@ func DefaultConfig() *Config {
 			KeepAlive:             30 * time.Second,
 			MaxRetries:            3,
 			RetryInterval:         5 * time.Second,
-			KnownHostsPath:        "", // Will use default ~/.ssh/known_hosts
-			StrictHostKeyChecking: false,
+			KnownHostsPath:        "~/.ssh/known_hosts", // Default known_hosts path
+			StrictHostKeyChecking: true,                 // Enable by default for security
 			PreferredAuthMethods:  []string{"agent", "key", "password", "interactive"},
 			CommandTimeout:        5 * time.Minute,
 			DefaultKeyPath:        "", // Will auto-discover in ~/.ssh/

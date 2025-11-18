@@ -193,7 +193,7 @@ func runFix(cmd *cobra.Command, args []string) error {
 
 	// Run diagnostics to detect issues
 	log.Info("Running diagnostic checks to detect issues...")
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(getRootContext(), 2*time.Minute)
 	defer cancel()
 
 	report, err := runner.RunAll(ctx)

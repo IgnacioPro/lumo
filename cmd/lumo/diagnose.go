@@ -210,7 +210,7 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 
 	// Run diagnostics
 	log.Info("Running diagnostic checks...")
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(getRootContext(), 2*time.Minute)
 	defer cancel()
 
 	report, err := runner.RunAll(ctx)
@@ -321,7 +321,7 @@ func runAIAnalysis(cfg *config.Config, report *diagnostics.Report, hostname stri
 	}
 
 	// Check provider health
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(getRootContext(), 10*time.Second)
 	defer cancel()
 
 	if err := provider.Health(ctx); err != nil {
@@ -339,7 +339,7 @@ func runAIAnalysis(cfg *config.Config, report *diagnostics.Report, hostname stri
 	}
 
 	// Run analysis
-	analysisCtx, analysisCancel := context.WithTimeout(context.Background(), cfg.AI.Timeout)
+	analysisCtx, analysisCancel := context.WithTimeout(getRootContext(), cfg.AI.Timeout)
 	defer analysisCancel()
 
 	return provider.Analyze(analysisCtx, req)

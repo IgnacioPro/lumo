@@ -66,6 +66,9 @@ const (
 
 // Report contains the complete diagnostic report
 type Report struct {
+	// SessionID is a unique identifier for this diagnostic session
+	SessionID string `json:"session_id"`
+
 	// Timestamp when the diagnostics were run
 	Timestamp time.Time `json:"timestamp"`
 
