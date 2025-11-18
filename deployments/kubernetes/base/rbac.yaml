@@ -1,0 +1,177 @@
+---
+# ServiceAccount for Lumo Agent
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lumo-agent
+  namespace: lumo-system
+  labels:
+    app.kubernetes.io/name: lumo-agent
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: lumo
+
+---
+# ClusterRole for read-only monitoring
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lumo-agent-reader
+  labels:
+    app.kubernetes.io/name: lumo-agent
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: lumo
+rules:
+  # Node monitoring (required for node-level diagnostics)
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - nodes/status
+      - nodes/metrics
+    verbs: ["get", "list", "watch"]
+
+  # Pod monitoring
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/status
+      - pods/log
+    verbs: ["get", "list", "watch"]
+
+  # Service monitoring
+  - apiGroups: [""]
+    resources:
+      - services
+      - endpoints
+    verbs: ["get", "list", "watch"]
+
+  # ConfigMap and Secret monitoring (for configuration audits)
+  - apiGroups: [""]
+    resources:
+      - configmaps
+      - secrets
+    verbs: ["get", "list"]
+
+  # PersistentVolume monitoring
+  - apiGroups: [""]
+    resources:
+      - persistentvolumes
+      - persistentvolumeclaims
+    verbs: ["get", "list", "watch"]
+
+  # Event monitoring
+  - apiGroups: [""]
+    resources:
+      - events
+    verbs: ["get", "list", "watch"]
+
+  # Deployment monitoring
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - daemonsets
+      - statefulsets
+      - replicasets
+    verbs: ["get", "list", "watch"]
+
+  # Job monitoring
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch"]
+
+  # NetworkPolicy monitoring
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - networkpolicies
+    verbs: ["get", "list", "watch"]
+
+  # Ingress monitoring
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+    verbs: ["get", "list", "watch"]
+
+  # Metrics access (if metrics-server is installed)
+  - apiGroups: ["metrics.k8s.io"]
+    resources:
+      - nodes
+      - pods
+    verbs: ["get", "list"]
+
+---
+# ClusterRole for remediation (optional, controlled by configuration)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lumo-agent-remediator
+  labels:
+    app.kubernetes.io/name: lumo-agent
+    app.kubernetes.io/component: remediation
+    app.kubernetes.io/part-of: lumo
+rules:
+  # Pod remediation (restart, delete)
+  - apiGroups: [""]
+    resources:
+      - pods
+    verbs: ["delete"]
+
+  # Deployment scaling and updates
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - deployments/scale
+      - statefulsets
+      - statefulsets/scale
+    verbs: ["patch", "update"]
+
+  # ConfigMap updates
+  - apiGroups: [""]
+    resources:
+      - configmaps
+    verbs: ["patch", "update"]
+
+  # Event creation (for audit logging)
+  - apiGroups: [""]
+    resources:
+      - events
+    verbs: ["create", "patch"]
+
+---
+# ClusterRoleBinding for read-only monitoring
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: lumo-agent-reader-binding
+  labels:
+    app.kubernetes.io/name: lumo-agent
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: lumo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lumo-agent-reader
+subjects:
+  - kind: ServiceAccount
+    name: lumo-agent
+    namespace: lumo-system
+
+---
+# ClusterRoleBinding for remediation (commented out by default for security)
+# Uncomment only if auto-remediation is required
+# apiVersion: rbac.authorization.k8s.io/v1
+# kind: ClusterRoleBinding
+# metadata:
+#   name: lumo-agent-remediator-binding
+#   labels:
+#     app.kubernetes.io/name: lumo-agent
+#     app.kubernetes.io/component: remediation
+#     app.kubernetes.io/part-of: lumo
+# roleRef:
+#   apiGroup: rbac.authorization.k8s.io
+#   kind: ClusterRole
+#   name: lumo-agent-remediator
+# subjects:
+#   - kind: ServiceAccount
+#     name: lumo-agent
+#     namespace: lumo-system

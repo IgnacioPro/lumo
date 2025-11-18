@@ -1,0 +1,77 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+Lumo Agent has been deployed to namespace: {{ include "lumo-agent.namespace" . }}
+
+Components deployed:
+{{- if .Values.daemonset.enabled }}
+  ✓ DaemonSet (per-node monitoring)
+{{- end }}
+{{- if .Values.deployment.enabled }}
+  ✓ Deployment (cluster-wide monitoring)
+{{- end }}
+{{- if .Values.rbac.create }}
+  ✓ RBAC (ServiceAccount, ClusterRole, ClusterRoleBinding)
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+  ✓ NetworkPolicy
+{{- end }}
+
+To check the status of your Lumo agents:
+
+{{- if .Values.daemonset.enabled }}
+  # Check DaemonSet pods
+  kubectl get pods -n {{ include "lumo-agent.namespace" . }} -l app.kubernetes.io/component=node-monitor
+
+  # View logs from a node agent
+  kubectl logs -n {{ include "lumo-agent.namespace" . }} -l app.kubernetes.io/component=node-monitor --tail=50
+{{- end }}
+
+{{- if .Values.deployment.enabled }}
+  # Check Deployment pods
+  kubectl get pods -n {{ include "lumo-agent.namespace" . }} -l app.kubernetes.io/component=cluster-monitor
+
+  # View logs from cluster monitor
+  kubectl logs -n {{ include "lumo-agent.namespace" . }} -l app.kubernetes.io/component=cluster-monitor --tail=50
+{{- end }}
+
+# Check agent health
+kubectl get pods -n {{ include "lumo-agent.namespace" . }} -o wide
+
+# Access health endpoint
+kubectl port-forward -n {{ include "lumo-agent.namespace" . }} service/lumo-agent-cluster 8080:8080
+curl http://localhost:8080/health
+
+# Access Prometheus metrics
+kubectl port-forward -n {{ include "lumo-agent.namespace" . }} service/lumo-agent-cluster 9090:9090
+curl http://localhost:9090/metrics
+
+Configuration:
+  Mode: {{ .Values.agent.mode }}
+  Schedule: {{ .Values.agent.schedule }}
+  API Endpoint: {{ .Values.agent.apiEndpoint }}
+  Enabled Checks: {{ .Values.agent.enabledChecks }}
+  Report Format: {{ .Values.agent.reportFormat }}
+
+{{- if not .Values.secrets.create }}
+
+⚠️  IMPORTANT: You need to create the secret '{{ .Values.secrets.name }}' manually:
+
+  kubectl create secret generic {{ .Values.secrets.name }} \
+    --namespace={{ include "lumo-agent.namespace" . }} \
+    --from-literal=agent-token="YOUR_JWT_TOKEN" \
+    --from-literal=anthropic-api-key="YOUR_API_KEY"
+
+Or use an external secret manager (recommended for production).
+{{- end }}
+
+{{- if .Values.rbac.enableRemediation }}
+
+⚠️  WARNING: Remediation permissions are ENABLED.
+This grants write access to Kubernetes resources. Ensure this is intentional.
+{{- end }}
+
+For more information, visit:
+  Documentation: https://github.com/ignacio/lumo
+  Issues: https://github.com/ignacio/lumo/issues
