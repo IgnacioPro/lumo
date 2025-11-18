@@ -13,19 +13,19 @@ import (
 
 // CacheEntry represents a cached diagnostic result
 type CacheEntry struct {
-	Timestamp time.Time   `json:"timestamp"`
-	Data      interface{} `json:"data"`
+	Timestamp time.Time     `json:"timestamp"`
+	Data      interface{}   `json:"data"`
 	TTL       time.Duration `json:"ttl"`
 }
 
 // Cache provides local storage for diagnostic results
 // Enables offline mode when API is unavailable
 type Cache struct {
-	path     string
-	maxSize  int64
-	ttl      time.Duration
-	mu       sync.RWMutex
-	logger   *logrus.Logger
+	path    string
+	maxSize int64
+	ttl     time.Duration
+	mu      sync.RWMutex
+	logger  *logrus.Logger
 }
 
 // NewCache creates a new cache instance
