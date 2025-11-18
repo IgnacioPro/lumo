@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "lumo-agent.namespace" . }}
+  labels:
+    {{- include "lumo-agent.labels" . | nindent 4 }}
+    name: {{ include "lumo-agent.namespace" . }}

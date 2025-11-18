@@ -1,7 +1,7 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-18 | **Version:** 1.0.2
-> **Status:** Phases 1-8 Complete ✅ | CI Green ✅ | Agent Daemon Live 🚀 | 50.4% test coverage
+> **Last Updated:** 2025-11-18 | **Version:** 1.0.3
+> **Status:** Phases 1-9 Complete ✅ | K8s Deployment Ready 🚀 | CI Green ✅ | 50.4% test coverage
 
 **For detailed examples and tutorials, see [DEVELOPMENT.md](DEVELOPMENT.md)**
 
@@ -381,16 +381,28 @@ systemctl enable --now lumo-agent
   - Binary size: 65MB
   - All tests passing ✅
 
-### 🚧 In Progress - Agent Deployment (Weeks 7-16)
+### ✅ Completed - Phase 9: Kubernetes Deployment (Weeks 7-8)
 
-**Phase 9: Kubernetes Deployment** (Weeks 7-8)
-- DaemonSet manifest (per-node monitoring)
-- Deployment manifest (cluster-wide monitoring)
-- RBAC configuration (ServiceAccount, ClusterRole, ClusterRoleBinding)
-- ConfigMap and Secret templates
-- Service and NetworkPolicy
-- Helm chart with values customization
-- **Deliverables:** `deployments/kubernetes/{daemonset,deployment,rbac,configmap,secret,service,networkpolicy}.yaml`, Helm chart
+**Phase 9: Kubernetes Deployment** - **100% COMPLETE** ✅
+- ✅ DaemonSet manifest (per-node monitoring with hostNetwork, hostPID)
+- ✅ Deployment manifest (cluster-wide monitoring, 2 replicas for HA)
+- ✅ RBAC configuration (ServiceAccount, ClusterRole, ClusterRoleBinding)
+- ✅ ConfigMap templates for agent configuration
+- ✅ Secret templates with external secret manager examples
+- ✅ Service manifests (headless for DaemonSet, ClusterIP for Deployment)
+- ✅ NetworkPolicy for security controls (ingress/egress rules)
+- ✅ Helm chart with comprehensive customization
+- ✅ Kustomize base and overlay structure
+- ✅ ServiceMonitor for Prometheus Operator
+- ✅ Comprehensive deployment README
+- **Deliverables:**
+  - `deployments/kubernetes/base/{daemonset,deployment,rbac,configmap,secret,service,networkpolicy,kustomization}.yaml` (8 manifests)
+  - `deployments/kubernetes/helm/lumo-agent/` (Chart.yaml, values.yaml, templates/, .helmignore)
+  - `deployments/kubernetes/README.md` (complete usage guide)
+  - 18 total files created
+  - All manifests follow K8s best practices ✅
+
+### 🚧 In Progress - Agent Deployment (Weeks 9-16)
 
 **Phase 10: VM Deployment** (Weeks 9-10)
 - systemd service unit (`lumo-agent.service`)

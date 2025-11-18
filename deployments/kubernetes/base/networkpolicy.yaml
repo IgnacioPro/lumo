@@ -1,0 +1,178 @@
+---
+# NetworkPolicy for Lumo Agent
+# Controls ingress and egress traffic for security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lumo-agent-node
+  namespace: lumo-system
+  labels:
+    app.kubernetes.io/name: lumo-agent
+    app.kubernetes.io/component: node-monitor
+    app.kubernetes.io/part-of: lumo
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: lumo-agent
+      app.kubernetes.io/component: node-monitor
+  policyTypes:
+    - Ingress
+    - Egress
+
+  # Ingress rules - allow health and metrics endpoints
+  ingress:
+    # Allow Prometheus to scrape metrics
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 9090
+
+    # Allow health checks from kube-proxy/kubelet
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
+
+  # Egress rules - allow necessary outbound traffic
+  egress:
+    # Allow DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+        - podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+
+    # Allow communication with Kubernetes API server
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+
+    # Allow communication with Lumo API server
+    # Adjust based on your API server location
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: lumo-api
+      ports:
+        - protocol: TCP
+          port: 8443
+        - protocol: TCP
+          port: 443
+
+    # Allow external HTTPS for AI providers and external APIs
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# NetworkPolicy for Lumo Agent Cluster Monitor
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lumo-agent-cluster
+  namespace: lumo-system
+  labels:
+    app.kubernetes.io/name: lumo-agent
+    app.kubernetes.io/component: cluster-monitor
+    app.kubernetes.io/part-of: lumo
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: lumo-agent
+      app.kubernetes.io/component: cluster-monitor
+  policyTypes:
+    - Ingress
+    - Egress
+
+  # Ingress rules
+  ingress:
+    # Allow Prometheus to scrape metrics
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 9090
+
+    # Allow health checks
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
+
+  # Egress rules
+  egress:
+    # Allow DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+        - podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+
+    # Allow communication with Kubernetes API server
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+
+    # Allow communication with Lumo API server
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: lumo-api
+      ports:
+        - protocol: TCP
+          port: 8443
+        - protocol: TCP
+          port: 443
+
+    # Allow external HTTPS for AI providers
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# Default deny all ingress policy for lumo-system namespace (optional, very strict)
+# Uncomment to enable default-deny and explicitly allow only necessary traffic
+# apiVersion: networking.k8s.io/v1
+# kind: NetworkPolicy
+# metadata:
+#   name: default-deny-all-ingress
+#   namespace: lumo-system
+# spec:
+#   podSelector: {}
+#   policyTypes:
+#     - Ingress
