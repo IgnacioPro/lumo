@@ -164,7 +164,9 @@ func ReadAuditLog(logPath string) ([]AuditEntry, error) {
 		}
 		return nil, fmt.Errorf("failed to open audit log: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	var entries []AuditEntry
 	decoder := json.NewDecoder(file)

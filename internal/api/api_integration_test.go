@@ -246,7 +246,8 @@ func TestAgentReregistration(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code)
 
 	var resp1 map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp1)
+	err := json.Unmarshal(w.Body.Bytes(), &resp1)
+	assert.NoError(t, err)
 	firstAgentID := resp1["data"].(map[string]interface{})["agent_id"].(string)
 
 	// Re-register same agent with updated info
@@ -269,7 +270,8 @@ func TestAgentReregistration(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w2.Code)
 
 	var resp2 map[string]interface{}
-	json.Unmarshal(w2.Body.Bytes(), &resp2)
+	err = json.Unmarshal(w2.Body.Bytes(), &resp2)
+	assert.NoError(t, err)
 	secondAgentID := resp2["data"].(map[string]interface{})["agent_id"].(string)
 
 	// Should be same agent ID (updated, not created new)
@@ -283,7 +285,8 @@ func TestAgentReregistration(t *testing.T) {
 	router.ServeHTTP(w3, req3)
 
 	var resp3 map[string]interface{}
-	json.Unmarshal(w3.Body.Bytes(), &resp3)
+	err = json.Unmarshal(w3.Body.Bytes(), &resp3)
+	assert.NoError(t, err)
 	data := resp3["data"].(map[string]interface{})
 
 	assert.Equal(t, "agent-v2", data["name"])

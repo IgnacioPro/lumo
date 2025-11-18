@@ -147,7 +147,11 @@ func runFix(cmd *cobra.Command, args []string) error {
 		if err := sshClient.Connect(hostname, port, username); err != nil {
 			return fmt.Errorf("failed to connect: %w", err)
 		}
-		defer sshClient.Disconnect()
+		defer func() {
+			if err := sshClient.Disconnect(); err != nil {
+				log.WithError(err).Warn("Failed to disconnect SSH client")
+			}
+		}()
 
 		log.Info("Connected successfully")
 
@@ -238,7 +242,11 @@ func runFix(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize audit log: %w", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		if err := auditor.Close(); err != nil {
+			log.WithError(err).Warn("Failed to close auditor")
+		}
+	}()
 
 	approver := remediation.NewApprover(log)
 
