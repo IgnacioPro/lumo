@@ -266,3 +266,43 @@ diagnostics:
 #   LUMO_DIAGNOSTICS_KUBERNETES_KUBECONFIG_PATH=/path/to/kubeconfig
 #   LUMO_DIAGNOSTICS_KUBERNETES_CONTEXT=my-cluster
 #   LUMO_DIAGNOSTICS_KUBERNETES_EVENT_LOOKBACK_MINS=60
+#
+# Database:
+#   LUMO_DATABASE_HOST=localhost
+#   LUMO_DATABASE_PORT=5432
+#   LUMO_DATABASE_NAME=lumo
+#   LUMO_DATABASE_USER=lumo
+#   LUMO_DATABASE_PASSWORD=lumo_dev       # REQUIRED - never commit this
+#   LUMO_DATABASE_SSL_MODE=disable
+#   LUMO_DATABASE_MAX_CONNECTIONS=25
+#
+# Cache:
+#   LUMO_CACHE_ENABLED=true
+#   LUMO_CACHE_REDIS_URL=redis://localhost:6379/0
+#   LUMO_CACHE_PASSWORD=                  # Optional Redis password
+#   LUMO_CACHE_POOL_SIZE=10
+
+# Database Configuration (Phase 9.1)
+database:
+  # PostgreSQL connection settings
+  host: localhost
+  port: 5432
+  name: lumo
+  user: lumo
+  # Password should ONLY be set via environment variable
+  # LUMO_DATABASE_PASSWORD=lumo_dev
+  ssl_mode: disable  # Options: disable, require, verify-ca, verify-full
+  max_connections: 25
+  max_idle: 5
+  conn_max_lifetime: 5m
+
+# Cache Configuration (Phase 9.1)
+cache:
+  # Enable Redis caching
+  enabled: false  # Set to true to enable caching
+  redis_url: redis://localhost:6379/0
+  # Password should ONLY be set via environment variable if needed
+  # LUMO_CACHE_PASSWORD=your-redis-password
+  max_retries: 3
+  pool_size: 10
+  ttl: 1h
