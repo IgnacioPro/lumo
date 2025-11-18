@@ -16,6 +16,7 @@ type Config struct {
 	Diagnostics DiagnosticsConfig `mapstructure:"diagnostics"`
 	Database    DatabaseConfig    `mapstructure:"database"`
 	Cache       CacheConfig       `mapstructure:"cache"`
+	Agent       AgentConfig       `mapstructure:"agent"`
 }
 
 // SSHConfig contains SSH connection settings
@@ -142,6 +143,40 @@ type CacheConfig struct {
 	TTL        time.Duration `mapstructure:"ttl"`
 }
 
+// AgentConfig contains agent daemon settings
+type AgentConfig struct {
+	Mode             string        `mapstructure:"mode"`               // scheduled|on-demand|continuous|hybrid
+	Schedule         string        `mapstructure:"schedule"`           // Cron expression for scheduled mode
+	APIEndpoint      string        `mapstructure:"api_endpoint"`       // Lumo API server endpoint
+	Token            string        `mapstructure:"token"`              // JWT authentication token (prefer env var)
+	TLSEnabled       bool          `mapstructure:"tls_enabled"`        // Enable TLS for API communication
+	TLSInsecure      bool          `mapstructure:"tls_insecure"`       // Skip TLS verification (dev only)
+	EnabledChecks    []string      `mapstructure:"enabled_checks"`     // List of enabled diagnostic checks
+	ReportFormat     string        `mapstructure:"report_format"`      // Report format (text|json|toon)
+	OfflineMode      bool          `mapstructure:"offline_mode"`       // Continue without API availability
+	CachePath        string        `mapstructure:"cache_path"`         // Path for local cache storage
+	CacheMaxSize     int64         `mapstructure:"cache_max_size"`     // Maximum cache size in bytes
+	CacheTTL         time.Duration `mapstructure:"cache_ttl"`          // Cache entry TTL
+	HealthCheckPort  int           `mapstructure:"health_check_port"`  // Port for health check endpoints
+	MetricsPort      int           `mapstructure:"metrics_port"`       // Port for Prometheus metrics
+	HeartbeatSeconds int           `mapstructure:"heartbeat_seconds"`  // Heartbeat interval in seconds
+	RetryMaxAttempts int           `mapstructure:"retry_max_attempts"` // Max retry attempts for API calls
+	RetryBaseDelay   time.Duration `mapstructure:"retry_base_delay"`   // Base delay for exponential backoff
+
+	// Kubernetes-specific settings
+	Kubernetes KubernetesAgentConfig `mapstructure:"kubernetes"`
+}
+
+// KubernetesAgentConfig contains Kubernetes-specific agent settings
+type KubernetesAgentConfig struct {
+	Enabled   bool   `mapstructure:"enabled"`   // Enable Kubernetes-specific features
+	Scope     string `mapstructure:"scope"`     // node|cluster - determines agent type
+	Cluster   string `mapstructure:"cluster"`   // Kubernetes cluster name
+	Namespace string `mapstructure:"namespace"` // Agent namespace
+	NodeName  string `mapstructure:"node_name"` // Node name (for DaemonSet agents)
+	PodName   string `mapstructure:"pod_name"`  // Pod name
+}
+
 // DefaultConfig returns a Config with sensible defaults
 func DefaultConfig() *Config {
 	return &Config{
@@ -246,6 +281,33 @@ func DefaultConfig() *Config {
 			MaxRetries: 3,
 			PoolSize:   10,
 			TTL:        1 * time.Hour,
+		},
+		Agent: AgentConfig{
+			Mode:             "hybrid",                                // Hybrid mode (scheduled + on-demand)
+			Schedule:         "*/5 * * * *",                           // Every 5 minutes
+			APIEndpoint:      "http://localhost:8080",                 // Default to local API
+			Token:            "",                                       // Set via LUMO_AGENT_TOKEN env var
+			TLSEnabled:       true,                                    // Enable TLS by default
+			TLSInsecure:      false,                                   // Verify TLS certificates
+			EnabledChecks:    []string{"cpu", "memory", "disk", "process", "service", "network"}, // Core checks
+			ReportFormat:     "toon",                                  // TOON for efficiency
+			OfflineMode:      true,                                    // Continue when API unavailable
+			CachePath:        "/var/lib/lumo-agent/cache",             // Default cache path
+			CacheMaxSize:     1024 * 1024 * 1024,                      // 1 GB
+			CacheTTL:         24 * time.Hour,                          // 24 hours
+			HealthCheckPort:  8080,                                    // Health check port
+			MetricsPort:      9090,                                    // Prometheus metrics port
+			HeartbeatSeconds: 30,                                      // Heartbeat every 30 seconds
+			RetryMaxAttempts: 4,                                       // 4 retry attempts with backoff
+			RetryBaseDelay:   2 * time.Second,                         // Start with 2s delay
+			Kubernetes: KubernetesAgentConfig{
+				Enabled:   false, // Disabled by default
+				Scope:     "node", // node|cluster
+				Cluster:   "",
+				Namespace: "",
+				NodeName:  "",
+				PodName:   "",
+			},
 		},
 	}
 }
@@ -413,6 +475,48 @@ func (c *Config) Validate() error {
 		// TCP targets must have a port
 		if target.Protocol == "tcp" && target.Port == 0 {
 			return fmt.Errorf("diagnostics.network.targets[%d]: TCP targets must specify a port", i)
+		}
+	}
+
+	// Agent validation
+	if c.Agent.Mode != "" {
+		validModes := map[string]bool{
+			"scheduled":  true,
+			"on-demand":  true,
+			"continuous": true,
+			"hybrid":     true,
+		}
+		if !validModes[c.Agent.Mode] {
+			return fmt.Errorf("invalid agent mode: %s (must be scheduled, on-demand, continuous, or hybrid)", c.Agent.Mode)
+		}
+	}
+
+	if c.Agent.ReportFormat != "" {
+		validFormats := map[string]bool{
+			"text": true,
+			"json": true,
+			"toon": true,
+		}
+		if !validFormats[c.Agent.ReportFormat] {
+			return fmt.Errorf("invalid agent report format: %s (must be text, json, or toon)", c.Agent.ReportFormat)
+		}
+	}
+
+	if c.Agent.HealthCheckPort < 0 || c.Agent.HealthCheckPort > 65535 {
+		return fmt.Errorf("invalid agent health check port: %d", c.Agent.HealthCheckPort)
+	}
+
+	if c.Agent.MetricsPort < 0 || c.Agent.MetricsPort > 65535 {
+		return fmt.Errorf("invalid agent metrics port: %d", c.Agent.MetricsPort)
+	}
+
+	if c.Agent.Kubernetes.Enabled && c.Agent.Kubernetes.Scope != "" {
+		validScopes := map[string]bool{
+			"node":    true,
+			"cluster": true,
+		}
+		if !validScopes[c.Agent.Kubernetes.Scope] {
+			return fmt.Errorf("invalid agent kubernetes scope: %s (must be node or cluster)", c.Agent.Kubernetes.Scope)
 		}
 	}
 
