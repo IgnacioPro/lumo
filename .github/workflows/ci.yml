@@ -34,8 +34,15 @@ jobs:
 
     - name: Get changed files
       id: changed-files
-      if: steps.test-strategy.outputs.run_full_tests == 'false'
       run: |
+        # Always run this step, but only use outputs when in partial test mode
+        if [[ "${{ steps.test-strategy.outputs.run_full_tests }}" == "true" ]]; then
+          echo "has_go_changes=true" >> $GITHUB_OUTPUT
+          echo "changed_packages=./..." >> $GITHUB_OUTPUT
+          echo "Skipping change detection (running full tests)"
+          exit 0
+        fi
+
         if [ "${{ github.event_name }}" = "pull_request" ]; then
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
           HEAD_SHA="${{ github.event.pull_request.head.sha }}"
@@ -43,6 +50,14 @@ jobs:
           # For push events, compare with previous commit
           BASE_SHA="${{ github.event.before }}"
           HEAD_SHA="${{ github.sha }}"
+        fi
+
+        # Handle initial commit or empty BASE_SHA
+        if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+          echo "Initial commit or empty base - running full tests"
+          echo "has_go_changes=true" >> $GITHUB_OUTPUT
+          echo "changed_packages=./..." >> $GITHUB_OUTPUT
+          exit 0
         fi
 
         # Get all changed Go files
@@ -183,13 +198,19 @@ jobs:
             HEAD_SHA="${{ github.sha }}"
           fi
 
-          CHANGED_GO_FILES=$(git diff --name-only --diff-filter=ACMRT "$BASE_SHA" "$HEAD_SHA" | grep '\.go$' || true)
-          if [ -n "$CHANGED_GO_FILES" ]; then
+          # Handle initial commit or empty BASE_SHA
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "Building (Go files changed in feature branch)"
+            echo "Building (initial commit or empty base)"
           else
-            echo "should_build=false" >> $GITHUB_OUTPUT
-            echo "Skipping (no Go files changed in feature branch)"
+            CHANGED_GO_FILES=$(git diff --name-only --diff-filter=ACMRT "$BASE_SHA" "$HEAD_SHA" | grep '\.go$' || true)
+            if [ -n "$CHANGED_GO_FILES" ]; then
+              echo "should_build=true" >> $GITHUB_OUTPUT
+              echo "Building (Go files changed in feature branch)"
+            else
+              echo "should_build=false" >> $GITHUB_OUTPUT
+              echo "Skipping (no Go files changed in feature branch)"
+            fi
           fi
         fi
 
