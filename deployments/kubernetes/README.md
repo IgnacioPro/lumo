@@ -9,6 +9,7 @@ Deploy Lumo Agent to Kubernetes clusters for intelligent SRE/DevOps automation.
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Deployment Methods](#deployment-methods)
+  - [Installation Scripts](#installation-scripts)
   - [Helm Chart (Recommended)](#helm-chart-recommended)
   - [kubectl + Kustomize](#kubectl--kustomize)
   - [Plain kubectl](#plain-kubectl)
@@ -16,6 +17,7 @@ Deploy Lumo Agent to Kubernetes clusters for intelligent SRE/DevOps automation.
 - [Security](#security)
 - [Monitoring](#monitoring)
 - [Troubleshooting](#troubleshooting)
+- [Files](#files)
 
 ## Overview
 
@@ -41,13 +43,55 @@ Lumo Agent can be deployed in two modes:
 
 ## Quick Start
 
-### 1. Create Namespace
+### Option 1: Installation Script (Easiest) ⚡
+
+The installation script handles everything automatically:
+
+```bash
+cd deployments/kubernetes
+
+# Install with minimal configuration
+./install.sh \
+  --api-endpoint "https://your-lumo-api.example.com" \
+  --agent-token "your-jwt-token-here"
+
+# Install with AI provider
+./install.sh \
+  --api-endpoint "https://your-lumo-api.example.com" \
+  --agent-token "your-jwt-token-here" \
+  --ai-provider anthropic \
+  --ai-api-key "sk-ant-..."
+
+# DaemonSet only (node monitoring)
+./install.sh \
+  --api-endpoint "https://your-lumo-api.example.com" \
+  --agent-token "your-jwt-token-here" \
+  --daemonset-only
+
+# Dry run (preview changes)
+./install.sh \
+  --api-endpoint "https://your-lumo-api.example.com" \
+  --agent-token "your-jwt-token-here" \
+  --dry-run
+```
+
+**Uninstall:**
+
+```bash
+./uninstall.sh                    # Interactive
+./uninstall.sh --force            # Skip confirmations
+./uninstall.sh --delete-namespace # Delete namespace too
+```
+
+### Option 2: Manual Installation
+
+#### 1. Create Namespace
 
 ```bash
 kubectl create namespace lumo-system
 ```
 
-### 2. Create Secrets
+#### 2. Create Secrets
 
 ```bash
 # Create secret with API token
@@ -58,7 +102,7 @@ kubectl create secret generic lumo-agent-secret \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-### 3. Deploy with Helm
+#### 3. Deploy with Helm
 
 ```bash
 cd deployments/kubernetes/helm
@@ -75,6 +119,72 @@ helm install lumo-agent ./lumo-agent \
 ```
 
 ## Deployment Methods
+
+### Installation Scripts
+
+**`install.sh`** - Automated installation script
+
+Features:
+- ✅ Checks prerequisites (kubectl, cluster connectivity)
+- ✅ Creates namespace automatically
+- ✅ Generates secrets from command-line arguments
+- ✅ Updates ConfigMap with API endpoint
+- ✅ Applies all manifests in correct order
+- ✅ Verifies deployment and shows status
+- ✅ Supports dry-run mode
+- ✅ Optional remediation permissions
+
+**Usage:**
+
+```bash
+./install.sh --help  # Show all options
+
+# Basic installation
+./install.sh \
+  --api-endpoint "https://lumo-api.example.com" \
+  --agent-token "your-jwt-token"
+
+# Full installation with AI
+./install.sh \
+  --namespace lumo-system \
+  --api-endpoint "https://lumo-api.example.com" \
+  --agent-token "your-jwt-token" \
+  --ai-provider anthropic \
+  --ai-api-key "sk-ant-..." \
+  --enable-remediation  # CAUTION: Grants write permissions
+
+# Custom deployment
+./install.sh \
+  --api-endpoint "https://lumo-api.example.com" \
+  --agent-token "your-jwt-token" \
+  --daemonset-only      # Only DaemonSet
+  --skip-secret         # Use existing secret
+  --dry-run             # Preview changes
+```
+
+**`uninstall.sh`** - Automated uninstallation script
+
+Features:
+- ✅ Shows current state before uninstalling
+- ✅ Confirmation prompts (can be skipped with `--force`)
+- ✅ Graceful pod termination
+- ✅ Optional namespace deletion
+- ✅ Removes all RBAC resources
+
+**Usage:**
+
+```bash
+./uninstall.sh --help  # Show all options
+
+# Interactive uninstall
+./uninstall.sh
+
+# Force uninstall with namespace deletion
+./uninstall.sh --force --delete-namespace
+
+# Uninstall from custom namespace
+./uninstall.sh --namespace my-namespace
+```
 
 ### Helm Chart (Recommended)
 
@@ -454,6 +564,62 @@ deployment:
                   - cluster-monitor
           topologyKey: kubernetes.io/hostname
 ```
+
+## Files
+
+### Directory Structure
+
+```
+deployments/kubernetes/
+├── install.sh              # Automated installation script
+├── uninstall.sh            # Automated uninstallation script
+├── README.md               # This file
+├── base/                   # Base Kubernetes manifests
+│   ├── rbac.yaml           # ServiceAccount, ClusterRole, ClusterRoleBinding
+│   ├── configmap.yaml      # Agent configuration
+│   ├── secret.yaml         # Secret template (with external secret examples)
+│   ├── daemonset.yaml      # DaemonSet for per-node monitoring
+│   ├── deployment.yaml     # Deployment for cluster-wide monitoring
+│   ├── service.yaml        # Services + ServiceMonitor
+│   ├── networkpolicy.yaml  # NetworkPolicy for security
+│   └── kustomization.yaml  # Kustomize configuration
+├── helm/                   # Helm chart
+│   └── lumo-agent/
+│       ├── Chart.yaml      # Chart metadata
+│       ├── values.yaml     # Default values (100+ options)
+│       ├── .helmignore     # Helm ignore patterns
+│       └── templates/      # Helm templates
+│           ├── _helpers.tpl       # Template helpers
+│           ├── NOTES.txt          # Post-install notes
+│           ├── namespace.yaml     # Namespace
+│           ├── serviceaccount.yaml # ServiceAccount
+│           ├── rbac.yaml          # RBAC
+│           └── configmap.yaml     # ConfigMap
+└── overlays/               # Kustomize overlays (future)
+    ├── dev/
+    ├── staging/
+    └── prod/
+```
+
+### Key Files
+
+**Installation Scripts:**
+- `install.sh` - One-command installation with validation and verification
+- `uninstall.sh` - Clean removal with confirmation prompts
+
+**Base Manifests:**
+- `rbac.yaml` - Least-privilege RBAC (read-only by default)
+- `daemonset.yaml` - Per-node monitoring (100m CPU, 128Mi RAM)
+- `deployment.yaml` - Cluster monitoring (50m CPU, 64Mi RAM)
+- `configmap.yaml` - Full agent configuration with config.yaml
+- `secret.yaml` - Template + external secret manager examples
+- `service.yaml` - Health/metrics endpoints + ServiceMonitor
+- `networkpolicy.yaml` - Ingress/egress security controls
+
+**Helm Chart:**
+- `Chart.yaml` - Metadata, capabilities, version info
+- `values.yaml` - 100+ customization options
+- `templates/` - Templatized manifests with Helm functions
 
 ## Support
 
