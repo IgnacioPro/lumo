@@ -1,7 +1,7 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-18 | **Version:** 1.0.4
-> **Status:** Phases 1-10 Complete ✅ | K8s + VM Deployment Ready 🚀 | CI Green ✅ | 50.4% test coverage
+> **Last Updated:** 2025-11-18 | **Version:** 1.1.0
+> **Status:** Phases 1-10 Complete ✅ | Notification Integration Complete ✅ | K8s + VM Deployment Ready 🚀 | 50.4% test coverage
 
 **For detailed examples and tutorials, see [DEVELOPMENT.md](DEVELOPMENT.md)**
 
@@ -34,7 +34,7 @@ lumo/
 │   ├── lumo/              # CLI: main, root, connect, diagnose, fix, serve
 │   └── lumo-agent/        # ✅ Agent daemon: scheduler, reporter, health, metrics
 ├── internal/
-│   ├── config/            # Configuration management (includes API, DB, Cache config)
+│   ├── config/            # Configuration management (includes API, DB, Cache, Notifications)
 │   ├── ssh/               # SSH client (auth, health, retry)
 │   ├── diagnostics/       # Runner + 12 checkers + formatters
 │   │   ├── checkers/      # CPU, Memory, Disk, Process, Service, Network
@@ -43,6 +43,11 @@ lumo/
 │   │   └── formatters/    # text, JSON, TOON
 │   ├── ai/                # 5 providers: Anthropic, OpenAI, Ollama, Gemini, OpenRouter
 │   ├── remediation/       # Actions, executor, approval, audit
+│   ├── notifications/     # ✅ Notification system - 5 providers
+│   │   ├── providers/     # Slack, Teams, Telegram, Email, Webhook
+│   │   ├── message.go     # Message builder and types
+│   │   ├── notifier.go    # Routing and concurrent delivery
+│   │   └── provider.go    # Provider interface
 │   ├── api/               # ✅ (Phase 7) API server - 100% complete
 │   │   ├── handlers/      # diagnostics, health, jobs, agents
 │   │   ├── middleware/    # auth, logging, recovery, cors
@@ -191,6 +196,7 @@ export LUMO_AGENT_MESSAGING_PROVIDER=nats      # nats|kafka|rabbitmq|redis
 - SSH: Key-based auth or secure prompting (no password flags)
 - Host key verification enabled by default
 - Command injection protection: WorkingDir sanitization, shell metacharacter filtering
+- Notification credentials: Environment variables only (LUMO_SLACK_WEBHOOK_URL, LUMO_TELEGRAM_BOT_TOKEN, etc.)
 
 **File Permissions:** `chmod 600` for all config, key, and cert files
 
@@ -208,6 +214,8 @@ export LUMO_AGENT_MESSAGING_PROVIDER=nats      # nats|kafka|rabbitmq|redis
 **AI Providers (5):** Anthropic (Claude), OpenAI (GPT), Ollama, Gemini, OpenRouter
 
 **Remediation:** `executor.go`, `approval.go`, `audit.go`, `actions_*.go` (disk, service, process)
+
+**Notification Providers (5):** Slack, Microsoft Teams, Telegram, Email/SMTP, Generic Webhook
 
 ---
 
@@ -510,6 +518,89 @@ systemctl enable --now lumo-agent
 - Best for: process lists, service status, metrics arrays
 
 **Implementation:** `formatters.NewToonFormatter()` | Uses `github.com/alpkeskin/gotoon`
+
+---
+
+## Notification System
+
+**Overview:** Multi-provider notification system for sending alerts about diagnostic results, remediation actions, and system events.
+
+**Architecture:** Provider interface with severity-based routing, concurrent delivery, and retry logic with exponential backoff.
+
+**Providers (5):**
+1. **Slack** - Rich Block Kit formatting, severity color coding, channel routing
+2. **Microsoft Teams** - Adaptive Cards with theme colors and facts
+3. **Telegram** - Bot API with Markdown formatting, silent mode for low-priority
+4. **Email** - SMTP with HTML/plain text multipart, template-based formatting
+5. **Webhook** - Generic HTTP endpoint for custom integrations
+
+**Key Features:**
+- **Severity Routing:** Map severity levels (critical, error, warning, info, ok) to specific providers
+- **Concurrent Delivery:** Send to multiple providers in parallel for speed
+- **Retry Logic:** Exponential backoff with 3 retry attempts (2s, 4s, 8s delays)
+- **Message Builder:** Fluent API for constructing notification messages
+- **Rich Formatting:** Provider-specific formatting (Slack blocks, Teams cards, Telegram Markdown, HTML email)
+
+**Configuration:**
+```yaml
+notifications:
+  enabled: true
+  routing:
+    critical: [slack, email]  # Critical alerts go to Slack and Email
+    error: [slack]             # Errors go to Slack only
+    warning: [slack]           # Warnings go to Slack
+  providers:
+    slack:
+      enabled: true
+      webhook_url: env:LUMO_SLACK_WEBHOOK_URL
+      channel: "#lumo-alerts"
+```
+
+**Environment Variables:**
+```bash
+# Slack
+export LUMO_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+
+# Teams
+export LUMO_TEAMS_WEBHOOK_URL=https://outlook.office.com/webhook/...
+
+# Telegram
+export LUMO_TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+export LUMO_TELEGRAM_CHAT_ID=-1001234567890
+
+# Email
+export LUMO_EMAIL_FROM=lumo@example.com
+export LUMO_EMAIL_AUTH_USERNAME=user@example.com
+export LUMO_EMAIL_AUTH_PASSWORD=app-password
+
+# Webhook
+export LUMO_WEBHOOK_URL=https://your-endpoint.com/webhook
+```
+
+**Usage (Future CLI Integration):**
+```bash
+# Test notification configuration
+lumo notify test --provider slack
+
+# Send custom notification
+lumo notify send --provider slack --title "Test" --body "Message"
+
+# Run diagnostics with notifications
+lumo diagnose localhost --notify slack --notify-on critical,error
+```
+
+**Implementation Files:**
+- `internal/notifications/provider.go` - Provider interface and types
+- `internal/notifications/message.go` - Message builder with fluent API
+- `internal/notifications/notifier.go` - Router and concurrent delivery
+- `internal/notifications/providers/slack.go` - Slack Block Kit implementation
+- `internal/notifications/providers/teams.go` - MS Teams Adaptive Cards
+- `internal/notifications/providers/telegram.go` - Telegram Bot API
+- `internal/notifications/providers/email.go` - SMTP with HTML templates
+- `internal/notifications/providers/webhook.go` - Generic HTTP webhooks
+- `internal/config/notifications.go` - Configuration structs and validation
+
+**Total Code:** ~1,500 lines across 9 files
 
 ---
 
