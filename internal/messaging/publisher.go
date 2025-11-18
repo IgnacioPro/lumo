@@ -21,18 +21,29 @@ func NewPublisher(cfg *Config, logger *logrus.Logger) (Publisher, error) {
 	// Create config adapter for providers
 	adapter := NewConfigAdapter(cfg)
 
+	var pub Publisher
+	var err error
+
 	switch cfg.Provider {
 	case "nats":
-		return providers.NewNATSPublisher(adapter, logger)
+		pub, err = providers.NewNATSPublisher(adapter, logger)
 	case "kafka":
-		return providers.NewKafkaPublisher(adapter, logger)
+		pub, err = providers.NewKafkaPublisher(adapter, logger)
 	case "rabbitmq":
-		return providers.NewRabbitMQPublisher(adapter, logger)
+		pub, err = providers.NewRabbitMQPublisher(adapter, logger)
 	case "redis":
-		return providers.NewRedisPublisher(adapter, logger)
+		pub, err = providers.NewRedisPublisher(adapter, logger)
 	default:
 		return nil, fmt.Errorf("unsupported messaging provider: %s", cfg.Provider)
 	}
+
+	// If provider not built, log warning and use NoOp
+	if err != nil {
+		logger.WithError(err).Warnf("Messaging provider %s not available, using NoOp", cfg.Provider)
+		return &NoOpPublisher{}, nil
+	}
+
+	return pub, nil
 }
 
 // NewSubscriber creates a new subscriber based on the configuration
@@ -48,18 +59,29 @@ func NewSubscriber(cfg *Config, logger *logrus.Logger) (Subscriber, error) {
 	// Create config adapter for providers
 	adapter := NewConfigAdapter(cfg)
 
+	var sub Subscriber
+	var err error
+
 	switch cfg.Provider {
 	case "nats":
-		return providers.NewNATSSubscriber(adapter, logger)
+		sub, err = providers.NewNATSSubscriber(adapter, logger)
 	case "kafka":
-		return providers.NewKafkaSubscriber(adapter, logger)
+		sub, err = providers.NewKafkaSubscriber(adapter, logger)
 	case "rabbitmq":
-		return providers.NewRabbitMQSubscriber(adapter, logger)
+		sub, err = providers.NewRabbitMQSubscriber(adapter, logger)
 	case "redis":
-		return providers.NewRedisSubscriber(adapter, logger)
+		sub, err = providers.NewRedisSubscriber(adapter, logger)
 	default:
 		return nil, fmt.Errorf("unsupported messaging provider: %s", cfg.Provider)
 	}
+
+	// If provider not built, log warning and use NoOp
+	if err != nil {
+		logger.WithError(err).Warnf("Messaging provider %s not available, using NoOp", cfg.Provider)
+		return &NoOpSubscriber{}, nil
+	}
+
+	return sub, nil
 }
 
 // NoOpPublisher is a no-op publisher that does nothing (when messaging is disabled)
