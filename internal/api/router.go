@@ -26,11 +26,13 @@ func NewRouter(db *database.DB, cfg *config.Config, logger *logrus.Logger) *chi.
 	// Initialize repositories
 	jobRepo := repository.NewJobRepository(db.DB)
 	apiKeyRepo := repository.NewAPIKeyRepository(db.DB)
+	agentRepo := repository.NewAgentRepository(db.DB)
 
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db, logger)
 	diagnosticsHandler := handlers.NewDiagnosticsHandler(jobRepo, cfg, logger)
 	jobsHandler := handlers.NewJobsHandler(jobRepo, logger)
+	agentsHandler := handlers.NewAgentsHandler(agentRepo, logger)
 
 	// API v1 routes
 	r.Route("/api/v1", func(r chi.Router) {
@@ -51,7 +53,15 @@ func NewRouter(db *database.DB, cfg *config.Config, logger *logrus.Logger) *chi.
 			r.Get("/jobs/{id}", jobsHandler.Get)
 			r.Delete("/jobs/{id}", jobsHandler.Delete)
 
-			// TODO: Remediation endpoints (Phase 9.1-gamma)
+			// Agent endpoints
+			r.Post("/agents/register", agentsHandler.Register)
+			r.Put("/agents/{id}/heartbeat", agentsHandler.Heartbeat)
+			r.Get("/agents", agentsHandler.List)
+			r.Get("/agents/stats", agentsHandler.Stats)
+			r.Get("/agents/{id}", agentsHandler.Get)
+			r.Delete("/agents/{id}", agentsHandler.Delete)
+
+			// TODO: Remediation endpoints (Phase 7 completion)
 			// r.Post("/remediation", remediationHandler.Run)
 		})
 	})
