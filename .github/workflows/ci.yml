@@ -97,6 +97,19 @@ jobs:
       if: steps.test-strategy.outputs.run_full_tests == 'true' || steps.changed-files.outputs.has_go_changes == 'true'
       run: go mod verify
 
+    - name: Run golangci-lint
+      if: steps.test-strategy.outputs.run_full_tests == 'true' || steps.changed-files.outputs.has_go_changes == 'true'
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: latest
+        args: --timeout=5m
+
+    - name: Vulnerability Check
+      if: steps.test-strategy.outputs.run_full_tests == 'true' || steps.changed-files.outputs.has_go_changes == 'true'
+      run: |
+        go install golang.org/x/vuln/cmd/govulncheck@latest
+        govulncheck ./...
+
     - name: Check formatting (full)
       if: steps.test-strategy.outputs.run_full_tests == 'true'
       run: |
@@ -143,7 +156,7 @@ jobs:
 
     - name: Run tests (full)
       if: steps.test-strategy.outputs.run_full_tests == 'true'
-      run: go test -timeout=2m -short ./...
+      run: go test -race -timeout=5m -short ./...
 
     - name: Run tests (changed packages only)
       if: steps.test-strategy.outputs.run_full_tests == 'false' && steps.changed-files.outputs.has_go_changes == 'true'
@@ -154,7 +167,7 @@ jobs:
           exit 0
         fi
         echo "Running tests on changed packages: $PACKAGES"
-        go test -timeout=2m -short $PACKAGES
+        go test -race -timeout=5m -short $PACKAGES
 
     - name: Build CLI
       if: steps.test-strategy.outputs.run_full_tests == 'true' || steps.changed-files.outputs.has_go_changes == 'true'
