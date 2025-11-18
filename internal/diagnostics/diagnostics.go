@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ignacio/lumo/internal/observability"
 	"github.com/sirupsen/logrus"
 )
 
@@ -156,6 +157,10 @@ func (r *Runner) RunAll(ctx context.Context) (*Report, error) {
 	// Generate unique session ID for this diagnostic run
 	sessionID := uuid.New().String()
 
+	// Record session start for metrics
+	observability.RecordSessionStart()
+	defer observability.RecordSessionEnd()
+
 	// Create structured logger with session ID
 	sessionLogger := r.logger.WithFields(logrus.Fields{
 		"session_id": sessionID,
@@ -271,9 +276,22 @@ func (r *Runner) runSingleCheck(ctx context.Context, checker Checker) *CheckResu
 	// Run the check
 	result, err := checker.Run(checkCtx, r.executor)
 
+	// Record metrics
+	duration := time.Since(startTime).Seconds()
+	status := "success"
+	if err != nil {
+		status = "failed"
+	}
+
+	observability.DiagnosticDuration.WithLabelValues(checker.Name(), status).Observe(duration)
+	observability.DiagnosticTotal.WithLabelValues(checker.Name(), status).Inc()
+
 	if err != nil {
 		// Check failed
 		r.logger.Warnf("Check %s failed: %v", checker.Name(), err)
+
+		// Record error metric
+		observability.ErrorsTotal.WithLabelValues("diagnostic", "error").Inc()
 
 		// Retry if configured
 		if r.config.RetryFailedChecks {
@@ -287,6 +305,8 @@ func (r *Runner) runSingleCheck(ctx context.Context, checker Checker) *CheckResu
 				r.logger.Infof("Check %s succeeded on retry", checker.Name())
 				result = retryResult
 				err = nil
+				// Update metrics for successful retry
+				observability.DiagnosticTotal.WithLabelValues(checker.Name(), "success").Inc()
 			}
 		}
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -27,9 +28,10 @@ const (
 
 // AnthropicProvider implements the Provider interface for Anthropic Claude.
 type AnthropicProvider struct {
-	config *ProviderConfig
-	client *http.Client
-	log    *logrus.Logger
+	config  *ProviderConfig
+	client  *http.Client
+	log     *logrus.Logger
+	limiter *rate.Limiter
 }
 
 // NewAnthropicProvider creates a new Anthropic provider.
@@ -58,17 +60,26 @@ func NewAnthropicProvider(config *ProviderConfig, log *logrus.Logger) (*Anthropi
 		config.Endpoint = AnthropicAPIURL
 	}
 
+	// Default rate limit: 10 requests per minute
+	if config.RateLimit == 0 {
+		config.RateLimit = 10
+	}
+
 	// Validate endpoint for security (allow localhost for testing)
 	if err := ValidateEndpoint(config.Endpoint, false); err != nil {
 		return nil, fmt.Errorf("invalid endpoint: %w", err)
 	}
 
+	// Create rate limiter: requests per minute
+	// Convert to requests per second for the limiter
+	reqsPerSecond := float64(config.RateLimit) / 60.0
+	limiter := rate.NewLimiter(rate.Limit(reqsPerSecond), 1)
+
 	return &AnthropicProvider{
-		config: config,
-		client: &http.Client{
-			Timeout: config.Timeout,
-		},
-		log: log,
+		config:  config,
+		client:  &http.Client{Timeout: config.Timeout},
+		log:     log,
+		limiter: limiter,
 	}, nil
 }
 
@@ -79,6 +90,15 @@ func (p *AnthropicProvider) Name() string {
 
 // Analyze analyzes diagnostic results using Claude.
 func (p *AnthropicProvider) Analyze(ctx context.Context, req *AnalysisRequest) (*AnalysisResponse, error) {
+	// Apply rate limiting
+	if err := p.limiter.Wait(ctx); err != nil {
+		return nil, &Error{
+			Op:       "rate_limit",
+			Provider: p.Name(),
+			Err:      fmt.Errorf("rate limit wait failed: %w", err),
+		}
+	}
+
 	start := time.Now()
 
 	// Build prompts

@@ -361,8 +361,45 @@ func (n *NetworkChecker) getConnectionCount(ctx context.Context, executor diagno
 	return count, nil
 }
 
+// validateNetworkTarget validates a network target to prevent command injection
+func validateNetworkTarget(target config.NetworkTarget) error {
+	// Validate hostname - no shell metacharacters allowed
+	if strings.ContainsAny(target.Host, ";|&`$(){}[]<>'\"\n\r\\*?~!#") {
+		return fmt.Errorf("invalid host: contains shell metacharacters")
+	}
+
+	// Additional hostname validation - must not be empty
+	if target.Host == "" {
+		return fmt.Errorf("host cannot be empty")
+	}
+
+	// Validate port range
+	if target.Port < 0 || target.Port > 65535 {
+		return fmt.Errorf("invalid port: %d (must be 0-65535)", target.Port)
+	}
+
+	// Validate protocol
+	protocol := strings.ToLower(target.Protocol)
+	if protocol != "" && protocol != "tcp" && protocol != "icmp" {
+		return fmt.Errorf("invalid protocol: %s (must be tcp or icmp)", target.Protocol)
+	}
+
+	return nil
+}
+
 // testTarget tests connectivity to a specific network target
 func (n *NetworkChecker) testTarget(ctx context.Context, executor diagnostics.CommandExecutor, target config.NetworkTarget) TargetResult {
+	// Validate target to prevent command injection
+	if err := validateNetworkTarget(target); err != nil {
+		return TargetResult{
+			Host:      target.Host,
+			Port:      target.Port,
+			Protocol:  target.Protocol,
+			Reachable: false,
+			Error:     err.Error(),
+		}
+	}
+
 	result := TargetResult{
 		Host:     target.Host,
 		Port:     target.Port,

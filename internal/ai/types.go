@@ -251,6 +251,10 @@ type ProviderConfig struct {
 	// Temperature controls randomness (0.0-1.0)
 	Temperature float64
 
+	// RateLimit specifies maximum requests per minute (0 = unlimited)
+	// Default: 10 requests/minute for cloud providers
+	RateLimit int
+
 	// MaxTokens limits response length
 	MaxTokens int
 
