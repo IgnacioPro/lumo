@@ -823,3 +823,177 @@ ID=ubuntu`
 		}
 	})
 }
+
+func TestPatchChecker_GetApkUpdates(t *testing.T) {
+	checker := NewPatchChecker()
+	ctx := context.Background()
+
+	t.Run("success", func(t *testing.T) {
+		apkOutput := `curl-8.0.1-r0 < 8.5.0-r0 [upgradable from: 8.0.1-r0]
+openssl-3.1.0-r0 < 3.1.4-r0 [upgradable from: 3.1.0-r0]
+nginx-1.24.0-r0 < 1.25.3-r0 [upgradable from: 1.24.0-r0]`
+
+		executor := &mockExecutor{
+			responses: map[string]mockResponse{
+				"apk list -u": {stdout: apkOutput, exitCode: 0},
+			},
+		}
+
+		updates, security, err := checker.getApkUpdates(ctx, executor)
+
+		if err != nil {
+			t.Errorf("getApkUpdates() unexpected error: %v", err)
+		}
+
+		if len(updates) != 3 {
+			t.Errorf("getApkUpdates() found %d updates, want 3", len(updates))
+		}
+
+		// Alpine doesn't distinguish security updates
+		if len(security) != 0 {
+			t.Errorf("getApkUpdates() found %d security updates, want 0", len(security))
+		}
+	})
+
+	t.Run("command fails", func(t *testing.T) {
+		executor := &mockExecutor{
+			responses: map[string]mockResponse{
+				"apk list -u": {stdout: "", exitCode: 1},
+			},
+		}
+
+		updates, security, err := checker.getApkUpdates(ctx, executor)
+
+		if err == nil {
+			t.Error("getApkUpdates() expected error when command fails")
+		}
+
+		if updates != nil || security != nil {
+			t.Errorf("getApkUpdates() should return nil on error, got updates=%v, security=%v", updates, security)
+		}
+	})
+}
+
+func TestPatchChecker_GetPacmanUpdates(t *testing.T) {
+	checker := NewPatchChecker()
+	ctx := context.Background()
+
+	t.Run("success", func(t *testing.T) {
+		pacmanOutput := `linux 6.1.0-1 -> 6.5.9-1
+systemd 253.0-1 -> 254.5-1
+firefox 118.0-1 -> 119.0-1`
+
+		executor := &mockExecutor{
+			responses: map[string]mockResponse{
+				"pacman -Qu": {stdout: pacmanOutput, exitCode: 0},
+			},
+		}
+
+		updates, security, err := checker.getPacmanUpdates(ctx, executor)
+
+		if err != nil {
+			t.Errorf("getPacmanUpdates() unexpected error: %v", err)
+		}
+
+		if len(updates) != 3 {
+			t.Errorf("getPacmanUpdates() found %d updates, want 3", len(updates))
+		}
+
+		// Pacman doesn't distinguish security updates
+		if len(security) != 0 {
+			t.Errorf("getPacmanUpdates() found %d security updates, want 0", len(security))
+		}
+	})
+
+	t.Run("command fails", func(t *testing.T) {
+		executor := &mockExecutor{
+			responses: map[string]mockResponse{
+				"pacman -Qu": {stdout: "", exitCode: 1},
+			},
+		}
+
+		updates, security, err := checker.getPacmanUpdates(ctx, executor)
+
+		if err == nil {
+			t.Error("getPacmanUpdates() expected error when command fails")
+		}
+
+		if updates != nil || security != nil {
+			t.Errorf("getPacmanUpdates() should return nil on error, got updates=%v, security=%v", updates, security)
+		}
+	})
+}
+
+func TestPatchChecker_GetBrewUpdates(t *testing.T) {
+	checker := NewPatchChecker()
+	ctx := context.Background()
+
+	t.Run("success", func(t *testing.T) {
+		brewOutput := `python@3.11 (3.11.5) < 3.11.6
+node (18.17.0) < 20.9.0
+git (2.41.0) < 2.42.0`
+
+		executor := &mockExecutor{
+			responses: map[string]mockResponse{
+				"brew update":   {stdout: "", exitCode: 0}, // Best effort, ignored
+				"brew outdated": {stdout: brewOutput, exitCode: 0},
+			},
+		}
+
+		updates, security, err := checker.getBrewUpdates(ctx, executor)
+
+		if err != nil {
+			t.Errorf("getBrewUpdates() unexpected error: %v", err)
+		}
+
+		if len(updates) != 3 {
+			t.Errorf("getBrewUpdates() found %d updates, want 3", len(updates))
+		}
+
+		// Homebrew doesn't distinguish security updates
+		if len(security) != 0 {
+			t.Errorf("getBrewUpdates() found %d security updates, want 0", len(security))
+		}
+	})
+
+	t.Run("brew update fails but ignored", func(t *testing.T) {
+		brewOutput := `wget (1.21.3) < 1.21.4`
+
+		executor := &mockExecutor{
+			responses: map[string]mockResponse{
+				"brew update":   {stdout: "", exitCode: 1}, // Fails but should be ignored
+				"brew outdated": {stdout: brewOutput, exitCode: 0},
+			},
+		}
+
+		updates, _, err := checker.getBrewUpdates(ctx, executor)
+
+		// Should still succeed because brew update failure is ignored
+		if err != nil {
+			t.Errorf("getBrewUpdates() unexpected error: %v", err)
+		}
+
+		if len(updates) != 1 {
+			t.Errorf("getBrewUpdates() found %d updates, want 1", len(updates))
+		}
+	})
+
+	t.Run("brew outdated fails", func(t *testing.T) {
+		executor := &mockExecutor{
+			responses: map[string]mockResponse{
+				"brew update":   {stdout: "", exitCode: 0},
+				"brew outdated": {stdout: "", exitCode: 1},
+			},
+		}
+
+		updates, security, err := checker.getBrewUpdates(ctx, executor)
+
+		if err == nil {
+			t.Error("getBrewUpdates() expected error when brew outdated fails")
+		}
+
+		if updates != nil || security != nil {
+			t.Errorf("getBrewUpdates() should return nil on error, got updates=%v, security=%v", updates, security)
+		}
+	})
+}
