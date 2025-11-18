@@ -7,7 +7,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Coverage](https://img.shields.io/badge/coverage-50.4%25-yellow.svg)](https://github.com/IgnacioPro/lumo)
-[![Release](https://img.shields.io/badge/version-0.5.0-brightgreen.svg)](https://github.com/IgnacioPro/lumo/releases)
+[![Release](https://img.shields.io/badge/version-0.7.0-brightgreen.svg)](https://github.com/IgnacioPro/lumo/releases)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20BSD-lightgrey.svg)](https://github.com/IgnacioPro/lumo)
 
 **AI-powered diagnostics + SSH automation + Kubernetes monitoring = Better SRE workflows**
@@ -27,6 +27,7 @@
 - 🤖 **Multi-Provider AI Analysis** - Claude, GPT-4, Gemini, Ollama, or OpenRouter
 - 🔌 **Zero-Config Localhost** - Instant diagnostics without SSH overhead
 - ☸️ **Native Kubernetes** - Direct API integration (no kubectl required)
+- 🏗️ **Agent Architecture** - REST API + Agent registration for distributed monitoring (Phase 7)
 - 🔐 **Security-First** - Built-in security diagnostics and audit trails
 - 🎯 **Token-Optimized** - TOON format reduces AI costs by 30-60%
 - 🚀 **Production-Ready** - 50%+ test coverage, CI/CD, cross-platform
@@ -419,17 +420,28 @@ go tool cover -html=coverage.out
 
 ## 🗺️ Roadmap
 
-- [x] **Phase 1**: Foundation & CLI Framework
-- [x] **Phase 2**: SSH Connection Management
-- [x] **Phase 3**: Core Diagnostic System (6 checkers)
-- [x] **Phase 4**: AI Integration (5 providers)
-- [x] **Phase 4.2**: OpenRouter Integration
-- [x] **Phase 5**: Security & Kubernetes Diagnostics
-- [x] **Phase 8**: Testing & Documentation (50.4% coverage)
-- [ ] **Phase 6**: Auto-Remediation with Approval Workflows
-- [ ] **Phase 7**: Advanced Reporting (Markdown, HTML, Trends)
-- [ ] **Phase 9**: REST API + WebSocket Server
-- [ ] **Phase 10**: Messaging & Notifications (Slack, Teams, PagerDuty)
+### ✅ Completed Phases
+
+- [x] **Phase 1-2**: Foundation & SSH (CLI framework, 4 auth methods, health monitoring)
+- [x] **Phase 3**: Core Diagnostics (6 checkers: CPU, Memory, Disk, Process, Service, Network)
+- [x] **Phase 4**: AI Integration (5 providers: Claude, GPT-4, Gemini, Ollama, OpenRouter)
+- [x] **Phase 5**: Security & Specialized Diagnostics (4 security checkers + Kubernetes + Proxmox)
+- [x] **Phase 6**: Auto-Remediation (Human-in-the-loop approval, risk classification, audit logging)
+- [x] **Phase 7**: API Server Foundation (REST API, PostgreSQL, Redis, Agent registration) ✨ **NEW**
+
+### 🚧 In Progress
+
+- [ ] **Phase 8**: Agent Daemon (Scheduled diagnostics, API reporter, offline mode)
+- [ ] **Phase 9**: Kubernetes Deployment (DaemonSet, Deployment, Helm charts)
+- [ ] **Phase 10**: VM Deployment (systemd units, RPM/DEB packages)
+- [ ] **Phase 11**: Messaging Integration (NATS, Kafka, RabbitMQ, Redis)
+
+### 🔮 Future Phases
+
+- [ ] **Phase 12**: Security Hardening (mTLS, JWT, cert rotation, penetration testing)
+- [ ] **Phase 13**: Production Readiness (Performance, monitoring, dashboards, load testing)
+- [ ] **Phase 14**: Advanced Reporting (Markdown, HTML, PDF, trends, forecasting)
+- [ ] **Phase 15**: Advanced Features (Multi-cluster, ML-based anomaly detection)
 
 ---
 
