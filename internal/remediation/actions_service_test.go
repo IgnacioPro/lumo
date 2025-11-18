@@ -437,6 +437,428 @@ func TestRestartServiceAction_GetServiceStatus(t *testing.T) {
 	})
 }
 
+// Test StartServiceAction
+
+func TestStartServiceAction_Validate(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(&serviceTestLogWriter{t})
+
+	t.Run("validates when systemctl and service available", func(t *testing.T) {
+		action := NewStartServiceAction("postgresql", logger)
+		executor := &serviceMockExecutor{
+			responses: map[string]mockServiceResponse{
+				"which systemctl": {
+					stdout:   "/usr/bin/systemctl",
+					exitCode: 0,
+				},
+				"systemctl list-unit-files": {
+					stdout:   "postgresql.service                enabled",
+					exitCode: 0,
+				},
+			},
+		}
+
+		err := action.Validate(context.Background(), executor)
+
+		if err != nil {
+			t.Errorf("Validate() unexpected error: %v", err)
+		}
+	})
+
+	t.Run("fails when systemctl not available", func(t *testing.T) {
+		action := NewStartServiceAction("postgresql", logger)
+		executor := &serviceMockExecutor{
+			responses: map[string]mockServiceResponse{
+				"which systemctl": {
+					stdout:   "",
+					exitCode: 1,
+				},
+			},
+		}
+
+		err := action.Validate(context.Background(), executor)
+
+		if err == nil {
+			t.Error("Validate() expected error when systemctl not available, got nil")
+		}
+
+		if !strings.Contains(err.Error(), "systemctl not available") {
+			t.Errorf("Validate() error = %q, want to contain 'systemctl not available'", err.Error())
+		}
+	})
+
+	t.Run("fails when executor is nil", func(t *testing.T) {
+		action := NewStartServiceAction("postgresql", logger)
+
+		err := action.Validate(context.Background(), nil)
+
+		if err == nil {
+			t.Error("Validate() expected error with nil executor, got nil")
+		}
+	})
+}
+
+func TestStartServiceAction_Execute(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(&serviceTestLogWriter{t})
+
+	t.Run("successfully starts service", func(t *testing.T) {
+		action := NewStartServiceAction("postgresql", logger)
+		executor := &serviceMockExecutor{
+			responses: map[string]mockServiceResponse{
+				"systemctl start postgresql": {
+					stdout:   "",
+					exitCode: 0,
+				},
+			},
+		}
+
+		result, err := action.Execute(context.Background(), executor)
+
+		if err != nil {
+			t.Fatalf("Execute() unexpected error: %v", err)
+		}
+
+		if result.Status != StatusSuccess {
+			t.Errorf("Execute() status = %q, want %q", result.Status, StatusSuccess)
+		}
+
+		if !strings.Contains(result.Message, "Successfully started postgresql") {
+			t.Errorf("Execute() message = %q, want to mention successful start", result.Message)
+		}
+
+		if len(result.ChangesApplied) != 1 {
+			t.Errorf("Execute() len(ChangesApplied) = %d, want 1", len(result.ChangesApplied))
+		}
+
+		if result.RollbackData == nil {
+			t.Error("Execute() RollbackData is nil, want non-nil for reversible action")
+		}
+	})
+
+	t.Run("fails when start command fails", func(t *testing.T) {
+		action := NewStartServiceAction("postgresql", logger)
+		executor := &serviceMockExecutor{
+			responses: map[string]mockServiceResponse{
+				"systemctl start postgresql": {
+					stdout:   "",
+					stderr:   "Job for postgresql.service failed",
+					exitCode: 1,
+				},
+			},
+		}
+
+		result, err := action.Execute(context.Background(), executor)
+
+		if err == nil {
+			t.Error("Execute() expected error when start fails, got nil")
+		}
+
+		if result.Status != StatusFailed {
+			t.Errorf("Execute() result.Status = %q, want %q", result.Status, StatusFailed)
+		}
+
+		if !strings.Contains(result.Error, "Job for postgresql.service failed") {
+			t.Errorf("Execute() result.Error = %q, want to contain error message", result.Error)
+		}
+	})
+
+	t.Run("sets duration correctly", func(t *testing.T) {
+		action := NewStartServiceAction("postgresql", logger)
+		executor := &serviceMockExecutor{
+			responses: map[string]mockServiceResponse{
+				"systemctl start postgresql": {
+					stdout:   "",
+					exitCode: 0,
+				},
+			},
+		}
+
+		result, err := action.Execute(context.Background(), executor)
+
+		if err != nil {
+			t.Fatalf("Execute() unexpected error: %v", err)
+		}
+
+		if result.Duration == 0 {
+			t.Error("Execute() result.Duration = 0, want > 0")
+		}
+
+		if result.StartTime.IsZero() || result.EndTime.IsZero() {
+			t.Error("Execute() StartTime or EndTime is zero")
+		}
+	})
+}
+
+func TestStartServiceAction_Rollback(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(&serviceTestLogWriter{t})
+
+	t.Run("stops service during rollback", func(t *testing.T) {
+		action := NewStartServiceAction("postgresql", logger)
+		executor := &serviceMockExecutor{
+			responses: map[string]mockServiceResponse{
+				"systemctl stop postgresql": {
+					stdout:   "",
+					exitCode: 0,
+				},
+			},
+		}
+
+		result := &ActionResult{
+			ActionID: "test",
+			RollbackData: map[string]interface{}{
+				"service_name": "postgresql",
+			},
+		}
+
+		err := action.Rollback(context.Background(), executor, result)
+
+		if err != nil {
+			t.Errorf("Rollback() unexpected error: %v", err)
+		}
+	})
+
+	t.Run("fails when stop command fails during rollback", func(t *testing.T) {
+		action := NewStartServiceAction("postgresql", logger)
+		executor := &serviceMockExecutor{
+			responses: map[string]mockServiceResponse{
+				"systemctl stop postgresql": {
+					stdout:   "",
+					stderr:   "Permission denied",
+					exitCode: 1,
+				},
+			},
+		}
+
+		result := &ActionResult{
+			ActionID: "test",
+			RollbackData: map[string]interface{}{
+				"service_name": "postgresql",
+			},
+		}
+
+		err := action.Rollback(context.Background(), executor, result)
+
+		if err == nil {
+			t.Error("Rollback() expected error when stop fails, got nil")
+		}
+
+		if !strings.Contains(err.Error(), "failed to stop service during rollback") {
+			t.Errorf("Rollback() error = %q, want to mention stop failure", err.Error())
+		}
+	})
+}
+
+// Test StopServiceAction
+
+func TestStopServiceAction_Validate(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(&serviceTestLogWriter{t})
+
+	t.Run("validates when systemctl available", func(t *testing.T) {
+		action := NewStopServiceAction("apache2", logger)
+		executor := &serviceMockExecutor{
+			responses: map[string]mockServiceResponse{
+				"which systemctl": {
+					stdout:   "/usr/bin/systemctl",
+					exitCode: 0,
+				},
+			},
+		}
+
+		err := action.Validate(context.Background(), executor)
+
+		if err != nil {
+			t.Errorf("Validate() unexpected error: %v", err)
+		}
+	})
+
+	t.Run("fails when systemctl not available", func(t *testing.T) {
+		action := NewStopServiceAction("apache2", logger)
+		executor := &serviceMockExecutor{
+			responses: map[string]mockServiceResponse{
+				"which systemctl": {
+					stdout:   "",
+					exitCode: 1,
+				},
+			},
+		}
+
+		err := action.Validate(context.Background(), executor)
+
+		if err == nil {
+			t.Error("Validate() expected error when systemctl not available, got nil")
+		}
+
+		if !strings.Contains(err.Error(), "systemctl not available") {
+			t.Errorf("Validate() error = %q, want to contain 'systemctl not available'", err.Error())
+		}
+	})
+
+	t.Run("fails when executor is nil", func(t *testing.T) {
+		action := NewStopServiceAction("apache2", logger)
+
+		err := action.Validate(context.Background(), nil)
+
+		if err == nil {
+			t.Error("Validate() expected error with nil executor, got nil")
+		}
+	})
+}
+
+func TestStopServiceAction_Execute(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(&serviceTestLogWriter{t})
+
+	t.Run("successfully stops service", func(t *testing.T) {
+		action := NewStopServiceAction("apache2", logger)
+		executor := &serviceMockExecutor{
+			responses: map[string]mockServiceResponse{
+				"systemctl stop apache2": {
+					stdout:   "",
+					exitCode: 0,
+				},
+			},
+		}
+
+		result, err := action.Execute(context.Background(), executor)
+
+		if err != nil {
+			t.Fatalf("Execute() unexpected error: %v", err)
+		}
+
+		if result.Status != StatusSuccess {
+			t.Errorf("Execute() status = %q, want %q", result.Status, StatusSuccess)
+		}
+
+		if !strings.Contains(result.Message, "Successfully stopped apache2") {
+			t.Errorf("Execute() message = %q, want to mention successful stop", result.Message)
+		}
+
+		if len(result.ChangesApplied) != 1 {
+			t.Errorf("Execute() len(ChangesApplied) = %d, want 1", len(result.ChangesApplied))
+		}
+
+		if result.RollbackData == nil {
+			t.Error("Execute() RollbackData is nil, want non-nil for reversible action")
+		}
+	})
+
+	t.Run("fails when stop command fails", func(t *testing.T) {
+		action := NewStopServiceAction("apache2", logger)
+		executor := &serviceMockExecutor{
+			responses: map[string]mockServiceResponse{
+				"systemctl stop apache2": {
+					stdout:   "",
+					stderr:   "Failed to stop apache2.service",
+					exitCode: 1,
+				},
+			},
+		}
+
+		result, err := action.Execute(context.Background(), executor)
+
+		if err == nil {
+			t.Error("Execute() expected error when stop fails, got nil")
+		}
+
+		if result.Status != StatusFailed {
+			t.Errorf("Execute() result.Status = %q, want %q", result.Status, StatusFailed)
+		}
+
+		if !strings.Contains(result.Error, "Failed to stop apache2.service") {
+			t.Errorf("Execute() result.Error = %q, want to contain error message", result.Error)
+		}
+	})
+
+	t.Run("sets duration correctly", func(t *testing.T) {
+		action := NewStopServiceAction("apache2", logger)
+		executor := &serviceMockExecutor{
+			responses: map[string]mockServiceResponse{
+				"systemctl stop apache2": {
+					stdout:   "",
+					exitCode: 0,
+				},
+			},
+		}
+
+		result, err := action.Execute(context.Background(), executor)
+
+		if err != nil {
+			t.Fatalf("Execute() unexpected error: %v", err)
+		}
+
+		if result.Duration == 0 {
+			t.Error("Execute() result.Duration = 0, want > 0")
+		}
+
+		if result.StartTime.IsZero() || result.EndTime.IsZero() {
+			t.Error("Execute() StartTime or EndTime is zero")
+		}
+	})
+}
+
+func TestStopServiceAction_Rollback(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(&serviceTestLogWriter{t})
+
+	t.Run("starts service during rollback", func(t *testing.T) {
+		action := NewStopServiceAction("apache2", logger)
+		executor := &serviceMockExecutor{
+			responses: map[string]mockServiceResponse{
+				"systemctl start apache2": {
+					stdout:   "",
+					exitCode: 0,
+				},
+			},
+		}
+
+		result := &ActionResult{
+			ActionID: "test",
+			RollbackData: map[string]interface{}{
+				"service_name": "apache2",
+			},
+		}
+
+		err := action.Rollback(context.Background(), executor, result)
+
+		if err != nil {
+			t.Errorf("Rollback() unexpected error: %v", err)
+		}
+	})
+
+	t.Run("fails when start command fails during rollback", func(t *testing.T) {
+		action := NewStopServiceAction("apache2", logger)
+		executor := &serviceMockExecutor{
+			responses: map[string]mockServiceResponse{
+				"systemctl start apache2": {
+					stdout:   "",
+					stderr:   "Permission denied",
+					exitCode: 1,
+				},
+			},
+		}
+
+		result := &ActionResult{
+			ActionID: "test",
+			RollbackData: map[string]interface{}{
+				"service_name": "apache2",
+			},
+		}
+
+		err := action.Rollback(context.Background(), executor, result)
+
+		if err == nil {
+			t.Error("Rollback() expected error when start fails, got nil")
+		}
+
+		if !strings.Contains(err.Error(), "failed to start service during rollback") {
+			t.Errorf("Rollback() error = %q, want to mention start failure", err.Error())
+		}
+	})
+}
+
 // Test log writer for service action tests
 type serviceTestLogWriter struct {
 	t *testing.T
