@@ -276,3 +276,248 @@ func TestSuggestDiskActions(t *testing.T) {
 		})
 	}
 }
+
+func TestSuggestProcessActions(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.DebugLevel)
+
+	registry := GetDefaultRegistry(logger)
+	suggester := NewSuggester(registry, logger)
+
+	t.Run("detects zombie processes but does not suggest actions", func(t *testing.T) {
+		result := &diagnostics.CheckResult{
+			Name:     "process_check",
+			Severity: diagnostics.SeverityWarning,
+			Message:  "Found 5 zombie processes",
+		}
+
+		actions := suggester.suggestProcessActions(result)
+
+		if len(actions) != 0 {
+			t.Errorf("suggestProcessActions() returned %d actions, want 0 (zombies require manual intervention)", len(actions))
+		}
+	})
+
+	t.Run("detects many zombies but does not suggest actions", func(t *testing.T) {
+		result := &diagnostics.CheckResult{
+			Name:     "process_check",
+			Severity: diagnostics.SeverityCritical,
+			Message:  "Found 15 zombies processes",
+		}
+
+		actions := suggester.suggestProcessActions(result)
+
+		if len(actions) != 0 {
+			t.Errorf("suggestProcessActions() returned %d actions, want 0 (many zombies still require manual intervention)", len(actions))
+		}
+	})
+
+	t.Run("detects high process count but does not suggest actions", func(t *testing.T) {
+		result := &diagnostics.CheckResult{
+			Name:     "process_check",
+			Severity: diagnostics.SeverityWarning,
+			Message:  "High process count: 2500 processes running",
+		}
+
+		actions := suggester.suggestProcessActions(result)
+
+		if len(actions) != 0 {
+			t.Errorf("suggestProcessActions() returned %d actions, want 0 (high process count requires manual analysis)", len(actions))
+		}
+	})
+
+	t.Run("no process issues returns empty", func(t *testing.T) {
+		result := &diagnostics.CheckResult{
+			Name:     "process_check",
+			Severity: diagnostics.SeverityOK,
+			Message:  "Process count normal: 150 processes",
+		}
+
+		actions := suggester.suggestProcessActions(result)
+
+		if len(actions) != 0 {
+			t.Errorf("suggestProcessActions() returned %d actions, want 0", len(actions))
+		}
+	})
+}
+
+func TestSuggestMemoryActions(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.DebugLevel)
+
+	registry := GetDefaultRegistry(logger)
+	suggester := NewSuggester(registry, logger)
+
+	t.Run("suggests cache cleanup for critical memory issues", func(t *testing.T) {
+		result := &diagnostics.CheckResult{
+			Name:     "memory_check",
+			Severity: diagnostics.SeverityCritical,
+			Message:  "Critical memory pressure: 95% used",
+		}
+
+		actions := suggester.suggestMemoryActions(result)
+
+		if len(actions) == 0 {
+			t.Fatal("suggestMemoryActions() returned no actions, want cache cleanup suggestion")
+		}
+
+		if actions[0].Category() != CategoryDisk {
+			t.Errorf("suggestMemoryActions() action category = %v, want %v", actions[0].Category(), CategoryDisk)
+		}
+	})
+
+	t.Run("no suggestions for warning level memory issues", func(t *testing.T) {
+		result := &diagnostics.CheckResult{
+			Name:     "memory_check",
+			Severity: diagnostics.SeverityWarning,
+			Message:  "Memory usage at 75%",
+		}
+
+		actions := suggester.suggestMemoryActions(result)
+
+		if len(actions) != 0 {
+			t.Errorf("suggestMemoryActions() returned %d actions, want 0 for warning level", len(actions))
+		}
+	})
+
+	t.Run("no suggestions for non-memory issues", func(t *testing.T) {
+		result := &diagnostics.CheckResult{
+			Name:     "cpu_check",
+			Severity: diagnostics.SeverityCritical,
+			Message:  "High CPU usage detected",
+		}
+
+		actions := suggester.suggestMemoryActions(result)
+
+		if len(actions) != 0 {
+			t.Errorf("suggestMemoryActions() returned %d actions, want 0 for non-memory issues", len(actions))
+		}
+	})
+}
+
+func TestSuggestForSeverity(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.DebugLevel)
+
+	registry := GetDefaultRegistry(logger)
+	suggester := NewSuggester(registry, logger)
+
+	t.Run("suggests cleanup for multiple critical issues", func(t *testing.T) {
+		report := &diagnostics.Report{
+			Results: []*diagnostics.CheckResult{
+				{Name: "disk_check", Severity: diagnostics.SeverityCritical, Message: "Disk 90% full"},
+				{Name: "memory_check", Severity: diagnostics.SeverityCritical, Message: "Memory 95% used"},
+				{Name: "cpu_check", Severity: diagnostics.SeverityCritical, Message: "CPU at 100%"},
+				{Name: "network_check", Severity: diagnostics.SeverityOK, Message: "Network OK"},
+			},
+		}
+
+		actions := suggester.SuggestForSeverity(report, diagnostics.SeverityCritical)
+
+		// Should suggest cleanup actions for multiple critical issues
+		if len(actions) == 0 {
+			t.Error("SuggestForSeverity() returned no actions for multiple critical issues")
+		}
+	})
+
+	t.Run("no suggestions for few critical issues", func(t *testing.T) {
+		report := &diagnostics.Report{
+			Results: []*diagnostics.CheckResult{
+				{Name: "disk_check", Severity: diagnostics.SeverityCritical, Message: "Disk 90% full"},
+				{Name: "memory_check", Severity: diagnostics.SeverityWarning, Message: "Memory 75% used"},
+				{Name: "cpu_check", Severity: diagnostics.SeverityOK, Message: "CPU normal"},
+			},
+		}
+
+		actions := suggester.SuggestForSeverity(report, diagnostics.SeverityCritical)
+
+		// With only 1 critical issue, should not suggest based on severity alone
+		if len(actions) != 0 {
+			t.Errorf("SuggestForSeverity() returned %d actions, want 0 for single critical issue", len(actions))
+		}
+	})
+
+	t.Run("no suggestions for all OK report", func(t *testing.T) {
+		report := &diagnostics.Report{
+			Results: []*diagnostics.CheckResult{
+				{Name: "disk_check", Severity: diagnostics.SeverityOK, Message: "Disk OK"},
+				{Name: "memory_check", Severity: diagnostics.SeverityOK, Message: "Memory OK"},
+				{Name: "cpu_check", Severity: diagnostics.SeverityOK, Message: "CPU OK"},
+			},
+		}
+
+		actions := suggester.SuggestForSeverity(report, diagnostics.SeverityWarning)
+
+		if len(actions) != 0 {
+			t.Errorf("SuggestForSeverity() returned %d actions, want 0 for all-OK report", len(actions))
+		}
+	})
+}
+
+func TestExplainSuggestion(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.DebugLevel)
+
+	t.Run("generates explanation for action suggestion", func(t *testing.T) {
+		action := NewCleanLogsAction(30, false, logger)
+		checkResult := &diagnostics.CheckResult{
+			Name:     "disk_check",
+			Severity: diagnostics.SeverityCritical,
+			Message:  "Disk space critical: 95% full",
+		}
+
+		explanation := ExplainSuggestion(action, checkResult)
+
+		if !strings.Contains(explanation, action.Name()) {
+			t.Errorf("ExplainSuggestion() does not contain action name: %s", action.Name())
+		}
+
+		if !strings.Contains(explanation, checkResult.Name) {
+			t.Errorf("ExplainSuggestion() does not contain check name: %s", checkResult.Name)
+		}
+
+		if !strings.Contains(explanation, string(checkResult.Severity)) {
+			t.Errorf("ExplainSuggestion() does not contain severity: %s", checkResult.Severity)
+		}
+
+		if !strings.Contains(explanation, checkResult.Message) {
+			t.Errorf("ExplainSuggestion() does not contain message: %s", checkResult.Message)
+		}
+
+		if !strings.Contains(explanation, action.EstimateImpact()) {
+			t.Errorf("ExplainSuggestion() does not contain impact estimation")
+		}
+	})
+
+	t.Run("formats explanation with proper structure", func(t *testing.T) {
+		action := NewRestartServiceAction("nginx", logger)
+		checkResult := &diagnostics.CheckResult{
+			Name:     "service_check",
+			Severity: diagnostics.SeverityWarning,
+			Message:  "Service nginx has failed",
+		}
+
+		explanation := ExplainSuggestion(action, checkResult)
+
+		// Check for expected structure keywords
+		if !strings.Contains(explanation, "Action") {
+			t.Error("ExplainSuggestion() missing 'Action' keyword")
+		}
+
+		if !strings.Contains(explanation, "Check:") {
+			t.Error("ExplainSuggestion() missing 'Check:' section")
+		}
+
+		if !strings.Contains(explanation, "Severity:") {
+			t.Error("ExplainSuggestion() missing 'Severity:' section")
+		}
+
+		if !strings.Contains(explanation, "Issue:") {
+			t.Error("ExplainSuggestion() missing 'Issue:' section")
+		}
+
+		if !strings.Contains(explanation, "Expected Impact:") {
+			t.Error("ExplainSuggestion() missing 'Expected Impact:' section")
+		}
+	})
+}

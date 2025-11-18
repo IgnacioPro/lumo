@@ -278,3 +278,170 @@ func TestClient_ThreadSafety(t *testing.T) {
 	<-done
 	// If we reach here without deadlock, thread safety works
 }
+
+func TestClient_SetLogger(t *testing.T) {
+	cfg := newValidClientConfig()
+	client, err := NewClient(cfg, logrus.New())
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	t.Run("sets new logger", func(t *testing.T) {
+		newLogger := logrus.New()
+		newLogger.SetLevel(logrus.DebugLevel)
+
+		client.SetLogger(newLogger)
+
+		client.mu.RLock()
+		actualLogger := client.logger
+		client.mu.RUnlock()
+
+		if actualLogger != newLogger {
+			t.Error("SetLogger() did not set the new logger")
+		}
+	})
+
+	t.Run("ignores nil logger", func(t *testing.T) {
+		originalLogger := logrus.New()
+		client.SetLogger(originalLogger)
+
+		client.SetLogger(nil)
+
+		client.mu.RLock()
+		actualLogger := client.logger
+		client.mu.RUnlock()
+
+		if actualLogger != originalLogger {
+			t.Error("SetLogger(nil) should not change the logger")
+		}
+	})
+
+	t.Run("thread-safe logger setting", func(t *testing.T) {
+		done := make(chan bool)
+
+		// Writer goroutines
+		for i := 0; i < 10; i++ {
+			go func() {
+				for j := 0; j < 10; j++ {
+					logger := logrus.New()
+					client.SetLogger(logger)
+				}
+				done <- true
+			}()
+		}
+
+		// Reader goroutines
+		for i := 0; i < 10; i++ {
+			go func() {
+				for j := 0; j < 10; j++ {
+					client.mu.RLock()
+					_ = client.logger
+					client.mu.RUnlock()
+				}
+				done <- true
+			}()
+		}
+
+		// Wait for all goroutines
+		for i := 0; i < 20; i++ {
+			<-done
+		}
+		// If we reach here without deadlock/race, it's thread-safe
+	})
+}
+
+func TestClient_SetRetryConfig(t *testing.T) {
+	cfg := newValidClientConfig()
+	client, err := NewClient(cfg, logrus.New())
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	t.Run("sets new retry config", func(t *testing.T) {
+		newConfig := &RetryConfig{
+			MaxAttempts:     5,
+			InitialInterval: 2 * time.Second,
+			MaxInterval:     30 * time.Second,
+			Multiplier:      3.0,
+			MaxElapsedTime:  5 * time.Minute,
+		}
+
+		client.SetRetryConfig(newConfig)
+
+		client.mu.RLock()
+		actualConfig := client.retryConfig
+		client.mu.RUnlock()
+
+		if actualConfig != newConfig {
+			t.Error("SetRetryConfig() did not set the new retry config")
+		}
+
+		if actualConfig.MaxAttempts != 5 {
+			t.Errorf("MaxAttempts = %d, want 5", actualConfig.MaxAttempts)
+		}
+
+		if actualConfig.Multiplier != 3.0 {
+			t.Errorf("Multiplier = %f, want 3.0", actualConfig.Multiplier)
+		}
+	})
+
+	t.Run("ignores nil config", func(t *testing.T) {
+		originalConfig := &RetryConfig{
+			MaxAttempts:     3,
+			InitialInterval: 1 * time.Second,
+			MaxInterval:     10 * time.Second,
+			Multiplier:      2.0,
+			MaxElapsedTime:  2 * time.Minute,
+		}
+		client.SetRetryConfig(originalConfig)
+
+		client.SetRetryConfig(nil)
+
+		client.mu.RLock()
+		actualConfig := client.retryConfig
+		client.mu.RUnlock()
+
+		if actualConfig != originalConfig {
+			t.Error("SetRetryConfig(nil) should not change the retry config")
+		}
+	})
+
+	t.Run("thread-safe config setting", func(t *testing.T) {
+		done := make(chan bool)
+
+		// Writer goroutines
+		for i := 0; i < 10; i++ {
+			go func(idx int) {
+				for j := 0; j < 10; j++ {
+					config := &RetryConfig{
+						MaxAttempts:     idx + 1,
+						InitialInterval: time.Duration(idx+1) * time.Second,
+						MaxInterval:     time.Duration(idx+10) * time.Second,
+						Multiplier:      float64(idx + 1),
+						MaxElapsedTime:  time.Duration(idx+5) * time.Minute,
+					}
+					client.SetRetryConfig(config)
+				}
+				done <- true
+			}(i)
+		}
+
+		// Reader goroutines
+		for i := 0; i < 10; i++ {
+			go func() {
+				for j := 0; j < 10; j++ {
+					client.mu.RLock()
+					_ = client.retryConfig
+					client.mu.RUnlock()
+				}
+				done <- true
+			}()
+		}
+
+		// Wait for all goroutines
+		for i := 0; i < 20; i++ {
+			<-done
+		}
+		// If we reach here without deadlock/race, it's thread-safe
+	})
+}
