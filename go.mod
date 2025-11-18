@@ -1,6 +1,8 @@
 module github.com/ignacio/lumo
 
-go 1.24.9
+go 1.24.7
+
+toolchain go1.24.7
 
 require (
 	github.com/alpkeskin/gotoon v0.1.1

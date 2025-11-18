@@ -306,3 +306,102 @@ cache:
   max_retries: 3
   pool_size: 10
   ttl: 1h
+
+# Notification Configuration
+notifications:
+  # Enable notification system
+  enabled: false  # Set to true to enable notifications
+
+  # Severity-based routing: map severity levels to notification providers
+  # For each severity level, specify which providers should receive notifications
+  routing:
+    critical:
+      - slack      # Critical alerts go to Slack, Email, and PagerDuty
+      - email
+    error:
+      - slack      # Errors go to Slack
+    warning:
+      - slack      # Warnings go to Slack
+    info: []       # Info notifications disabled by default
+    ok: []         # OK notifications disabled by default
+
+  # Provider configurations
+  # ALL credentials must be set via environment variables - NEVER in this file!
+  providers:
+    # Slack - Team communication via webhooks
+    slack:
+      enabled: false
+      # Set via: LUMO_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+      webhook_url: ""
+      channel: "#lumo-alerts"     # Optional: override webhook default channel
+      username: "Lumo Bot"        # Bot display name
+      icon_emoji: ":robot_face:"  # Bot icon
+
+    # Microsoft Teams - Enterprise team communication
+    teams:
+      enabled: false
+      # Set via: LUMO_TEAMS_WEBHOOK_URL=https://outlook.office.com/webhook/...
+      webhook_url: ""
+
+    # Telegram - Personal alerts and small teams
+    telegram:
+      enabled: false
+      # Set via: LUMO_TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+      bot_token: ""
+      # Set via: LUMO_TELEGRAM_CHAT_ID=-1001234567890
+      chat_id: ""
+      parse_mode: "Markdown"      # Options: Markdown, HTML
+
+    # Email - SMTP email notifications
+    email:
+      enabled: false
+      smtp_host: smtp.gmail.com
+      smtp_port: 587
+      # Set via: LUMO_EMAIL_FROM=lumo@example.com
+      from: ""
+      to:
+        - oncall@example.com
+        - team@example.com
+      auth:
+        # Set via: LUMO_EMAIL_AUTH_USERNAME=user@example.com
+        username: ""
+        # Set via: LUMO_EMAIL_AUTH_PASSWORD=your-app-password
+        password: ""
+
+    # Generic Webhook - Custom integrations
+    webhook:
+      enabled: false
+      # Set via: LUMO_WEBHOOK_URL=https://your-endpoint.com/webhook
+      url: ""
+      method: POST
+      headers:
+        # Example custom headers (optional)
+        # Authorization: "Bearer ${LUMO_WEBHOOK_TOKEN}"
+        # X-Custom-Header: "value"
+
+# Environment Variables for Notifications:
+#
+# Slack:
+#   LUMO_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+#   LUMO_NOTIFICATIONS_PROVIDERS_SLACK_ENABLED=true
+#   LUMO_NOTIFICATIONS_PROVIDERS_SLACK_CHANNEL="#alerts"
+#
+# Microsoft Teams:
+#   LUMO_TEAMS_WEBHOOK_URL=https://outlook.office.com/webhook/...
+#   LUMO_NOTIFICATIONS_PROVIDERS_TEAMS_ENABLED=true
+#
+# Telegram:
+#   LUMO_TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+#   LUMO_TELEGRAM_CHAT_ID=-1001234567890
+#   LUMO_NOTIFICATIONS_PROVIDERS_TELEGRAM_ENABLED=true
+#
+# Email:
+#   LUMO_EMAIL_FROM=lumo@example.com
+#   LUMO_EMAIL_AUTH_USERNAME=user@example.com
+#   LUMO_EMAIL_AUTH_PASSWORD=your-app-password
+#   LUMO_NOTIFICATIONS_PROVIDERS_EMAIL_ENABLED=true
+#
+# Webhook:
+#   LUMO_WEBHOOK_URL=https://your-endpoint.com/webhook
+#   LUMO_WEBHOOK_TOKEN=your-secret-token
+#   LUMO_NOTIFICATIONS_PROVIDERS_WEBHOOK_ENABLED=true

@@ -9,14 +9,15 @@ import (
 
 // Config represents the complete Lumo configuration
 type Config struct {
-	SSH         SSHConfig         `mapstructure:"ssh"`
-	AI          AIConfig          `mapstructure:"ai"`
-	Logging     LoggingConfig     `mapstructure:"logging"`
-	API         APIConfig         `mapstructure:"api"`
-	Diagnostics DiagnosticsConfig `mapstructure:"diagnostics"`
-	Database    DatabaseConfig    `mapstructure:"database"`
-	Cache       CacheConfig       `mapstructure:"cache"`
-	Agent       AgentConfig       `mapstructure:"agent"`
+	SSH           SSHConfig          `mapstructure:"ssh"`
+	AI            AIConfig           `mapstructure:"ai"`
+	Logging       LoggingConfig      `mapstructure:"logging"`
+	API           APIConfig          `mapstructure:"api"`
+	Diagnostics   DiagnosticsConfig  `mapstructure:"diagnostics"`
+	Database      DatabaseConfig     `mapstructure:"database"`
+	Cache         CacheConfig        `mapstructure:"cache"`
+	Agent         AgentConfig        `mapstructure:"agent"`
+	Notifications NotificationConfig `mapstructure:"notifications"`
 }
 
 // SSHConfig contains SSH connection settings
@@ -309,6 +310,7 @@ func DefaultConfig() *Config {
 				PodName:   "",
 			},
 		},
+		Notifications: DefaultNotificationConfig(),
 	}
 }
 
@@ -518,6 +520,11 @@ func (c *Config) Validate() error {
 		if !validScopes[c.Agent.Kubernetes.Scope] {
 			return fmt.Errorf("invalid agent kubernetes scope: %s (must be node or cluster)", c.Agent.Kubernetes.Scope)
 		}
+	}
+
+	// Notification validation
+	if err := c.ValidateNotifications(); err != nil {
+		return fmt.Errorf("notification config error: %w", err)
 	}
 
 	return nil
