@@ -1,0 +1,30 @@
+Source: lumo-agent
+Section: admin
+Priority: optional
+Maintainer: Lumo Team <lumo@example.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.0
+Homepage: https://github.com/ignacio/lumo
+Rules-Requires-Root: no
+
+Package: lumo-agent
+Architecture: amd64
+Depends: ${misc:Depends}, systemd, adduser
+Description: Lumo Agent - Intelligent SRE/DevOps Automation Agent
+ Lumo Agent is an intelligent SRE/DevOps automation platform that provides
+ system diagnostics, AI-powered analysis, and auto-remediation capabilities.
+ .
+ The agent runs as a systemd daemon and can operate in multiple modes:
+  - Scheduled: Periodic diagnostics based on cron expressions
+  - On-demand: API-triggered diagnostics
+  - Continuous: Real-time monitoring with WebSocket streaming
+  - Hybrid: Combination of scheduled, on-demand, and alerts
+ .
+ Features:
+  * System diagnostics (CPU, memory, disk, processes, services, network)
+  * Security checks (patches, ports, SSH security, auth failures)
+  * Kubernetes and Proxmox monitoring
+  * AI analysis via multiple providers (Anthropic, OpenAI, Ollama, Gemini)
+  * TOON format for 30-60% token reduction
+  * Auto-remediation with human-in-the-loop approval
+  * Prometheus metrics and health endpoints
