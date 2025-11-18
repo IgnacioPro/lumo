@@ -19,7 +19,7 @@ COLOR_GREEN=\033[32m
 COLOR_YELLOW=\033[33m
 COLOR_BLUE=\033[34m
 
-.PHONY: help build run clean test test-verbose test-ci test-ssh fmt vet lint install coverage coverage-report coverage-html deps check all diagnose-local diagnose-local-json version
+.PHONY: help build run clean test test-verbose test-ci test-ssh fmt fmt-check vet lint install coverage coverage-report coverage-html deps check all diagnose-local diagnose-local-json version
 
 # Default target
 .DEFAULT_GOAL := help
@@ -98,6 +98,17 @@ fmt:
 	@echo "$(COLOR_BLUE)Formatting code...$(COLOR_RESET)"
 	$(GO) fmt ./...
 	@echo "$(COLOR_GREEN)✓ Format complete$(COLOR_RESET)"
+
+## fmt-check: Check if code is properly formatted (matches CI)
+fmt-check:
+	@echo "$(COLOR_BLUE)Checking code formatting...$(COLOR_RESET)"
+	@if [ -n "$$(gofmt -l .)" ]; then \
+		echo "$(COLOR_RED)❌ Code is not formatted:$(COLOR_RESET)"; \
+		gofmt -d .; \
+		exit 1; \
+	else \
+		echo "$(COLOR_GREEN)✓ Code is properly formatted$(COLOR_RESET)"; \
+	fi
 
 ## vet: Run go vet on all packages
 vet:
