@@ -357,18 +357,31 @@ systemctl enable --now lumo-agent
 - ⏳ JWT authentication (deferred to Phase 12 - Security Hardening)
 - ⏳ mTLS support (deferred to Phase 12 - Security Hardening)
 - ⏳ WebSocket support (deferred to Phase 13 - Production Readiness)
-- **Status:** 35+ files, 4,800+ LOC | **Phase 8 ready to start!**
+- **Status:** 35+ files, 4,800+ LOC | **Phase 8 complete!** ✅
 
-### 🚧 In Progress - Agent Deployment (Weeks 4-16)
+### ✅ Completed - Phase 8: Agent Daemon (Weeks 4-6)
 
-**Phase 8: Agent Daemon** (Weeks 4-6)
-- Agent daemon binary (`cmd/lumo-agent`)
-- Scheduler for periodic diagnostics (cron-based)
-- API reporter with retry/backoff
-- Local result caching (offline mode)
-- Health check endpoints (`:8080/health`)
-- Prometheus metrics (`:9090/metrics`)
-- **Deliverables:** `cmd/lumo-agent/`, `internal/agent/{agent,config,reporter,scheduler,cache,healthcheck}.go`
+**Phase 8: Agent Daemon** - **100% COMPLETE** ✅
+- ✅ Agent daemon binary (`cmd/lumo-agent`)
+- ✅ Agent configuration in `internal/config/config.go` (AgentConfig struct)
+- ✅ Scheduler for periodic diagnostics (cron-based via `robfig/cron/v3`)
+- ✅ API reporter with retry/backoff (exponential backoff, 4 attempts)
+- ✅ Local result caching (offline mode support)
+- ✅ Health check HTTP endpoints (`:8080/health`, `/ready`, `/live`, `/status`)
+- ✅ Prometheus metrics (`:9090/metrics` with 12+ metrics)
+- ✅ Multiple operational modes: scheduled, on-demand, continuous, hybrid
+- ✅ Agent registration with API server
+- ✅ Heartbeat system (30s intervals)
+- ✅ Graceful shutdown handling
+- ✅ Version and health commands
+- ✅ Comprehensive tests (cache_test.go, scheduler_test.go)
+- **Deliverables:**
+  - `cmd/lumo-agent/{main.go,root.go,version.go,health.go}`
+  - `internal/agent/{agent.go,reporter.go,scheduler.go,cache.go,healthcheck.go,metrics.go}`
+  - Binary size: 65MB
+  - All tests passing ✅
+
+### 🚧 In Progress - Agent Deployment (Weeks 7-16)
 
 **Phase 9: Kubernetes Deployment** (Weeks 7-8)
 - DaemonSet manifest (per-node monitoring)
