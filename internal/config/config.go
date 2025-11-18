@@ -163,6 +163,9 @@ type AgentConfig struct {
 	RetryMaxAttempts int           `mapstructure:"retry_max_attempts"` // Max retry attempts for API calls
 	RetryBaseDelay   time.Duration `mapstructure:"retry_base_delay"`   // Base delay for exponential backoff
 
+	// Messaging settings (Phase 11)
+	Messaging MessagingConfig `mapstructure:"messaging"`
+
 	// Kubernetes-specific settings
 	Kubernetes KubernetesAgentConfig `mapstructure:"kubernetes"`
 }
@@ -175,6 +178,51 @@ type KubernetesAgentConfig struct {
 	Namespace string `mapstructure:"namespace"` // Agent namespace
 	NodeName  string `mapstructure:"node_name"` // Node name (for DaemonSet agents)
 	PodName   string `mapstructure:"pod_name"`  // Pod name
+}
+
+// MessagingConfig contains messaging settings (Phase 11)
+type MessagingConfig struct {
+	Enabled  bool          `mapstructure:"enabled"`  // Enable messaging integration
+	Provider string        `mapstructure:"provider"` // nats|kafka|rabbitmq|redis
+	URL      string        `mapstructure:"url"`      // Messaging server URL
+	Username string        `mapstructure:"username"` // Authentication username
+	Password string        `mapstructure:"password"` // Authentication password (prefer env var)
+	Timeout  time.Duration `mapstructure:"timeout"`  // Connection timeout
+
+	// TLS settings
+	TLS MessagingTLSConfig `mapstructure:"tls"`
+
+	// Retry settings
+	Retry MessagingRetryConfig `mapstructure:"retry"`
+
+	// Dead Letter Queue settings
+	DLQ MessagingDLQConfig `mapstructure:"dlq"`
+
+	// Provider-specific options
+	Options map[string]interface{} `mapstructure:"options"`
+}
+
+// MessagingTLSConfig contains TLS settings for messaging
+type MessagingTLSConfig struct {
+	Enabled            bool   `mapstructure:"enabled"`
+	CertFile           string `mapstructure:"cert_file"`
+	KeyFile            string `mapstructure:"key_file"`
+	CAFile             string `mapstructure:"ca_file"`
+	InsecureSkipVerify bool   `mapstructure:"insecure_skip_verify"`
+}
+
+// MessagingRetryConfig contains retry settings for messaging
+type MessagingRetryConfig struct {
+	MaxAttempts int           `mapstructure:"max_attempts"`
+	BaseDelay   time.Duration `mapstructure:"base_delay"`
+	MaxDelay    time.Duration `mapstructure:"max_delay"`
+}
+
+// MessagingDLQConfig contains dead letter queue settings
+type MessagingDLQConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Topic   string `mapstructure:"topic"`
+	MaxSize int    `mapstructure:"max_size"`
 }
 
 // DefaultConfig returns a Config with sensible defaults
@@ -300,6 +348,27 @@ func DefaultConfig() *Config {
 			HeartbeatSeconds: 30,                                                                 // Heartbeat every 30 seconds
 			RetryMaxAttempts: 4,                                                                  // 4 retry attempts with backoff
 			RetryBaseDelay:   2 * time.Second,                                                    // Start with 2s delay
+			Messaging: MessagingConfig{
+				Enabled:  false, // Disabled by default
+				Provider: "nats",
+				URL:      "nats://localhost:4222",
+				Timeout:  30 * time.Second,
+				TLS: MessagingTLSConfig{
+					Enabled:            false,
+					InsecureSkipVerify: false,
+				},
+				Retry: MessagingRetryConfig{
+					MaxAttempts: 3,
+					BaseDelay:   1 * time.Second,
+					MaxDelay:    30 * time.Second,
+				},
+				DLQ: MessagingDLQConfig{
+					Enabled: true,
+					Topic:   "lumo.dlq",
+					MaxSize: 10000,
+				},
+				Options: make(map[string]interface{}),
+			},
 			Kubernetes: KubernetesAgentConfig{
 				Enabled:   false,  // Disabled by default
 				Scope:     "node", // node|cluster
@@ -517,6 +586,41 @@ func (c *Config) Validate() error {
 		}
 		if !validScopes[c.Agent.Kubernetes.Scope] {
 			return fmt.Errorf("invalid agent kubernetes scope: %s (must be node or cluster)", c.Agent.Kubernetes.Scope)
+		}
+	}
+
+	// Messaging validation (Phase 11)
+	if c.Agent.Messaging.Enabled {
+		validProviders := map[string]bool{
+			"nats":     true,
+			"kafka":    true,
+			"rabbitmq": true,
+			"redis":    true,
+		}
+		if !validProviders[c.Agent.Messaging.Provider] {
+			return fmt.Errorf("invalid messaging provider: %s (must be nats, kafka, rabbitmq, or redis)", c.Agent.Messaging.Provider)
+		}
+
+		if c.Agent.Messaging.URL == "" {
+			return fmt.Errorf("messaging URL cannot be empty when messaging is enabled")
+		}
+
+		if c.Agent.Messaging.Timeout <= 0 {
+			return fmt.Errorf("messaging timeout must be positive")
+		}
+
+		if c.Agent.Messaging.Retry.MaxAttempts < 1 {
+			return fmt.Errorf("messaging retry max_attempts must be at least 1")
+		}
+
+		if c.Agent.Messaging.Retry.BaseDelay <= 0 {
+			return fmt.Errorf("messaging retry base_delay must be positive")
+		}
+
+		if c.Agent.Messaging.TLS.Enabled {
+			if c.Agent.Messaging.TLS.CertFile == "" || c.Agent.Messaging.TLS.KeyFile == "" {
+				return fmt.Errorf("messaging TLS enabled but cert_file or key_file not specified")
+			}
 		}
 	}
 
