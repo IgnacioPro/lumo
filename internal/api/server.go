@@ -16,16 +16,16 @@ import (
 
 // Server represents the HTTP API server
 type Server struct {
-	config     *config.APIConfig
+	config     *config.Config
 	db         *database.DB
 	httpServer *http.Server
 	logger     *logrus.Logger
 }
 
 // NewServer creates a new API server instance
-func NewServer(cfg *config.APIConfig, db *database.DB, logger *logrus.Logger) (*Server, error) {
+func NewServer(cfg *config.Config, db *database.DB, logger *logrus.Logger) (*Server, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("API config cannot be nil")
+		return nil, fmt.Errorf("config cannot be nil")
 	}
 
 	if logger == nil {
@@ -33,14 +33,14 @@ func NewServer(cfg *config.APIConfig, db *database.DB, logger *logrus.Logger) (*
 	}
 
 	// Create router
-	router := NewRouter(db, logger)
+	router := NewRouter(db, cfg, logger)
 
 	// Create HTTP server
 	httpServer := &http.Server{
-		Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+		Addr:         fmt.Sprintf("%s:%d", cfg.API.Host, cfg.API.Port),
 		Handler:      router,
-		ReadTimeout:  cfg.ReadTimeout,
-		WriteTimeout: cfg.WriteTimeout,
+		ReadTimeout:  cfg.API.ReadTimeout,
+		WriteTimeout: cfg.API.WriteTimeout,
 		IdleTimeout:  60 * time.Second,
 	}
 
@@ -63,11 +63,11 @@ func (s *Server) Start() error {
 	go func() {
 		s.logger.WithFields(logrus.Fields{
 			"addr": s.httpServer.Addr,
-			"tls":  s.config.TLS,
+			"tls":  s.config.API.TLS,
 		}).Info("Starting HTTP server")
 
-		if s.config.TLS {
-			serverErrors <- s.httpServer.ListenAndServeTLS(s.config.CertFile, s.config.KeyFile)
+		if s.config.API.TLS {
+			serverErrors <- s.httpServer.ListenAndServeTLS(s.config.API.CertFile, s.config.API.KeyFile)
 		} else {
 			serverErrors <- s.httpServer.ListenAndServe()
 		}

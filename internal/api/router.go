@@ -5,12 +5,14 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/ignacio/lumo/internal/api/handlers"
 	apimiddleware "github.com/ignacio/lumo/internal/api/middleware"
+	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/database"
+	"github.com/ignacio/lumo/internal/database/repository"
 	"github.com/sirupsen/logrus"
 )
 
 // NewRouter creates and configures the HTTP router
-func NewRouter(db *database.DB, logger *logrus.Logger) *chi.Mux {
+func NewRouter(db *database.DB, cfg *config.Config, logger *logrus.Logger) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -21,8 +23,14 @@ func NewRouter(db *database.DB, logger *logrus.Logger) *chi.Mux {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Compress(5))
 
+	// Initialize repositories
+	jobRepo := repository.NewJobRepository(db.DB)
+	apiKeyRepo := repository.NewAPIKeyRepository(db.DB)
+
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db, logger)
+	diagnosticsHandler := handlers.NewDiagnosticsHandler(jobRepo, cfg, logger)
+	jobsHandler := handlers.NewJobsHandler(jobRepo, logger)
 
 	// API v1 routes
 	r.Route("/api/v1", func(r chi.Router) {
@@ -32,23 +40,20 @@ func NewRouter(db *database.DB, logger *logrus.Logger) *chi.Mux {
 		r.Get("/live", healthHandler.Live)
 
 		// Authenticated endpoints (require API key)
-		// TODO: Add API key authentication middleware
-		// r.Group(func(r chi.Router) {
-		// 	r.Use(apimiddleware.APIKeyAuth(db, logger))
-		//
-		// 	// Diagnostic endpoints
-		// 	r.Post("/diagnostics", diagnosticsHandler.Run)
-		//
-		// 	// Remediation endpoints
-		// 	r.Post("/remediation", remediationHandler.Run)
-		//
-		// 	// Job endpoints
-		// 	r.Get("/jobs", jobsHandler.List)
-		// 	r.Get("/jobs/{id}", jobsHandler.Get)
-		//
-		// 	// Status endpoint
-		// 	r.Get("/status", statusHandler.Status)
-		// })
+		r.Group(func(r chi.Router) {
+			r.Use(apimiddleware.APIKeyAuth(apiKeyRepo, logger))
+
+			// Diagnostic endpoints
+			r.Post("/diagnostics", diagnosticsHandler.Run)
+
+			// Job endpoints
+			r.Get("/jobs", jobsHandler.List)
+			r.Get("/jobs/{id}", jobsHandler.Get)
+			r.Delete("/jobs/{id}", jobsHandler.Delete)
+
+			// TODO: Remediation endpoints (Phase 9.1-gamma)
+			// r.Post("/remediation", remediationHandler.Run)
+		})
 	})
 
 	return r

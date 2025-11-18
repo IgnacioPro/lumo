@@ -94,7 +94,7 @@ Authentication is required for most endpoints.`,
 		}
 
 		// Create and start API server
-		server, err := api.NewServer(&cfg.API, db, log)
+		server, err := api.NewServer(cfg, db, log)
 		if err != nil {
 			return fmt.Errorf("failed to create server: %w", err)
 		}
