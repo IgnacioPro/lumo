@@ -1,7 +1,7 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-18 | **Version:** 0.7.1
-> **Status:** Phases 1-6 Complete | Phase 7 (API Server) 90% Complete | 84 Go files, 50.4% test coverage
+> **Last Updated:** 2025-11-18 | **Version:** 1.0.0
+> **Status:** Phases 1-6 Complete | **Phase 7 (API Server) 100% Complete** ✅ | 84 Go files, 50.4% test coverage
 
 **For detailed examples and tutorials, see [DEVELOPMENT.md](DEVELOPMENT.md)**
 
@@ -328,9 +328,9 @@ systemctl enable --now lumo-agent
 
 **Phase 6:** Auto-Remediation - Action framework, human-in-the-loop approval, risk classification (safe/moderate/critical), audit logging, actions for disk/service/process management
 
-### 🚧 In Progress - Agent Deployment (16 weeks)
+### ✅ Completed - Phase 7: API Server Foundation
 
-**Phase 7: API Server Foundation** (Weeks 1-3) - **90% COMPLETE** ✅
+**Phase 7: API Server Foundation** (Weeks 1-3) - **100% COMPLETE** ✅
 - ✅ REST API server (`internal/api/`) with Chi router
 - ✅ PostgreSQL database + Redis cache integration
 - ✅ Database migrations (goose) - 3 migrations (jobs, api_keys, agents)
@@ -341,12 +341,15 @@ systemctl enable --now lumo-agent
 - ✅ Agent registration system (register, heartbeat, list, get, delete, stats)
 - ✅ Repository pattern for database operations (Job, APIKey, Agent)
 - ✅ docker-compose.yaml for local development
-- ⏳ Integration tests (pending)
-- ⏳ JWT authentication (optional - can defer to Phase 12)
-- ⏳ mTLS support (optional - deferred to Phase 12)
-- ⏳ WebSocket support (optional - deferred to Phase 13)
-- ⏳ OpenAPI/Swagger documentation (pending)
-- **Status:** 30 files (+4), 4,336 LOC (+939) | Phase 8 ready to start!
+- ✅ Integration tests (api_integration_test.go)
+- ✅ OpenAPI 3.0 specification (api/openapi.yaml)
+- ✅ API documentation (api/README.md)
+- ⏳ JWT authentication (deferred to Phase 12 - Security Hardening)
+- ⏳ mTLS support (deferred to Phase 12 - Security Hardening)
+- ⏳ WebSocket support (deferred to Phase 13 - Production Readiness)
+- **Status:** 33 files (+7), 4,336 LOC (+~300) | **Phase 8 ready to start!**
+
+### 🚧 In Progress - Agent Deployment (Weeks 4-16)
 
 **Phase 8: Agent Daemon** (Weeks 4-6)
 - Agent daemon binary (`cmd/lumo-agent`)
