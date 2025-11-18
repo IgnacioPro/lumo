@@ -19,7 +19,7 @@ COLOR_GREEN=\033[32m
 COLOR_YELLOW=\033[33m
 COLOR_BLUE=\033[34m
 
-.PHONY: help build run clean test test-verbose test-ci test-ssh fmt vet lint install coverage coverage-report coverage-html deps check all diagnose-local diagnose-local-json version
+.PHONY: help build run clean test test-verbose test-ci test-ssh fmt fmt-check vet lint install coverage coverage-report coverage-html deps check all diagnose-local diagnose-local-json version
 
 # Default target
 .DEFAULT_GOAL := help
@@ -93,11 +93,22 @@ coverage-html:
 	$(GO) tool cover -html=coverage.out -o coverage.html
 	@echo "$(COLOR_GREEN)✓ HTML coverage report saved to coverage.html$(COLOR_RESET)"
 
-## fmt: Format all Go source files
+## fmt: Format and simplify all Go source files
 fmt:
-	@echo "$(COLOR_BLUE)Formatting code...$(COLOR_RESET)"
-	$(GO) fmt ./...
+	@echo "$(COLOR_BLUE)Formatting and simplifying code...$(COLOR_RESET)"
+	gofmt -s -w .
 	@echo "$(COLOR_GREEN)✓ Format complete$(COLOR_RESET)"
+
+## fmt-check: Check if code is properly formatted and simplified (matches CI)
+fmt-check:
+	@echo "$(COLOR_BLUE)Checking code formatting and simplifications...$(COLOR_RESET)"
+	@if [ -n "$$(gofmt -s -l .)" ]; then \
+		echo "$(COLOR_RED)❌ Code is not formatted or simplified:$(COLOR_RESET)"; \
+		gofmt -s -d .; \
+		exit 1; \
+	else \
+		echo "$(COLOR_GREEN)✓ Code is properly formatted and simplified$(COLOR_RESET)"; \
+	fi
 
 ## vet: Run go vet on all packages
 vet:
@@ -129,8 +140,8 @@ deps:
 	$(GO) mod tidy
 	@echo "$(COLOR_GREEN)✓ Dependencies updated$(COLOR_RESET)"
 
-## check: Run fmt, vet, and test
-check: fmt vet test
+## check: Run fmt-check, vet, and test
+check: fmt-check vet test
 	@echo "$(COLOR_GREEN)✓ All checks passed$(COLOR_RESET)"
 
 ## all: Run check and build
