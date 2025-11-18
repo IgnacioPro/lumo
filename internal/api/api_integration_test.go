@@ -2,17 +2,12 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/ignacio/lumo/internal/config"
-	"github.com/ignacio/lumo/internal/database"
-	"github.com/ignacio/lumo/internal/database/models"
-	"github.com/ignacio/lumo/internal/database/repository"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -325,7 +320,7 @@ func setupTestRouter(t *testing.T) (*http.ServeMux, string, func()) {
 	logger.SetLevel(logrus.FatalLevel) // Suppress logs in tests
 
 	// Create test config
-	cfg := &config.Config{
+	_ = &config.Config{
 		API: config.APIConfig{
 			Host: "localhost",
 			Port: 8080,
@@ -333,8 +328,8 @@ func setupTestRouter(t *testing.T) (*http.ServeMux, string, func()) {
 		Database: config.DatabaseConfig{
 			Host:     "localhost",
 			Port:     5432,
-			Database: "lumo_test",
-			Username: "lumo",
+			Name:     "lumo_test",
+			User:     "lumo",
 			Password: "lumo_dev",
 		},
 	}
