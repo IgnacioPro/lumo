@@ -53,7 +53,9 @@ func NewRabbitMQPublisher(cfg interface{}, logger *logrus.Logger) (*RabbitMQPubl
 	// Create channel
 	channel, err := conn.Channel()
 	if err != nil {
-		conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			logger.WithError(closeErr).Warn("Failed to close RabbitMQ connection after channel creation failure")
+		}
 		return nil, fmt.Errorf("failed to create RabbitMQ channel: %w", err)
 	}
 
@@ -131,7 +133,9 @@ func (p *RabbitMQPublisher) PublishBatch(ctx context.Context, messages []*Messag
 // Close closes the RabbitMQ connection
 func (p *RabbitMQPublisher) Close() error {
 	if p.channel != nil {
-		p.channel.Close()
+		if err := p.channel.Close(); err != nil {
+			p.logger.WithError(err).Warn("Failed to close RabbitMQ channel")
+		}
 	}
 	if p.conn != nil {
 		if err := p.conn.Close(); err != nil {
@@ -165,7 +169,9 @@ func NewRabbitMQSubscriber(cfg interface{}, logger *logrus.Logger) (*RabbitMQSub
 
 	channel, err := conn.Channel()
 	if err != nil {
-		conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			logger.WithError(closeErr).Warn("Failed to close RabbitMQ connection after channel creation failure")
+		}
 		return nil, fmt.Errorf("failed to create RabbitMQ channel: %w", err)
 	}
 
@@ -275,7 +281,9 @@ func (s *RabbitMQSubscriber) Unsubscribe(topics []string) error {
 // Close closes the RabbitMQ connection
 func (s *RabbitMQSubscriber) Close() error {
 	if s.channel != nil {
-		s.channel.Close()
+		if err := s.channel.Close(); err != nil {
+			s.logger.WithError(err).Warn("Failed to close RabbitMQ channel")
+		}
 	}
 	if s.conn != nil {
 		if err := s.conn.Close(); err != nil {

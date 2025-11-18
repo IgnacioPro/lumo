@@ -14,14 +14,12 @@ import (
 type NATSPublisher struct {
 	conn   *nats.Conn
 	logger *logrus.Logger
-	cfg    *Config
 }
 
 // NATSSubscriber implements Subscriber for NATS
 type NATSSubscriber struct {
 	conn          *nats.Conn
 	logger        *logrus.Logger
-	cfg           *Config
 	subscriptions map[string]*nats.Subscription
 }
 
@@ -230,7 +228,9 @@ func (s *NATSSubscriber) Unsubscribe(topics []string) error {
 // Close closes the NATS connection
 func (s *NATSSubscriber) Close() error {
 	for topic := range s.subscriptions {
-		s.Unsubscribe([]string{topic})
+		if err := s.Unsubscribe([]string{topic}); err != nil {
+			s.logger.WithError(err).Warnf("Failed to unsubscribe from topic: %s", topic)
+		}
 	}
 	if s.conn != nil {
 		s.conn.Close()

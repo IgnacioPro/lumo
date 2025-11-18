@@ -64,6 +64,7 @@ func TestFromAgentConfigNil(t *testing.T) {
 
 	if msgCfg == nil {
 		t.Error("FromAgentConfig(nil) should return default config, not nil")
+		return
 	}
 
 	defaults := DefaultConfig()
@@ -117,6 +118,7 @@ func TestToAgentConfigNil(t *testing.T) {
 
 	if agentCfg == nil {
 		t.Error("ToAgentConfig(nil) should return config, not nil")
+		return
 	}
 
 	if agentCfg.Enabled {

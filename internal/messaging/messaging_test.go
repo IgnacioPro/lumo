@@ -274,11 +274,12 @@ func TestNoOpPublisher(t *testing.T) {
 		"test": "data",
 	})
 
-	if err := publisher.Publish(nil, msg); err != nil {
+	ctx := context.Background()
+	if err := publisher.Publish(ctx, msg); err != nil {
 		t.Errorf("NoOpPublisher.Publish() should not return error, got %v", err)
 	}
 
-	if err := publisher.PublishBatch(nil, []*Message{msg}); err != nil {
+	if err := publisher.PublishBatch(ctx, []*Message{msg}); err != nil {
 		t.Errorf("NoOpPublisher.PublishBatch() should not return error, got %v", err)
 	}
 
@@ -295,7 +296,8 @@ func TestNoOpSubscriber(t *testing.T) {
 		return nil
 	}
 
-	if err := subscriber.Subscribe(nil, []MessageTopic{TopicDiagnostics}, handler); err != nil {
+	ctx := context.Background()
+	if err := subscriber.Subscribe(ctx, []MessageTopic{TopicDiagnostics}, handler); err != nil {
 		t.Errorf("NoOpSubscriber.Subscribe() should not return error, got %v", err)
 	}
 
