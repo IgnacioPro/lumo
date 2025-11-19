@@ -206,8 +206,8 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 			return nil, fmt.Errorf("failed to connect: %w", err)
 		}
 
-		// Wrap SSH client to implement diagnostics.CommandExecutor interface
-		executor = &sshExecutorAdapter{client: sshClient}
+		// Use diagnostics.NewSSHExecutor to wrap the SSH client
+		executor = diagnostics.NewSSHExecutor(sshClient)
 		cleanup = func() { sshClient.Disconnect() }
 	}
 	defer cleanup()
@@ -216,13 +216,11 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 	h.logger.Info("Running diagnostics before remediation")
 
 	// Create diagnostics config with defaults
-	diagConfig := &diagnostics.Config{
-		Timeout:        30 * time.Second,
-		EnabledCheckers: []string{"cpu", "memory", "disk", "process", "service", "network"},
-	}
+	diagConfig := diagnostics.DefaultConfig()
+	diagConfig.EnabledChecks = []string{"cpu", "memory", "disk", "process", "service", "network"}
 
 	// Create default thresholds
-	thresholds := diagnostics.NewDefaultThresholds()
+	thresholds := diagnostics.DefaultThresholds()
 
 	// Create runner
 	runner := diagnostics.NewRunner(diagConfig, thresholds, executor, h.logger)
@@ -231,17 +229,23 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 	registerAllCheckers(runner, thresholds)
 
 	// Run diagnostics
-	report, err := runner.RunAll(ctx)
+	diagReport, err := runner.RunAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run diagnostics: %w", err)
 	}
-	if len(report.Results) == 0 {
+	if len(diagReport.Results) == 0 {
 		return nil, fmt.Errorf("no diagnostic results available")
 	}
 
+	// Create remediation registry
+	registry := remediation.NewRegistry(h.logger)
+
 	// Generate remediation suggestions
-	suggester := remediation.NewSuggester(h.logger)
-	plan := suggester.GeneratePlan(report.Results)
+	suggester := remediation.NewSuggester(registry, h.logger)
+	plan, err := suggester.SuggestFromReport(diagReport)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate remediation plan: %w", err)
+	}
 
 	// Configure plan based on request
 	plan.DryRun = req.DryRun
@@ -272,50 +276,35 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 	}
 	defer auditor.Close()
 
-	// Create approver (always auto-approve for API requests or use request setting)
-	approver := remediation.NewApprover(req.AutoApprove, h.logger)
+	// Create approver
+	approver := remediation.NewApprover(h.logger)
 
 	// Create executor
 	remediationExecutor := remediation.NewExecutor(executor, auditor, approver, h.logger, req.DryRun, req.AutoApprove)
 
 	// Execute plan
-	report, err := remediationExecutor.ExecutePlan(ctx, plan)
+	execReport, err := remediationExecutor.ExecutePlan(ctx, plan)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute remediation plan: %w", err)
 	}
 
 	// Format response
 	result := map[string]interface{}{
-		"start_time":    report.StartTime,
-		"end_time":      report.EndTime,
-		"duration_ms":   report.Duration.Milliseconds(),
-		"total_actions": report.TotalActions,
-		"executed":      report.Executed,
-		"succeeded":     report.Succeeded,
-		"failed":        report.Failed,
-		"skipped":       report.Skipped,
-		"rejected":      report.Rejected,
-		"rolled_back":   report.RolledBack,
-		"dry_run":       report.DryRun,
-		"results":       report.Results,
+		"start_time":    execReport.StartTime,
+		"end_time":      execReport.EndTime,
+		"duration_ms":   execReport.Duration.Milliseconds(),
+		"total_actions": execReport.TotalActions,
+		"executed":      execReport.Executed,
+		"succeeded":     execReport.Succeeded,
+		"failed":        execReport.Failed,
+		"skipped":       execReport.Skipped,
+		"rejected":      execReport.Rejected,
+		"rolled_back":   execReport.RolledBack,
+		"dry_run":       execReport.DryRun,
+		"results":       execReport.Results,
 	}
 
 	return result, nil
-}
-
-// sshExecutorAdapter adapts ssh.Client to diagnostics.CommandExecutor interface
-type sshExecutorAdapter struct {
-	client *ssh.Client
-}
-
-func (a *sshExecutorAdapter) Execute(cmd string, timeout time.Duration) (string, string, int, error) {
-	result, err := a.client.Execute(cmd, &ssh.CommandOptions{
-		Timeout: timeout,
-	})
-	if err != nil {
-		return "", "", -1, err
-	}
-	return result.Stdout, result.Stderr, result.ExitCode, nil
 }
 
 // registerAllCheckers registers all available checkers
