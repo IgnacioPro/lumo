@@ -53,14 +53,14 @@ func init() {
 
 type InitConfig struct {
 	// Essential settings
-	AIProvider string
-	AIAPIKey   string
-	LogLevel   string
+	AIProvider   string
+	AIAPIKey     string
+	LogLevel     string
 	OutputFormat string
 
 	// Optional features
-	EnableSSH    bool
-	EnableAgent  bool
+	EnableSSH           bool
+	EnableAgent         bool
 	EnableNotifications bool
 }
 
@@ -296,27 +296,27 @@ func validateAPIKey(provider, key string) bool {
 func loadPreset(preset string) (InitConfig, error) {
 	presets := map[string]InitConfig{
 		"local": {
-			AIProvider:    "anthropic",
-			LogLevel:      "info",
-			OutputFormat:  "text",
-			EnableSSH:     false,
-			EnableAgent:   false,
+			AIProvider:          "anthropic",
+			LogLevel:            "info",
+			OutputFormat:        "text",
+			EnableSSH:           false,
+			EnableAgent:         false,
 			EnableNotifications: false,
 		},
 		"agent": {
-			AIProvider:    "anthropic",
-			LogLevel:      "info",
-			OutputFormat:  "toon",
-			EnableSSH:     false,
-			EnableAgent:   true,
+			AIProvider:          "anthropic",
+			LogLevel:            "info",
+			OutputFormat:        "toon",
+			EnableSSH:           false,
+			EnableAgent:         true,
 			EnableNotifications: true,
 		},
 		"production": {
-			AIProvider:    "anthropic",
-			LogLevel:      "warn",
-			OutputFormat:  "json",
-			EnableSSH:     true,
-			EnableAgent:   true,
+			AIProvider:          "anthropic",
+			LogLevel:            "warn",
+			OutputFormat:        "json",
+			EnableSSH:           true,
+			EnableAgent:         true,
 			EnableNotifications: true,
 		},
 	}
@@ -355,7 +355,7 @@ func generateYAMLConfig(config InitConfig) string {
 	}
 
 	type DiagConfig struct {
-		OutputFormat string   `yaml:"output_format"`
+		OutputFormat  string   `yaml:"output_format"`
 		EnabledChecks []string `yaml:"enabled_checks"`
 	}
 
@@ -371,9 +371,9 @@ func generateYAMLConfig(config InitConfig) string {
 	}
 
 	type Config struct {
-		AI            AIConfig    `yaml:"ai"`
-		Logging       LogConfig   `yaml:"logging"`
-		Diagnostics   DiagConfig  `yaml:"diagnostics"`
+		AI            AIConfig     `yaml:"ai"`
+		Logging       LogConfig    `yaml:"logging"`
+		Diagnostics   DiagConfig   `yaml:"diagnostics"`
 		Agent         *AgentConfig `yaml:"agent,omitempty"`
 		Notifications *NotifConfig `yaml:"notifications,omitempty"`
 	}
@@ -388,7 +388,7 @@ func generateYAMLConfig(config InitConfig) string {
 			Format: "text",
 		},
 		Diagnostics: DiagConfig{
-			OutputFormat: config.OutputFormat,
+			OutputFormat:  config.OutputFormat,
 			EnabledChecks: []string{"cpu", "memory", "disk", "process", "service", "network"},
 		},
 	}
