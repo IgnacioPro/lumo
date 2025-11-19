@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/ignacio/lumo/internal/api/middleware"
 	"github.com/ignacio/lumo/internal/api/response"
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/database/models"
-	"github.com/ignacio/lumo/internal/database/repository"
 	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/ignacio/lumo/internal/diagnostics/checkers"
 	"github.com/ignacio/lumo/internal/remediation"
@@ -20,15 +20,23 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// JobRepository defines the interface for job storage operations
+type JobRepository interface {
+	Create(ctx context.Context, job *models.Job) error
+	UpdateStatus(ctx context.Context, id uuid.UUID, status models.JobStatus) error
+	UpdateResult(ctx context.Context, id uuid.UUID, result []byte) error
+	UpdateError(ctx context.Context, id uuid.UUID, errorMsg string) error
+}
+
 // RemediationHandler handles remediation requests
 type RemediationHandler struct {
-	jobRepo *repository.JobRepository
+	jobRepo JobRepository
 	config  *config.Config
 	logger  *logrus.Logger
 }
 
 // NewRemediationHandler creates a new remediation handler
-func NewRemediationHandler(jobRepo *repository.JobRepository, cfg *config.Config, logger *logrus.Logger) *RemediationHandler {
+func NewRemediationHandler(jobRepo JobRepository, cfg *config.Config, logger *logrus.Logger) *RemediationHandler {
 	return &RemediationHandler{
 		jobRepo: jobRepo,
 		config:  cfg,
@@ -309,16 +317,16 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 
 // registerAllCheckers registers all available checkers
 func registerAllCheckers(runner *diagnostics.Runner, thresholds *diagnostics.ThresholdConfig) {
-	runner.RegisterChecker("cpu", checkers.NewCPUChecker(thresholds.CPU))
-	runner.RegisterChecker("memory", checkers.NewMemoryChecker(thresholds.Memory))
-	runner.RegisterChecker("disk", checkers.NewDiskChecker(thresholds.Disk))
-	runner.RegisterChecker("process", checkers.NewProcessChecker(thresholds.Process))
-	runner.RegisterChecker("service", checkers.NewServiceChecker([]string{}))
-	runner.RegisterChecker("network", checkers.NewNetworkChecker(thresholds.Network, []string{}))
-	runner.RegisterChecker("patch", checkers.NewPatchChecker())
-	runner.RegisterChecker("ports", checkers.NewOpenPortsChecker([]int{}))
-	runner.RegisterChecker("ssh_security", checkers.NewSSHSecurityChecker())
-	runner.RegisterChecker("auth_failures", checkers.NewAuthFailuresChecker(24))
+	runner.RegisterChecker(checkers.NewCPUChecker(thresholds.CPU))
+	runner.RegisterChecker(checkers.NewMemoryChecker(thresholds.Memory))
+	runner.RegisterChecker(checkers.NewDiskChecker(thresholds.Disk))
+	runner.RegisterChecker(checkers.NewProcessChecker(thresholds.Process))
+	runner.RegisterChecker(checkers.NewServiceChecker([]string{}))
+	runner.RegisterChecker(checkers.NewNetworkChecker(thresholds.Network, nil))
+	runner.RegisterChecker(checkers.NewPatchChecker())
+	runner.RegisterChecker(checkers.NewPortsChecker([]int{}))
+	runner.RegisterChecker(checkers.NewSSHSecurityChecker())
+	runner.RegisterChecker(checkers.NewAuthFailuresChecker(24, 20))
 }
 
 // isLocalhost checks if the hostname refers to the local machine
