@@ -216,7 +216,7 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 
 		// Use diagnostics.NewSSHExecutor to wrap the SSH client
 		executor = diagnostics.NewSSHExecutor(sshClient)
-		cleanup = func() { sshClient.Disconnect() }
+		cleanup = func() { _ = sshClient.Disconnect() }
 	}
 	defer cleanup()
 
@@ -282,7 +282,7 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 	if err != nil {
 		return nil, fmt.Errorf("failed to create auditor: %w", err)
 	}
-	defer auditor.Close()
+	defer func() { _ = auditor.Close() }()
 
 	// Create approver
 	approver := remediation.NewApprover(h.logger)

@@ -935,10 +935,8 @@ func TestAnthropicProvider_AnalyzeStream_EmptyStream(t *testing.T) {
 		t.Fatalf("AnalyzeStream() error = %v", err)
 	}
 
-	// Collect chunks
-	var chunks []StreamChunk
-	for chunk := range ch {
-		chunks = append(chunks, chunk)
+	// Drain the channel - we're just testing that empty streams close cleanly
+	for range ch {
 	}
 
 	// Channel should close cleanly even with empty stream
