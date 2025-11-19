@@ -750,7 +750,7 @@ func TestAnthropicProvider_AnalyzeStream_Success(t *testing.T) {
 		if r.Header.Get("x-api-key") == "" {
 			t.Error("Missing x-api-key header")
 		}
-		
+
 		// Set SSE headers
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
