@@ -538,10 +538,10 @@ func TestOllamaProvider_AnalyzeStream_Success(t *testing.T) {
 
 		// Ollama uses newline-delimited JSON
 		responses := []string{
-			`{"model":"llama2","created_at":"2023-01-01T00:00:00Z","response":"System ","done":false}`,
-			`{"model":"llama2","created_at":"2023-01-01T00:00:00Z","response":"is ","done":false}`,
-			`{"model":"llama2","created_at":"2023-01-01T00:00:00Z","response":"healthy","done":false}`,
-			`{"model":"llama2","created_at":"2023-01-01T00:00:00Z","response":"","done":true}`,
+			`{"model":"llama2","created_at":"2023-01-01T00:00:00Z","message":{"role":"assistant","content":"System "},"done":false}`,
+			`{"model":"llama2","created_at":"2023-01-01T00:00:00Z","message":{"role":"assistant","content":"is "},"done":false}`,
+			`{"model":"llama2","created_at":"2023-01-01T00:00:00Z","message":{"role":"assistant","content":"healthy"},"done":false}`,
+			`{"model":"llama2","created_at":"2023-01-01T00:00:00Z","message":{"role":"assistant","content":""},"done":true}`,
 		}
 
 		for _, resp := range responses {
