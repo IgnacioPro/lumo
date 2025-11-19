@@ -203,4 +203,3 @@ func (h *AuthHandler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 func timePtr(t time.Time) *time.Time {
 	return &t
 }
-
