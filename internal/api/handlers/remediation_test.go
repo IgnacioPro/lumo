@@ -55,6 +55,21 @@ func (m *MockRemediationJobRepository) Update(ctx context.Context, job *models.J
 	return args.Error(0)
 }
 
+func (m *MockRemediationJobRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status models.JobStatus) error {
+	args := m.Called(ctx, id, status)
+	return args.Error(0)
+}
+
+func (m *MockRemediationJobRepository) UpdateResult(ctx context.Context, id uuid.UUID, result []byte) error {
+	args := m.Called(ctx, id, result)
+	return args.Error(0)
+}
+
+func (m *MockRemediationJobRepository) UpdateError(ctx context.Context, id uuid.UUID, errorMsg string) error {
+	args := m.Called(ctx, id, errorMsg)
+	return args.Error(0)
+}
+
 func (m *MockRemediationJobRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)
@@ -95,6 +110,10 @@ func TestRemediationHandler_Run_ValidRequest(t *testing.T) {
 
 	// Expect job creation
 	mockRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.Job")).Return(nil)
+	// Expect async status updates (might happen during test execution)
+	mockRepo.On("UpdateStatus", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockRepo.On("UpdateResult", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockRepo.On("UpdateError", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	// Execute
 	handler.Run(rec, req)
@@ -102,9 +121,15 @@ func TestRemediationHandler_Run_ValidRequest(t *testing.T) {
 	// Assert
 	assert.Equal(t, http.StatusCreated, rec.Code)
 
-	var resp RemediationResponse
-	err := json.Unmarshal(rec.Body.Bytes(), &resp)
+	var wrappedResp struct {
+		Success bool                `json:"success"`
+		Data    RemediationResponse `json:"data"`
+	}
+	err := json.Unmarshal(rec.Body.Bytes(), &wrappedResp)
 	assert.NoError(t, err)
+	assert.True(t, wrappedResp.Success)
+	resp := wrappedResp.Data
+
 	assert.NotEmpty(t, resp.JobID)
 	assert.Equal(t, "localhost", resp.Target)
 	assert.Equal(t, "pending", resp.Status)
@@ -240,6 +265,10 @@ func TestRemediationHandler_Run_WithSkipCategories(t *testing.T) {
 
 	// Expect job creation
 	mockRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.Job")).Return(nil)
+	// Expect async status updates (might happen during test execution)
+	mockRepo.On("UpdateStatus", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockRepo.On("UpdateResult", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockRepo.On("UpdateError", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	// Execute
 	handler.Run(rec, req)
@@ -247,11 +276,16 @@ func TestRemediationHandler_Run_WithSkipCategories(t *testing.T) {
 	// Assert
 	assert.Equal(t, http.StatusCreated, rec.Code)
 
-	var resp RemediationResponse
-	err := json.Unmarshal(rec.Body.Bytes(), &resp)
+	var wrappedResp struct {
+		Success bool                `json:"success"`
+		Data    RemediationResponse `json:"data"`
+	}
+	err := json.Unmarshal(rec.Body.Bytes(), &wrappedResp)
 	assert.NoError(t, err)
-	assert.NotEmpty(t, resp.JobID)
+	assert.True(t, wrappedResp.Success)
+	resp := wrappedResp.Data
 
+	assert.NotEmpty(t, resp.JobID)
 	mockRepo.AssertExpectations(t)
 
 	// Give some time for the background goroutine to start
