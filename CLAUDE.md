@@ -15,6 +15,7 @@
 - System diagnostics (12 checkers: core, security, specialized)
 - AI analysis (5 providers: Anthropic, OpenAI, Ollama, Gemini, OpenRouter)
 - Auto-remediation with human-in-the-loop approval
+- **Notifications:** Multi-platform alerting (Slack, Telegram, Discord, Teams, Email)
 - Multiple output formats (text, JSON, TOON)
 - TOON format for 30-60% AI token reduction
 
@@ -43,6 +44,7 @@ lumo/
 │   │   └── formatters/    # text, JSON, TOON
 │   ├── ai/                # 5 providers: Anthropic, OpenAI, Ollama, Gemini, OpenRouter
 │   ├── remediation/       # Actions, executor, approval, audit
+│   ├── notifications/     # ✅ Multi-platform notifications (Slack, Telegram, Webhook, Email)
 │   ├── api/               # ✅ (Phase 7) API server - 100% complete
 │   │   ├── handlers/      # diagnostics, health, jobs, agents
 │   │   ├── middleware/    # auth, logging, recovery, cors
@@ -208,6 +210,13 @@ export LUMO_AGENT_MESSAGING_PROVIDER=nats      # nats|kafka|rabbitmq|redis
 **AI Providers (5):** Anthropic (Claude), OpenAI (GPT), Ollama, Gemini, OpenRouter
 
 **Remediation:** `executor.go`, `approval.go`, `audit.go`, `actions_*.go` (disk, service, process)
+
+**Notifications (4 providers):**
+- **Slack:** Webhook integration with rich attachments
+- **Telegram:** Bot API with Markdown formatting
+- **Webhooks:** Generic support for Discord, Teams, Mattermost
+- **Email:** SMTP with TLS, HTML formatting, IPv6 compatible
+- See `internal/notifications/README.md` for detailed documentation
 
 ---
 
