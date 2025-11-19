@@ -180,8 +180,8 @@ type KubernetesAgentConfig struct {
 
 // NotificationsConfig contains notification system settings
 type NotificationsConfig struct {
-	Enabled   bool               `mapstructure:"enabled"`   // Enable notifications
-	Notifiers []NotifierConfig   `mapstructure:"notifiers"` // List of configured notifiers
+	Enabled   bool             `mapstructure:"enabled"`   // Enable notifications
+	Notifiers []NotifierConfig `mapstructure:"notifiers"` // List of configured notifiers
 }
 
 // NotifierConfig contains configuration for a notification provider
@@ -337,7 +337,7 @@ func DefaultConfig() *Config {
 			},
 		},
 		Notifications: NotificationsConfig{
-			Enabled:   false,      // Disabled by default
+			Enabled:   false,              // Disabled by default
 			Notifiers: []NotifierConfig{}, // No notifiers configured by default
 		},
 	}

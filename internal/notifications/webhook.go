@@ -22,14 +22,14 @@ type WebhookNotifier struct {
 // webhookMessage represents a generic webhook message payload.
 // This format is compatible with Discord, Microsoft Teams, Mattermost, and others.
 type webhookMessage struct {
-	Content   string               `json:"content,omitempty"`   // Plain text (Discord, Mattermost)
-	Username  string               `json:"username,omitempty"`  // Bot name override
-	Embeds    []webhookEmbed       `json:"embeds,omitempty"`    // Rich embeds (Discord)
-	Text      string               `json:"text,omitempty"`      // Plain text (Teams)
-	Title     string               `json:"title,omitempty"`     // Title (Teams)
-	Summary   string               `json:"summary,omitempty"`   // Summary (Teams)
-	Sections  []webhookSection     `json:"sections,omitempty"`  // Sections (Teams)
-	ThemeColor string              `json:"themeColor,omitempty"` // Color (Teams)
+	Content    string           `json:"content,omitempty"`    // Plain text (Discord, Mattermost)
+	Username   string           `json:"username,omitempty"`   // Bot name override
+	Embeds     []webhookEmbed   `json:"embeds,omitempty"`     // Rich embeds (Discord)
+	Text       string           `json:"text,omitempty"`       // Plain text (Teams)
+	Title      string           `json:"title,omitempty"`      // Title (Teams)
+	Summary    string           `json:"summary,omitempty"`    // Summary (Teams)
+	Sections   []webhookSection `json:"sections,omitempty"`   // Sections (Teams)
+	ThemeColor string           `json:"themeColor,omitempty"` // Color (Teams)
 }
 
 // webhookEmbed represents a rich embed for Discord-style webhooks.

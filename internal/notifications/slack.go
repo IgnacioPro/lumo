@@ -20,19 +20,19 @@ type SlackNotifier struct {
 
 // slackMessage represents a Slack message payload.
 type slackMessage struct {
-	Text        string              `json:"text,omitempty"`
-	Attachments []slackAttachment   `json:"attachments,omitempty"`
+	Text        string                   `json:"text,omitempty"`
+	Attachments []slackAttachment        `json:"attachments,omitempty"`
 	Blocks      []map[string]interface{} `json:"blocks,omitempty"`
 }
 
 // slackAttachment represents a Slack message attachment.
 type slackAttachment struct {
-	Color  string        `json:"color,omitempty"`
-	Title  string        `json:"title,omitempty"`
-	Text   string        `json:"text,omitempty"`
-	Fields []slackField  `json:"fields,omitempty"`
-	Footer string        `json:"footer,omitempty"`
-	Ts     int64         `json:"ts,omitempty"`
+	Color  string       `json:"color,omitempty"`
+	Title  string       `json:"title,omitempty"`
+	Text   string       `json:"text,omitempty"`
+	Fields []slackField `json:"fields,omitempty"`
+	Footer string       `json:"footer,omitempty"`
+	Ts     int64        `json:"ts,omitempty"`
 }
 
 // slackField represents a field in a Slack attachment.
