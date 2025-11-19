@@ -110,3 +110,8 @@ func GetAPIKeyFromContext(ctx context.Context) (*models.APIKey, bool) {
 	key, ok := ctx.Value(APIKeyContextKey).(*models.APIKey)
 	return key, ok
 }
+
+// SetAPIKeyInContext sets the API key in the request context (used for testing)
+func SetAPIKeyInContext(ctx context.Context, key *models.APIKey) context.Context {
+	return context.WithValue(ctx, APIKeyContextKey, key)
+}
