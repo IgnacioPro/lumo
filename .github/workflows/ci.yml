@@ -86,7 +86,7 @@ jobs:
       if: steps.test-strategy.outputs.run_full_tests == 'true' || steps.changed-files.outputs.has_go_changes == 'true'
       uses: actions/setup-go@v4
       with:
-        go-version: '1.24.9'
+        go-version: '1.25.4'
         cache: true
 
     - name: Download dependencies
@@ -235,7 +235,7 @@ jobs:
       if: steps.build-strategy.outputs.should_build == 'true'
       uses: actions/setup-go@v4
       with:
-        go-version: '1.24.9'
+        go-version: '1.25.4'
         cache: true
 
     - name: Build CLI

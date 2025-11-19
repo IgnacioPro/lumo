@@ -5,7 +5,7 @@ This guide details how to set up a complete testing environment for Lumo to veri
 ## 1. Prerequisites
 
 Ensure you have the following installed:
-- **Go 1.24+**: For building and running tests.
+- **Go 1.25+**: For building and running tests.
 - **Docker & Docker Compose**: For running PostgreSQL and Redis dependencies.
 - **jq**: Recommended for formatting JSON output in API tests.
 
