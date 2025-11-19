@@ -2,15 +2,13 @@ package config
 
 import (
 	"fmt"
-
-	"github.com/ignacio/lumo/internal/diagnostics"
 )
 
 // NotificationConfig contains configuration for the notification system
 type NotificationConfig struct {
-	Enabled   bool                                `mapstructure:"enabled"`
-	Routing   map[string][]string                 `mapstructure:"routing"`
-	Providers NotificationProvidersConfig         `mapstructure:"providers"`
+	Enabled   bool                        `mapstructure:"enabled"`
+	Routing   map[string][]string         `mapstructure:"routing"`
+	Providers NotificationProvidersConfig `mapstructure:"providers"`
 }
 
 // NotificationProvidersConfig contains configuration for all notification providers
@@ -47,12 +45,12 @@ type TelegramNotificationConfig struct {
 
 // EmailNotificationConfig contains email-specific configuration
 type EmailNotificationConfig struct {
-	Enabled  bool                      `mapstructure:"enabled"`
-	SMTPHost string                    `mapstructure:"smtp_host"`
-	SMTPPort int                       `mapstructure:"smtp_port"`
-	From     string                    `mapstructure:"from"`
-	To       []string                  `mapstructure:"to"`
-	Auth     EmailAuthConfig           `mapstructure:"auth"`
+	Enabled  bool            `mapstructure:"enabled"`
+	SMTPHost string          `mapstructure:"smtp_host"`
+	SMTPPort int             `mapstructure:"smtp_port"`
+	From     string          `mapstructure:"from"`
+	To       []string        `mapstructure:"to"`
+	Auth     EmailAuthConfig `mapstructure:"auth"`
 }
 
 // EmailAuthConfig contains email authentication settings
@@ -70,12 +68,12 @@ type WebhookNotificationConfig struct {
 }
 
 // GetRoutingForSeverity returns the list of provider names for a given severity level
-func (nc *NotificationConfig) GetRoutingForSeverity(severity diagnostics.Severity) []string {
+func (nc *NotificationConfig) GetRoutingForSeverity(severity string) []string {
 	if nc.Routing == nil {
 		return nil
 	}
 
-	return nc.Routing[string(severity)]
+	return nc.Routing[severity]
 }
 
 // ValidateNotifications validates the notification configuration

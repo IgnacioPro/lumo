@@ -40,17 +40,17 @@ type slackMessage struct {
 
 // slackBlock represents a Slack Block Kit block
 type slackBlock struct {
-	Type   string                 `json:"type"`
-	Text   *slackText             `json:"text,omitempty"`
-	Fields []slackText            `json:"fields,omitempty"`
+	Type      string               `json:"type"`
+	Text      *slackText           `json:"text,omitempty"`
+	Fields    []slackText          `json:"fields,omitempty"`
 	Accessory *slackBlockAccessory `json:"accessory,omitempty"`
 	Elements  []slackElement       `json:"elements,omitempty"`
 }
 
 // slackText represents text with formatting
 type slackText struct {
-	Type string `json:"type"` // plain_text or mrkdwn
-	Text string `json:"text"`
+	Type  string `json:"type"` // plain_text or mrkdwn
+	Text  string `json:"text"`
 	Emoji *bool  `json:"emoji,omitempty"`
 }
 

@@ -276,11 +276,10 @@ func escapeMarkdown(text string) string {
 		{"!", "\\!"},
 	}
 
-	result := text
+	result := []byte(text)
 	for _, r := range replacer {
-		result = bytes.ReplaceAll([]byte(result), []byte(r.old), []byte(r.new))
-		result = string(result)
+		result = bytes.ReplaceAll(result, []byte(r.old), []byte(r.new))
 	}
 
-	return result
+	return string(result)
 }

@@ -25,11 +25,11 @@ type EmailProvider struct {
 
 // EmailConfig contains configuration for the Email provider
 type EmailConfig struct {
-	Enabled  bool     `mapstructure:"enabled"`
-	SMTPHost string   `mapstructure:"smtp_host"`
-	SMTPPort int      `mapstructure:"smtp_port"`
-	From     string   `mapstructure:"from"`
-	To       []string `mapstructure:"to"`
+	Enabled  bool       `mapstructure:"enabled"`
+	SMTPHost string     `mapstructure:"smtp_host"`
+	SMTPPort int        `mapstructure:"smtp_port"`
+	From     string     `mapstructure:"from"`
+	To       []string   `mapstructure:"to"`
 	Auth     AuthConfig `mapstructure:"auth"`
 }
 
