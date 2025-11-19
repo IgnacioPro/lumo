@@ -198,3 +198,9 @@ func (h *AuthHandler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 
 	response.Success(w, resp)
 }
+
+// timePtr returns a pointer to the given time
+func timePtr(t time.Time) *time.Time {
+	return &t
+}
+
