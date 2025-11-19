@@ -123,9 +123,7 @@ func (h *RemediationHandler) Run(w http.ResponseWriter, r *http.Request) {
 // executeRemediation runs the remediation in the background
 func (h *RemediationHandler) executeRemediation(ctx context.Context, job *models.Job, req *RemediationRequest) {
 	// Update job status to running
-	job.Status = models.JobStatusRunning
-	job.StartedAt = timePtr(time.Now())
-	if err := h.jobRepo.Update(ctx, job); err != nil {
+	if err := h.jobRepo.UpdateStatus(ctx, job.ID, models.JobStatusRunning); err != nil {
 		h.logger.WithError(err).Error("Failed to update job status")
 		return
 	}
@@ -134,19 +132,28 @@ func (h *RemediationHandler) executeRemediation(ctx context.Context, job *models
 	result, err := h.performRemediation(ctx, req)
 
 	// Update job with results
-	job.CompletedAt = timePtr(time.Now())
 	if err != nil {
-		job.Status = models.JobStatusFailed
-		job.Error = err.Error()
 		h.logger.WithError(err).WithField("job_id", job.ID).Error("Remediation failed")
+		if updateErr := h.jobRepo.UpdateStatus(ctx, job.ID, models.JobStatusFailed); updateErr != nil {
+			h.logger.WithError(updateErr).Error("Failed to update job status to failed")
+		}
+		if updateErr := h.jobRepo.UpdateError(ctx, job.ID, err.Error()); updateErr != nil {
+			h.logger.WithError(updateErr).Error("Failed to update job error")
+		}
 	} else {
-		job.Status = models.JobStatusCompleted
-		job.Result = models.JSONB(result)
 		h.logger.WithField("job_id", job.ID).Info("Remediation completed successfully")
-	}
-
-	if err := h.jobRepo.Update(ctx, job); err != nil {
-		h.logger.WithError(err).Error("Failed to update job with results")
+		if updateErr := h.jobRepo.UpdateStatus(ctx, job.ID, models.JobStatusCompleted); updateErr != nil {
+			h.logger.WithError(updateErr).Error("Failed to update job status to completed")
+		}
+		// Marshal result to JSON
+		resultJSON, marshalErr := json.Marshal(result)
+		if marshalErr != nil {
+			h.logger.WithError(marshalErr).Error("Failed to marshal remediation result")
+		} else {
+			if updateErr := h.jobRepo.UpdateResult(ctx, job.ID, resultJSON); updateErr != nil {
+				h.logger.WithError(updateErr).Error("Failed to update job result")
+			}
+		}
 	}
 }
 
@@ -171,9 +178,11 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 
 	// Create command executor
 	var executor diagnostics.CommandExecutor
+	var cleanup func()
 	if isLocal {
 		executor = diagnostics.NewLocalExecutor()
 		h.logger.Debug("Using local command executor for remediation")
+		cleanup = func() {} // No cleanup needed for local executor
 	} else {
 		// Create SSH client
 		sshClientConfig := ssh.NewClientConfig(h.config.SSH)
@@ -196,27 +205,43 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 		if err := sshClient.Connect(hostname, port, username); err != nil {
 			return nil, fmt.Errorf("failed to connect: %w", err)
 		}
-		defer sshClient.Disconnect()
 
-		executor = sshClient
+		// Wrap SSH client to implement diagnostics.CommandExecutor interface
+		executor = &sshExecutorAdapter{client: sshClient}
+		cleanup = func() { sshClient.Disconnect() }
 	}
+	defer cleanup()
 
 	// Run diagnostics first to identify issues
 	h.logger.Info("Running diagnostics before remediation")
-	runner := diagnostics.NewRunner(executor, h.logger)
+
+	// Create diagnostics config with defaults
+	diagConfig := &diagnostics.Config{
+		Timeout:        30 * time.Second,
+		EnabledCheckers: []string{"cpu", "memory", "disk", "process", "service", "network"},
+	}
+
+	// Create default thresholds
+	thresholds := diagnostics.NewDefaultThresholds()
+
+	// Create runner
+	runner := diagnostics.NewRunner(diagConfig, thresholds, executor, h.logger)
 
 	// Register all checkers
-	registerAllCheckers(runner)
+	registerAllCheckers(runner, thresholds)
 
 	// Run diagnostics
-	results := runner.RunAll(ctx)
-	if len(results) == 0 {
+	report, err := runner.RunAll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to run diagnostics: %w", err)
+	}
+	if len(report.Results) == 0 {
 		return nil, fmt.Errorf("no diagnostic results available")
 	}
 
 	// Generate remediation suggestions
 	suggester := remediation.NewSuggester(h.logger)
-	plan := suggester.GeneratePlan(results)
+	plan := suggester.GeneratePlan(report.Results)
 
 	// Configure plan based on request
 	plan.DryRun = req.DryRun
@@ -278,18 +303,33 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 	return result, nil
 }
 
+// sshExecutorAdapter adapts ssh.Client to diagnostics.CommandExecutor interface
+type sshExecutorAdapter struct {
+	client *ssh.Client
+}
+
+func (a *sshExecutorAdapter) Execute(cmd string, timeout time.Duration) (string, string, int, error) {
+	result, err := a.client.Execute(cmd, &ssh.CommandOptions{
+		Timeout: timeout,
+	})
+	if err != nil {
+		return "", "", -1, err
+	}
+	return result.Stdout, result.Stderr, result.ExitCode, nil
+}
+
 // registerAllCheckers registers all available checkers
-func registerAllCheckers(runner *diagnostics.Runner) {
-	runner.RegisterChecker("cpu", checkers.NewCPUChecker())
-	runner.RegisterChecker("memory", checkers.NewMemoryChecker())
-	runner.RegisterChecker("disk", checkers.NewDiskChecker())
-	runner.RegisterChecker("process", checkers.NewProcessChecker())
-	runner.RegisterChecker("service", checkers.NewServiceChecker())
-	runner.RegisterChecker("network", checkers.NewNetworkChecker())
+func registerAllCheckers(runner *diagnostics.Runner, thresholds *diagnostics.ThresholdConfig) {
+	runner.RegisterChecker("cpu", checkers.NewCPUChecker(thresholds.CPU))
+	runner.RegisterChecker("memory", checkers.NewMemoryChecker(thresholds.Memory))
+	runner.RegisterChecker("disk", checkers.NewDiskChecker(thresholds.Disk))
+	runner.RegisterChecker("process", checkers.NewProcessChecker(thresholds.Process))
+	runner.RegisterChecker("service", checkers.NewServiceChecker([]string{}))
+	runner.RegisterChecker("network", checkers.NewNetworkChecker(thresholds.Network, []string{}))
 	runner.RegisterChecker("patch", checkers.NewPatchChecker())
-	runner.RegisterChecker("ports", checkers.NewOpenPortsChecker())
+	runner.RegisterChecker("ports", checkers.NewOpenPortsChecker([]int{}))
 	runner.RegisterChecker("ssh_security", checkers.NewSSHSecurityChecker())
-	runner.RegisterChecker("auth_failures", checkers.NewAuthFailuresChecker())
+	runner.RegisterChecker("auth_failures", checkers.NewAuthFailuresChecker(24))
 }
 
 // isLocalhost checks if the hostname refers to the local machine
@@ -299,9 +339,4 @@ func isLocalhost(hostname string) bool {
 		hostname == "127.0.0.1" ||
 		hostname == "::1" ||
 		hostname == "0.0.0.0"
-}
-
-// timePtr returns a pointer to the given time
-func timePtr(t time.Time) *time.Time {
-	return &t
 }
