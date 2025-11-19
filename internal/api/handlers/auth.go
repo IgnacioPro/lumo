@@ -66,30 +66,15 @@ func (h *AuthHandler) GenerateToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate API key
-	apiKey, err := h.apiKeyRepo.GetByKey(r.Context(), req.APIKey)
+	apiKey, err := h.apiKeyRepo.ValidateAndGet(r.Context(), req.APIKey)
 	if err != nil {
-		h.logger.WithError(err).Debug("API key not found")
+		h.logger.WithError(err).Debug("API key validation failed")
 		response.Unauthorized(w, "Invalid API key")
 		return
 	}
 
-	// Check if API key is active
-	if !apiKey.IsActive {
-		h.logger.WithField("api_key_name", apiKey.Name).Debug("Inactive API key used")
-		response.Unauthorized(w, "API key is inactive")
-		return
-	}
-
-	// Check expiration
-	if apiKey.ExpiresAt != nil && apiKey.ExpiresAt.Before(time.Now()) {
-		h.logger.WithField("api_key_name", apiKey.Name).Debug("Expired API key used")
-		response.Unauthorized(w, "API key has expired")
-		return
-	}
-
 	// Update last used timestamp
-	apiKey.LastUsedAt = timePtr(time.Now())
-	if err := h.apiKeyRepo.Update(r.Context(), apiKey); err != nil {
+	if err := h.apiKeyRepo.UpdateLastUsed(r.Context(), apiKey.ID); err != nil {
 		h.logger.WithError(err).Warn("Failed to update API key last used timestamp")
 	}
 
@@ -197,9 +182,4 @@ func (h *AuthHandler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.Success(w, resp)
-}
-
-// timePtr returns a pointer to the given time
-func timePtr(t time.Time) *time.Time {
-	return &t
 }
