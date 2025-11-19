@@ -557,3 +557,128 @@ func TestGeminiProvider_AnalyzeStream(t *testing.T) {
 		})
 	}
 }
+
+// ========== Streaming Tests ==========
+
+func TestGeminiProvider_AnalyzeStream_Success(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify API key in query
+		if !strings.Contains(r.URL.RawQuery, "key=test-key") {
+			t.Error("Missing API key in query")
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+
+		// Gemini streaming response in SSE format
+		responses := []string{
+			`data: {"candidates":[{"content":{"parts":[{"text":"System "}],"role":"model"}}]}`,
+			`data: {"candidates":[{"content":{"parts":[{"text":"is "}],"role":"model"}}]}`,
+			`data: {"candidates":[{"content":{"parts":[{"text":"healthy"}],"role":"model"},"finishReason":"STOP"}]}`,
+			`data: [DONE]`,
+		}
+
+		for _, resp := range responses {
+			_, _ = w.Write([]byte(resp + "\n"))
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}))
+	defer server.Close()
+
+	provider, err := NewGeminiProvider(&ProviderConfig{
+		APIKey: "test-key",
+	}, log)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	provider.config.Endpoint = server.URL
+	provider.client = server.Client()
+
+	req := &AnalysisRequest{
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "test-host"},
+	}
+
+	ctx := context.Background()
+	ch, err := provider.AnalyzeStream(ctx, req)
+
+	if err != nil {
+		t.Fatalf("AnalyzeStream() error = %v", err)
+	}
+
+	var chunks []StreamChunk
+	var content strings.Builder
+
+	for chunk := range ch {
+		chunks = append(chunks, chunk)
+		if !chunk.Done && chunk.Content != "" {
+			content.WriteString(chunk.Content)
+		}
+	}
+
+	if len(chunks) == 0 {
+		t.Fatal("Expected chunks")
+	}
+
+	if content.String() != "System is healthy" {
+		t.Errorf("Expected 'System is healthy', got '%s'", content.String())
+	}
+}
+
+func TestGeminiProvider_AnalyzeStream_ErrorResponse(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error": {"code": 400, "message": "Invalid request"}}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewGeminiProvider(&ProviderConfig{
+		APIKey: "test-key",
+	}, log)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	provider.config.Endpoint = server.URL
+	provider.client = server.Client()
+
+	req := &AnalysisRequest{
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "test-host"},
+	}
+
+	ctx := context.Background()
+	ch, err := provider.AnalyzeStream(ctx, req)
+
+	if err != nil {
+		t.Fatalf("AnalyzeStream() error = %v", err)
+	}
+
+	var receivedError bool
+	for chunk := range ch {
+		if chunk.Error != nil {
+			receivedError = true
+		}
+	}
+
+	if !receivedError {
+		t.Error("Expected error chunk")
+	}
+}

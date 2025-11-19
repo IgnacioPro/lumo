@@ -19,9 +19,11 @@ The API server provides REST endpoints for:
   - GET /api/v1/health - Health check
   - GET /api/v1/ready - Readiness probe
   - GET /api/v1/live - Liveness probe
-  - POST /api/v1/diagnostics - Run diagnostics (coming soon)
-  - POST /api/v1/remediation - Execute remediation (coming soon)
-  - GET /api/v1/jobs - List jobs (coming soon)
+  - POST /api/v1/diagnostics - Run diagnostics
+  - GET /api/v1/jobs - List jobs
+  - GET /api/v1/jobs/:id - Get job status
+  - POST /api/v1/agents/register - Register agent
+  - PUT /api/v1/agents/:id/heartbeat - Agent heartbeat
 
 Authentication is required for most endpoints.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -67,7 +69,7 @@ Authentication is required for most endpoints.`,
 			log.SetLevel(logrus.InfoLevel)
 		}
 
-		log.WithField("version", "0.5.0").Info("Starting Lumo API Server")
+		log.WithField("version", "0.9.1").Info("Starting Lumo API Server")
 
 		// Connect to database
 		dbConfig := &database.PostgresConfig{

@@ -737,3 +737,282 @@ func (w testLogWriter) Write(p []byte) (n int, err error) {
 	w.t.Log(string(p))
 	return len(p), nil
 }
+
+// ========== Streaming Tests ==========
+
+func TestAnthropicProvider_AnalyzeStream_Success(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	// Create mock streaming server
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify headers
+		if r.Header.Get("x-api-key") == "" {
+			t.Error("Missing x-api-key header")
+		}
+
+		// Set SSE headers
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("Streaming not supported")
+		}
+
+		// Send SSE events
+		events := []string{
+			`data: {"type":"message_start","message":{"id":"msg_123","type":"message","role":"assistant"}}`,
+			`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+			`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"System "}}`,
+			`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"is "}}`,
+			`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"healthy"}}`,
+			`data: {"type":"content_block_stop","index":0}`,
+			`data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":50}}`,
+			`data: {"type":"message_stop"}`,
+			`data: [DONE]`,
+		}
+
+		for _, event := range events {
+			_, _ = w.Write([]byte(event + "\n\n"))
+			flusher.Flush()
+			time.Sleep(10 * time.Millisecond) // Simulate streaming delay
+		}
+	}))
+	defer server.Close()
+
+	provider, err := NewAnthropicProvider(&ProviderConfig{
+		APIKey: "test-key",
+	}, log)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	provider.config.Endpoint = server.URL
+	provider.client = server.Client()
+
+	req := &AnalysisRequest{
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "test-host"},
+	}
+
+	ctx := context.Background()
+	ch, err := provider.AnalyzeStream(ctx, req)
+
+	if err != nil {
+		t.Fatalf("AnalyzeStream() error = %v", err)
+	}
+
+	// Collect chunks
+	var chunks []StreamChunk
+	var foundDone bool
+	for chunk := range ch {
+		chunks = append(chunks, chunk)
+		if chunk.Done {
+			foundDone = true
+		}
+		if chunk.Error != nil {
+			t.Errorf("Received error chunk: %v", chunk.Error)
+		}
+	}
+
+	// Verify we received chunks
+	if len(chunks) == 0 {
+		t.Fatal("Expected to receive streaming chunks, got none")
+	}
+
+	// Verify we got the done marker
+	if !foundDone {
+		t.Error("Expected to receive Done chunk")
+	}
+
+	// Verify content was streamed
+	var hasContent bool
+	for _, chunk := range chunks {
+		if chunk.Type == ChunkSummary && chunk.Content != "" {
+			hasContent = true
+			break
+		}
+	}
+
+	if !hasContent {
+		t.Error("Expected to receive content chunks")
+	}
+}
+
+func TestAnthropicProvider_AnalyzeStream_ErrorResponse(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	// Create mock server that returns error
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error": {"type": "authentication_error", "message": "Invalid API key"}}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewAnthropicProvider(&ProviderConfig{
+		APIKey: "test-key",
+	}, log)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	provider.config.Endpoint = server.URL
+	provider.client = server.Client()
+
+	req := &AnalysisRequest{
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "test-host"},
+	}
+
+	ctx := context.Background()
+	ch, err := provider.AnalyzeStream(ctx, req)
+
+	if err != nil {
+		t.Fatalf("AnalyzeStream() error = %v", err)
+	}
+
+	// Expect to receive error chunk
+	var receivedError bool
+	for chunk := range ch {
+		if chunk.Type == ChunkError && chunk.Error != nil {
+			receivedError = true
+			if !strings.Contains(chunk.Error.Error(), "401") {
+				t.Errorf("Expected error to contain 401, got: %v", chunk.Error)
+			}
+		}
+	}
+
+	if !receivedError {
+		t.Error("Expected to receive error chunk")
+	}
+}
+
+func TestAnthropicProvider_AnalyzeStream_EmptyStream(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	// Create mock server that immediately closes stream
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: [DONE]` + "\n\n"))
+	}))
+	defer server.Close()
+
+	provider, err := NewAnthropicProvider(&ProviderConfig{
+		APIKey: "test-key",
+	}, log)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	provider.config.Endpoint = server.URL
+	provider.client = server.Client()
+
+	req := &AnalysisRequest{
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "test-host"},
+	}
+
+	ctx := context.Background()
+	ch, err := provider.AnalyzeStream(ctx, req)
+
+	if err != nil {
+		t.Fatalf("AnalyzeStream() error = %v", err)
+	}
+
+	// Drain the channel - we're just testing that empty streams close cleanly
+	for range ch {
+	}
+
+	// Channel should close cleanly even with empty stream
+	// This is a valid scenario (no content before DONE marker)
+}
+
+func TestAnthropicProvider_AnalyzeStream_MalformedSSE(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	// Create mock server that sends malformed SSE
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("Streaming not supported")
+		}
+
+		// Send malformed events mixed with valid ones
+		events := []string{
+			`data: not-valid-json`,
+			`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Valid"}}`,
+			`invalid-sse-format`,
+			`data: [DONE]`,
+		}
+
+		for _, event := range events {
+			_, _ = w.Write([]byte(event + "\n\n"))
+			flusher.Flush()
+		}
+	}))
+	defer server.Close()
+
+	provider, err := NewAnthropicProvider(&ProviderConfig{
+		APIKey: "test-key",
+	}, log)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	provider.config.Endpoint = server.URL
+	provider.client = server.Client()
+
+	req := &AnalysisRequest{
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "test-host"},
+	}
+
+	ctx := context.Background()
+	ch, err := provider.AnalyzeStream(ctx, req)
+
+	if err != nil {
+		t.Fatalf("AnalyzeStream() error = %v", err)
+	}
+
+	// Should still receive valid chunks, malformed ones are skipped
+	var chunks []StreamChunk
+	for chunk := range ch {
+		chunks = append(chunks, chunk)
+	}
+
+	// Verify we received at least the valid chunk
+	var hasValidChunk bool
+	for _, chunk := range chunks {
+		if chunk.Content == "Valid" {
+			hasValidChunk = true
+			break
+		}
+	}
+
+	if !hasValidChunk {
+		t.Error("Expected to receive the valid chunk despite malformed events")
+	}
+}

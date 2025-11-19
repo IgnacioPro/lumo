@@ -66,6 +66,9 @@ type APIConfig struct {
 	ReadTimeout    time.Duration `mapstructure:"read_timeout"`
 	WriteTimeout   time.Duration `mapstructure:"write_timeout"`
 	MaxConnections int           `mapstructure:"max_connections"`
+	JWTSecret      string        `mapstructure:"jwt_secret"`     // JWT signing secret (prefer LUMO_API_JWT_SECRET env var)
+	JWTExpiration  time.Duration `mapstructure:"jwt_expiration"` // JWT token expiration (default: 24h)
+	JWTIssuer      string        `mapstructure:"jwt_issuer"`     // JWT issuer (default: lumo-api)
 }
 
 // DiagnosticsConfig contains diagnostic settings
