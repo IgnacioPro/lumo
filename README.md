@@ -4,7 +4,7 @@
 <p><strong>Intelligent SRE/DevOps Automation Agent</strong></p>
 
 [![CI](https://github.com/IgnacioPro/lumo/actions/workflows/ci.yml/badge.svg)](https://github.com/IgnacioPro/lumo/actions/workflows/ci.yml)
-[![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/Go-1.25.4-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Coverage](https://img.shields.io/badge/coverage-50.4%25-yellow.svg)](https://github.com/IgnacioPro/lumo)
 [![Release](https://img.shields.io/badge/version-0.8.0-brightgreen.svg)](https://github.com/IgnacioPro/lumo/releases)
@@ -105,7 +105,7 @@ Native cluster monitoring using `k8s.io/client-go`:
 
 ### Prerequisites
 
-- Go 1.23+ (for building from source)
+- Go 1.25+ (for building from source)
 - SSH access to target servers (or use localhost)
 - Optional: AI provider API key for analysis
 - Optional: kubeconfig for Kubernetes diagnostics

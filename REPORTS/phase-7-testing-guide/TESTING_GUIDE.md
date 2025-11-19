@@ -5,7 +5,7 @@ This guide shows you how to test the agent registration system (Phase 7).
 ## Prerequisites
 
 - Docker and Docker Compose installed
-- Go 1.24+ installed
+- Go 1.25+ installed
 - `jq` for JSON formatting (optional but recommended)
 
 ## Quick Start
