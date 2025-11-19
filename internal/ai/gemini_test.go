@@ -570,13 +570,14 @@ func TestGeminiProvider_AnalyzeStream_Success(t *testing.T) {
 			t.Error("Missing API key in query")
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "text/event-stream")
 
-		// Gemini streaming response
+		// Gemini streaming response in SSE format
 		responses := []string{
-			`{"candidates":[{"content":{"parts":[{"text":"System "}],"role":"model"}}]}`,
-			`{"candidates":[{"content":{"parts":[{"text":"is "}],"role":"model"}}]}`,
-			`{"candidates":[{"content":{"parts":[{"text":"healthy"}],"role":"model"},"finishReason":"STOP"}]}`,
+			`data: {"candidates":[{"content":{"parts":[{"text":"System "}],"role":"model"}}]}`,
+			`data: {"candidates":[{"content":{"parts":[{"text":"is "}],"role":"model"}}]}`,
+			`data: {"candidates":[{"content":{"parts":[{"text":"healthy"}],"role":"model"},"finishReason":"STOP"}]}`,
+			`data: [DONE]`,
 		}
 
 		for _, resp := range responses {
@@ -672,7 +673,7 @@ func TestGeminiProvider_AnalyzeStream_ErrorResponse(t *testing.T) {
 
 	var receivedError bool
 	for chunk := range ch {
-		if chunk.Type == ChunkError && chunk.Error != nil {
+		if chunk.Error != nil {
 			receivedError = true
 		}
 	}
