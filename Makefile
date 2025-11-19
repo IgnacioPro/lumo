@@ -19,7 +19,7 @@ COLOR_GREEN=\033[32m
 COLOR_YELLOW=\033[33m
 COLOR_BLUE=\033[34m
 
-.PHONY: help build run clean test test-verbose test-ci test-ssh fmt fmt-check vet lint install coverage coverage-report coverage-html deps check all diagnose-local diagnose-local-json version
+.PHONY: help build run clean test test-verbose test-ci test-ssh fmt fmt-check vet lint install coverage coverage-report coverage-html deps check ci all diagnose-local diagnose-local-json version
 
 # Default target
 .DEFAULT_GOAL := help
@@ -143,6 +143,16 @@ deps:
 ## check: Run fmt-check, vet, and test
 check: fmt-check vet test
 	@echo "$(COLOR_GREEN)✓ All checks passed$(COLOR_RESET)"
+
+## ci: Run all CI checks (matches GitHub CI workflow)
+ci: fmt-check vet
+	@echo "$(COLOR_BLUE)Running CI tests with race detector...$(COLOR_RESET)"
+	$(GO) test -race -timeout=5m -short ./...
+	@echo "$(COLOR_BLUE)Building CLI binary...$(COLOR_RESET)"
+	$(GO) build -v ./cmd/lumo
+	@echo "$(COLOR_BLUE)Building Agent binary...$(COLOR_RESET)"
+	$(GO) build -v ./cmd/lumo-agent
+	@echo "$(COLOR_GREEN)✓ All CI checks passed$(COLOR_RESET)"
 
 ## all: Run check and build
 all: check build
