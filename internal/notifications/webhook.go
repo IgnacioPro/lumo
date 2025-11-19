@@ -132,7 +132,9 @@ func (w *WebhookNotifier) Send(ctx context.Context, notification *Notification) 
 	if err != nil {
 		return fmt.Errorf("failed to send webhook notification: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("webhook returned non-success status: %d", resp.StatusCode)
@@ -237,6 +239,6 @@ func (w *WebhookNotifier) buildGenericMessage(notification *Notification) map[st
 func hexToDecimal(hex string) int {
 	hex = strings.TrimPrefix(hex, "#")
 	var value int
-	fmt.Sscanf(hex, "%x", &value)
+	_, _ = fmt.Sscanf(hex, "%x", &value)
 	return value
 }

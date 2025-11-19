@@ -106,14 +106,18 @@ func (e *EmailNotifier) sendWithTLS(addr string, auth smtp.Auth, msg string) err
 	if err != nil {
 		return fmt.Errorf("failed to connect with TLS: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	// Create SMTP client
 	client, err := smtp.NewClient(conn, e.config.SMTPHost)
 	if err != nil {
 		return fmt.Errorf("failed to create SMTP client: %w", err)
 	}
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+	}()
 
 	// Authenticate if credentials provided
 	if auth != nil {
@@ -228,14 +232,18 @@ func TestSMTPConnection(host string, port int, username, password string, useTLS
 	if err != nil {
 		return fmt.Errorf("failed to connect to SMTP server: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	// Create SMTP client
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
 		return fmt.Errorf("failed to create SMTP client: %w", err)
 	}
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+	}()
 
 	// Test authentication if credentials provided
 	if username != "" && password != "" {

@@ -264,7 +264,7 @@ func TestTelegramNotifier(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer server.Close()
 
@@ -629,6 +629,6 @@ func BenchmarkSlackNotifier(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		notifier.Send(context.Background(), notification)
+		_ = notifier.Send(context.Background(), notification)
 	}
 }
