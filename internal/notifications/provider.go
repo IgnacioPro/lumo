@@ -2,8 +2,6 @@ package notifications
 
 import (
 	"context"
-
-	"github.com/ignacio/lumo/internal/diagnostics"
 )
 
 // Provider defines the interface for all notification providers

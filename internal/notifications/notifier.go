@@ -94,6 +94,18 @@ func (n *Notifier) SetRouting(routing map[diagnostics.Severity][]string) {
 	n.routing = routing
 }
 
+// SetRoutingFromConfig configures routing from config (string-based)
+func (n *Notifier) SetRoutingFromConfig(routing map[string][]string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	// Convert string-based routing to Severity-based
+	n.routing = make(map[diagnostics.Severity][]string)
+	for severityStr, providers := range routing {
+		n.routing[diagnostics.Severity(severityStr)] = providers
+	}
+}
+
 // Notify sends a notification to all providers configured for the message's severity level
 func (n *Notifier) Notify(ctx context.Context, msg *Message) error {
 	if msg == nil {

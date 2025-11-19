@@ -26,12 +26,12 @@ type TeamsConfig struct {
 
 // teamsMessage represents a Microsoft Teams message card
 type teamsMessage struct {
-	Type       string            `json:"@type"`
-	Context    string            `json:"@context"`
-	ThemeColor string            `json:"themeColor"`
-	Summary    string            `json:"summary"`
-	Sections   []teamsSection    `json:"sections"`
-	PotentialAction []teamsAction `json:"potentialAction,omitempty"`
+	Type            string         `json:"@type"`
+	Context         string         `json:"@context"`
+	ThemeColor      string         `json:"themeColor"`
+	Summary         string         `json:"summary"`
+	Sections        []teamsSection `json:"sections"`
+	PotentialAction []teamsAction  `json:"potentialAction,omitempty"`
 }
 
 // teamsSection represents a section in a Teams message card
@@ -52,9 +52,9 @@ type teamsFact struct {
 
 // teamsAction represents an action button in Teams
 type teamsAction struct {
-	Type    string         `json:"@type"`
-	Name    string         `json:"name"`
-	Targets []teamsTarget  `json:"targets,omitempty"`
+	Type    string        `json:"@type"`
+	Name    string        `json:"name"`
+	Targets []teamsTarget `json:"targets,omitempty"`
 }
 
 // teamsTarget represents an action target

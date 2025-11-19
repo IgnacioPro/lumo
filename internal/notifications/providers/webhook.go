@@ -30,15 +30,15 @@ type WebhookConfig struct {
 
 // webhookPayload represents the JSON payload sent to the webhook
 type webhookPayload struct {
-	Severity  string                 `json:"severity"`
-	Title     string                 `json:"title"`
-	Body      string                 `json:"body"`
-	Fields    []notifications.Field  `json:"fields,omitempty"`
-	Timestamp int64                  `json:"timestamp"`
-	Source    string                 `json:"source"`
+	Severity  string                  `json:"severity"`
+	Title     string                  `json:"title"`
+	Body      string                  `json:"body"`
+	Fields    []notifications.Field   `json:"fields,omitempty"`
+	Timestamp int64                   `json:"timestamp"`
+	Source    string                  `json:"source"`
 	HostInfo  *notifications.HostInfo `json:"host_info,omitempty"`
-	Tags      []string               `json:"tags,omitempty"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	Tags      []string                `json:"tags,omitempty"`
+	Metadata  map[string]interface{}  `json:"metadata,omitempty"`
 }
 
 // NewWebhookProvider creates a new generic webhook notification provider

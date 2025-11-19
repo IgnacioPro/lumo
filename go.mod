@@ -2,8 +2,6 @@ module github.com/ignacio/lumo
 
 go 1.24.7
 
-toolchain go1.24.7
-
 require (
 	github.com/alpkeskin/gotoon v0.1.1
 	github.com/cenkalti/backoff/v4 v4.3.0
