@@ -764,7 +764,7 @@ func TestOpenAIProvider_AnalyzeStream_Success(t *testing.T) {
 		if r.Header.Get("Authorization") == "" {
 			t.Error("Missing Authorization header")
 		}
-		
+
 		// Set SSE headers
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
