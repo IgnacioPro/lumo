@@ -109,8 +109,8 @@ func OptionalJWTAuth(jwtManager *auth.JWTManager, logger *logrus.Logger) func(ht
 	}
 }
 
-// RequireScope is middleware that checks if the JWT claims include a required scope
-func RequireScope(requiredScope string, logger *logrus.Logger) func(http.Handler) http.Handler {
+// RequireJWTScope is middleware that checks if the JWT claims include a required scope
+func RequireJWTScope(requiredScope string, logger *logrus.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			claims, ok := GetJWTClaimsFromContext(r.Context())
