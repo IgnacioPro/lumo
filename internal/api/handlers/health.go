@@ -70,7 +70,7 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 		Status:    overallStatus,
 		Timestamp: time.Now(),
 		Uptime:    time.Since(h.startTime).String(),
-		Version:   "0.5.0", // TODO: Get from build info
+		Version:   "0.9.1",
 		Services:  services,
 	}
 
