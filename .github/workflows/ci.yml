@@ -84,7 +84,7 @@ jobs:
 
     - name: Set up Go
       if: steps.test-strategy.outputs.run_full_tests == 'true' || steps.changed-files.outputs.has_go_changes == 'true'
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
         go-version: '1.25.4'
         cache: true
@@ -233,7 +233,7 @@ jobs:
 
     - name: Set up Go
       if: steps.build-strategy.outputs.should_build == 'true'
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
         go-version: '1.25.4'
         cache: true
