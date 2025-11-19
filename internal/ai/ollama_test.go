@@ -526,3 +526,131 @@ func TestOllamaProvider_AnalyzeStream(t *testing.T) {
 		})
 	}
 }
+
+// ========== Streaming Tests ==========
+
+func TestOllamaProvider_AnalyzeStream_Success(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+
+		// Ollama uses newline-delimited JSON
+		responses := []string{
+			`{"model":"llama2","created_at":"2023-01-01T00:00:00Z","response":"System ","done":false}`,
+			`{"model":"llama2","created_at":"2023-01-01T00:00:00Z","response":"is ","done":false}`,
+			`{"model":"llama2","created_at":"2023-01-01T00:00:00Z","response":"healthy","done":false}`,
+			`{"model":"llama2","created_at":"2023-01-01T00:00:00Z","response":"","done":true}`,
+		}
+
+		for _, resp := range responses {
+			_, _ = w.Write([]byte(resp + "\n"))
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}))
+	defer server.Close()
+
+	provider, err := NewOllamaProvider(&ProviderConfig{
+		APIKey: "test-key",
+	}, log)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	provider.config.Endpoint = server.URL
+	provider.client = server.Client()
+
+	req := &AnalysisRequest{
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "test-host"},
+	}
+
+	ctx := context.Background()
+	ch, err := provider.AnalyzeStream(ctx, req)
+
+	if err != nil {
+		t.Fatalf("AnalyzeStream() error = %v", err)
+	}
+
+	var chunks []StreamChunk
+	var foundDone bool
+	var content strings.Builder
+
+	for chunk := range ch {
+		chunks = append(chunks, chunk)
+		if chunk.Done {
+			foundDone = true
+		}
+		if !chunk.Done && chunk.Content != "" {
+			content.WriteString(chunk.Content)
+		}
+	}
+
+	if len(chunks) == 0 {
+		t.Fatal("Expected to receive chunks")
+	}
+
+	if !foundDone {
+		t.Error("Expected Done marker")
+	}
+
+	if content.String() != "System is healthy" {
+		t.Errorf("Expected 'System is healthy', got '%s'", content.String())
+	}
+}
+
+func TestOllamaProvider_AnalyzeStream_ErrorResponse(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error": "model not found"}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewOllamaProvider(&ProviderConfig{
+		APIKey: "test-key",
+	}, log)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	provider.config.Endpoint = server.URL
+	provider.client = server.Client()
+
+	req := &AnalysisRequest{
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "test-host"},
+	}
+
+	ctx := context.Background()
+	ch, err := provider.AnalyzeStream(ctx, req)
+
+	if err != nil {
+		t.Fatalf("AnalyzeStream() error = %v", err)
+	}
+
+	var receivedError bool
+	for chunk := range ch {
+		if chunk.Type == ChunkError && chunk.Error != nil {
+			receivedError = true
+		}
+	}
+
+	if !receivedError {
+		t.Error("Expected error chunk")
+	}
+}
