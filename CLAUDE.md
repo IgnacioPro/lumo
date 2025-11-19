@@ -165,7 +165,7 @@ export LUMO_AGENT_MESSAGING_PROVIDER=nats      # nats|kafka|rabbitmq|redis
 
 ---
 
-## Testing
+## Testing & CI
 
 **Current Coverage:** 50.4% (35 test files)
 **Pattern:** Table-driven tests, mock executors for checkers
@@ -179,6 +179,37 @@ export LUMO_AGENT_MESSAGING_PROVIDER=nats      # nats|kafka|rabbitmq|redis
 - cmd/lumo: 61.6%
 - internal/ssh: 30.5%
 - internal/ai: 27.1%
+
+### CI/CD Pipeline
+
+**GitHub Actions:** Simplified workflow with Makefile integration
+
+**CI Checks (all branches):**
+- `golangci-lint` - Comprehensive linting (includes gofmt, govet, and 50+ linters)
+- `govulncheck` - Vulnerability scanning
+- Race detection tests (`-race` flag)
+- Dependency verification
+- Build verification (CLI + Agent)
+
+**Cross-Platform Builds:** Only on main/master branches or PRs to main/master
+- Platforms: linux/darwin × amd64/arm64 (4 combinations)
+- Saves ~2-4 min on feature branch CI runs
+
+**Path-Based Filtering:** CI only runs when Go files, dependencies, or CI config changes
+- Monitored paths: `**.go`, `go.mod`, `go.sum`, `Makefile`, `.github/workflows/**`
+
+**Makefile Targets:**
+```bash
+make ci-lint   # Linters + security checks
+make ci-test   # Tests with race detection
+make ci-build  # Build both binaries
+make ci        # Run all CI checks locally
+```
+
+**Local CI Parity:** Run the same checks locally before pushing:
+```bash
+make ci  # Runs all CI checks locally
+```
 
 ---
 
@@ -540,7 +571,15 @@ systemctl enable --now lumo-agent
 ### CLI Mode (Current)
 
 ```bash
-# Build & Test
+# Build & Test (Makefile)
+make build         # Build CLI and Agent
+make test          # Run all tests
+make ci            # Run all CI checks locally
+make ci-lint       # Linters + security checks
+make ci-test       # Tests with race detection
+make ci-build      # Build both binaries
+
+# Build & Test (Manual)
 go build -o lumo ./cmd/lumo
 go test ./... && go vet ./... && go fmt ./...
 

@@ -19,7 +19,7 @@ COLOR_GREEN=\033[32m
 COLOR_YELLOW=\033[33m
 COLOR_BLUE=\033[34m
 
-.PHONY: help build run clean test test-verbose test-ci test-ssh fmt fmt-check vet lint install coverage coverage-report coverage-html deps check ci all diagnose-local diagnose-local-json version
+.PHONY: help build run clean test test-verbose test-ci test-ssh fmt fmt-check vet lint install coverage coverage-report coverage-html deps check ci ci-lint ci-test ci-build all diagnose-local diagnose-local-json version
 
 # Default target
 .DEFAULT_GOAL := help
@@ -144,14 +144,30 @@ deps:
 check: fmt-check vet test
 	@echo "$(COLOR_GREEN)✓ All checks passed$(COLOR_RESET)"
 
-## ci: Run all CI checks (matches GitHub CI workflow)
-ci: fmt-check vet
-	@echo "$(COLOR_BLUE)Running CI tests with race detector...$(COLOR_RESET)"
+## ci-lint: Run linters and security checks (used by GitHub CI)
+ci-lint:
+	@echo "$(COLOR_BLUE)Running golangci-lint...$(COLOR_RESET)"
+	golangci-lint run --timeout=5m
+	@echo "$(COLOR_BLUE)Running vulnerability check...$(COLOR_RESET)"
+	govulncheck ./...
+	@echo "$(COLOR_GREEN)✓ Lint and security checks passed$(COLOR_RESET)"
+
+## ci-test: Run tests with race detection (used by GitHub CI)
+ci-test:
+	@echo "$(COLOR_BLUE)Running tests with race detector...$(COLOR_RESET)"
 	$(GO) test -race -timeout=5m -short ./...
+	@echo "$(COLOR_GREEN)✓ Tests passed$(COLOR_RESET)"
+
+## ci-build: Build both CLI and Agent binaries (used by GitHub CI)
+ci-build:
 	@echo "$(COLOR_BLUE)Building CLI binary...$(COLOR_RESET)"
 	$(GO) build -v ./cmd/lumo
 	@echo "$(COLOR_BLUE)Building Agent binary...$(COLOR_RESET)"
 	$(GO) build -v ./cmd/lumo-agent
+	@echo "$(COLOR_GREEN)✓ Build complete$(COLOR_RESET)"
+
+## ci: Run all CI checks (matches GitHub CI workflow)
+ci: ci-lint ci-test ci-build
 	@echo "$(COLOR_GREEN)✓ All CI checks passed$(COLOR_RESET)"
 
 ## all: Run check and build
