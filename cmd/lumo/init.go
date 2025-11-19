@@ -160,7 +160,7 @@ func fileExists(path string) bool {
 func interactiveSetup() (InitConfig, error) {
 	var config InitConfig
 
-	fmt.Println("Let's set up your Lumo configuration!\n")
+	fmt.Println("Let's set up your Lumo configuration!")
 
 	// AI Provider selection
 	aiProvider := ""
