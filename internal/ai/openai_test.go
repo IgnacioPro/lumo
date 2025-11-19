@@ -751,3 +751,293 @@ func TestOpenAIProvider_CustomHeaders(t *testing.T) {
 		t.Errorf("Analyze() with custom headers error = %v", err)
 	}
 }
+
+// ========== Streaming Tests ==========
+
+func TestOpenAIProvider_AnalyzeStream_Success(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	// Create mock streaming server
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify headers
+		if r.Header.Get("Authorization") == "" {
+			t.Error("Missing Authorization header")
+		}
+		
+		// Set SSE headers
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("Streaming not supported")
+		}
+
+		// Send SSE events (OpenAI format)
+		events := []string{
+			`data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}`,
+			`data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{"index":0,"delta":{"content":"System "},"finish_reason":null}]}`,
+			`data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{"index":0,"delta":{"content":"is "},"finish_reason":null}]}`,
+			`data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{"index":0,"delta":{"content":"healthy"},"finish_reason":null}]}`,
+			`data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+			`data: [DONE]`,
+		}
+
+		for _, event := range events {
+			_, _ = w.Write([]byte(event + "\n\n"))
+			flusher.Flush()
+			time.Sleep(10 * time.Millisecond)
+		}
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAIProvider(&ProviderConfig{
+		APIKey: "test-key",
+	}, log)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	provider.config.Endpoint = server.URL
+	provider.client = server.Client()
+
+	req := &AnalysisRequest{
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "test-host"},
+	}
+
+	ctx := context.Background()
+	ch, err := provider.AnalyzeStream(ctx, req)
+
+	if err != nil {
+		t.Fatalf("AnalyzeStream() error = %v", err)
+	}
+
+	// Collect chunks
+	var chunks []StreamChunk
+	var foundDone bool
+	var fullContent strings.Builder
+
+	for chunk := range ch {
+		chunks = append(chunks, chunk)
+		if chunk.Done {
+			foundDone = true
+		}
+		if chunk.Error != nil {
+			t.Errorf("Received error chunk: %v", chunk.Error)
+		}
+		if !chunk.Done && chunk.Content != "" {
+			fullContent.WriteString(chunk.Content)
+		}
+	}
+
+	// Verify we received chunks
+	if len(chunks) == 0 {
+		t.Fatal("Expected to receive streaming chunks, got none")
+	}
+
+	// Verify we got the done marker
+	if !foundDone {
+		t.Error("Expected to receive Done chunk")
+	}
+
+	// Verify content was streamed
+	content := fullContent.String()
+	if content != "System is healthy" {
+		t.Errorf("Expected content 'System is healthy', got '%s'", content)
+	}
+}
+
+func TestOpenAIProvider_AnalyzeStream_ErrorResponse(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	// Create mock server that returns error
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error": {"message": "Invalid API key", "type": "invalid_request_error"}}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAIProvider(&ProviderConfig{
+		APIKey: "test-key",
+	}, log)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	provider.config.Endpoint = server.URL
+	provider.client = server.Client()
+
+	req := &AnalysisRequest{
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "test-host"},
+	}
+
+	ctx := context.Background()
+	ch, err := provider.AnalyzeStream(ctx, req)
+
+	if err != nil {
+		t.Fatalf("AnalyzeStream() error = %v", err)
+	}
+
+	// Expect to receive error chunk
+	var receivedError bool
+	for chunk := range ch {
+		if chunk.Type == ChunkError && chunk.Error != nil {
+			receivedError = true
+			if !strings.Contains(chunk.Error.Error(), "401") {
+				t.Errorf("Expected error to contain 401, got: %v", chunk.Error)
+			}
+		}
+	}
+
+	if !receivedError {
+		t.Error("Expected to receive error chunk")
+	}
+}
+
+func TestOpenAIProvider_AnalyzeStream_ContextCancellation(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	// Create mock server with slow streaming
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("Streaming not supported")
+		}
+
+		// Send one event
+		_, _ = w.Write([]byte(`data: {"id":"chatcmpl-123","choices":[{"delta":{"content":"Start"},"finish_reason":null}]}` + "\n\n"))
+		flusher.Flush()
+
+		// Wait for cancellation
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAIProvider(&ProviderConfig{
+		APIKey: "test-key",
+	}, log)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	provider.config.Endpoint = server.URL
+	provider.client = server.Client()
+
+	req := &AnalysisRequest{
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "test-host"},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	ch, err := provider.AnalyzeStream(ctx, req)
+
+	if err != nil {
+		t.Fatalf("AnalyzeStream() error = %v", err)
+	}
+
+	// Receive first chunk
+	chunk := <-ch
+	if chunk.Content != "Start" {
+		t.Errorf("Expected first chunk content 'Start', got '%s'", chunk.Content)
+	}
+
+	// Cancel context
+	cancel()
+
+	// Channel should close or send error
+	timeout := time.After(2 * time.Second)
+	select {
+	case chunk, ok := <-ch:
+		if ok && chunk.Error == nil && !chunk.Done {
+			t.Error("Expected error or done chunk after cancellation")
+		}
+	case <-timeout:
+		t.Error("Streaming did not stop after context cancellation")
+	}
+}
+
+func TestOpenAIProvider_AnalyzeStream_MalformedSSE(t *testing.T) {
+	log := logrus.New()
+	log.SetOutput(testLogWriter{t})
+
+	// Create mock server with malformed SSE
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("Streaming not supported")
+		}
+
+		events := []string{
+			`data: not-valid-json`,
+			`data: {"id":"chatcmpl-123","choices":[{"delta":{"content":"Valid"},"finish_reason":null}]}`,
+			`invalid-line`,
+			`data: [DONE]`,
+		}
+
+		for _, event := range events {
+			_, _ = w.Write([]byte(event + "\n\n"))
+			flusher.Flush()
+		}
+	}))
+	defer server.Close()
+
+	provider, err := NewOpenAIProvider(&ProviderConfig{
+		APIKey: "test-key",
+	}, log)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	provider.config.Endpoint = server.URL
+	provider.client = server.Client()
+
+	req := &AnalysisRequest{
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "test-host"},
+	}
+
+	ctx := context.Background()
+	ch, err := provider.AnalyzeStream(ctx, req)
+
+	if err != nil {
+		t.Fatalf("AnalyzeStream() error = %v", err)
+	}
+
+	// Should receive valid chunks despite malformed ones
+	var hasValidChunk bool
+	for chunk := range ch {
+		if chunk.Content == "Valid" {
+			hasValidChunk = true
+			break
+		}
+	}
+
+	if !hasValidChunk {
+		t.Error("Expected to receive valid chunk despite malformed events")
+	}
+}
