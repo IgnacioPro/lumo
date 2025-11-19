@@ -98,7 +98,7 @@ func (m *JWTManager) RefreshToken(oldToken string) (string, error) {
 	return m.GenerateToken(claims.UserID, claims.Username, claims.Scopes)
 }
 
-// GenerateSecureSecret generates a cryptographically secure random secret key
+// GenerateSecureSecret generates a cryptographically secure random secret key.
 // Useful for generating JWT secrets. Returns a base64-encoded string.
 func GenerateSecureSecret(length int) (string, error) {
 	if length < 32 {
