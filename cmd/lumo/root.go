@@ -14,7 +14,7 @@ var (
 	verbose bool
 	dryRun  bool
 	log     = logrus.New()
-	version = "0.4.1"
+	version = "0.9.1"
 )
 
 var rootCmd = &cobra.Command{

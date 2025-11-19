@@ -1,7 +1,7 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-18 | **Version:** 1.0.4
-> **Status:** Phases 1-10 Complete ✅ | K8s + VM Deployment Ready 🚀 | CI Green ✅ | 50.4% test coverage
+> **Last Updated:** 2025-11-19 | **Version:** 1.0.5
+> **Status:** Phases 1-10 Complete ✅ | K8s + VM Deployment Ready 🚀 | CI Green ✅ | 66.7% test coverage
 
 **For detailed examples and tutorials, see [DEVELOPMENT.md](DEVELOPMENT.md)**
 
@@ -67,7 +67,7 @@ lumo/
 ├── configs/config.example.yaml  # Updated with DB and Cache sections
 └── docker-compose.yaml    # ✅ PostgreSQL + Redis for development
 
-Total: 84 Go files (54 + 30 new) + 35 test files | Test Coverage: 50.4%
+Total: 84 Go files (54 + 30 new) + 35 test files | Test Coverage: 66.7%
 Phase 7: +4,336 LOC across 30 files (jobs, api_keys, agents systems)
 ```
 
@@ -319,7 +319,7 @@ systemctl enable --now lumo-agent
 
 ## Phase Roadmap
 
-### ✅ Completed Phases (1-8)
+### ✅ Completed Phases (1-10)
 
 **Phase 1-2:** Foundation (Cobra CLI, Viper config, Logrus logging) + SSH (4 auth methods, retry logic, health monitoring)
 
@@ -366,7 +366,7 @@ systemctl enable --now lumo-agent
 - ⏳ JWT authentication (deferred to Phase 12 - Security Hardening)
 - ⏳ mTLS support (deferred to Phase 12 - Security Hardening)
 - ⏳ WebSocket support (deferred to Phase 13 - Production Readiness)
-- **Status:** 35+ files, 4,800+ LOC | **Phase 8 complete!** ✅
+- **Status:** 35+ files, 4,800+ LOC | **Phase 7 complete!** ✅
 
 ### ✅ Completed - Phase 8: Agent Daemon (Weeks 4-6)
 
@@ -447,9 +447,9 @@ systemctl enable --now lumo-agent
   - 15 total files created
   - All scripts tested and documented ✅
 
-### 🚧 In Progress - Agent Deployment (Weeks 11-16)
+### ⏳ Planned - Advanced Features (Weeks 11-16)
 
-**Phase 11: Messaging Integration** (Weeks 11-12)
+**Phase 11: Messaging Integration** (Weeks 11-12) - **STARTING**
 - Messaging publisher/subscriber (`internal/messaging`)
 - Provider implementations: NATS, Kafka, RabbitMQ, Redis
 - Topic-based routing (diagnostics, remediation, alerts, lifecycle)
@@ -483,8 +483,8 @@ systemctl enable --now lumo-agent
 - Report scheduling and distribution
 
 **Phase 15: Testing & Quality**
-- Target 70%+ test coverage (currently 50.4%)
-- Priorities: internal/ai HTTP tests, internal/ssh client tests, checker edge cases
+- Target 80%+ test coverage (currently 66.7%)
+- Priorities: internal/ai streaming tests, internal/ssh connection tests, remediation orchestration
 - Integration tests for agent workflows
 - Chaos engineering tests (network partitions, failures)
 

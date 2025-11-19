@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ignacio/lumo/internal/api/auth"
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/database"
 	"github.com/sirupsen/logrus"
@@ -32,8 +33,42 @@ func NewServer(cfg *config.Config, db *database.DB, logger *logrus.Logger) (*Ser
 		logger = logrus.New()
 	}
 
+	// Initialize JWT manager
+	jwtSecret := cfg.API.JWTSecret
+	if jwtSecret == "" {
+		// Try environment variable
+		jwtSecret = os.Getenv("LUMO_API_JWT_SECRET")
+	}
+	if jwtSecret == "" {
+		logger.Warn("No JWT secret configured - JWT authentication will be disabled")
+		// Generate a temporary secret for development (NOT for production!)
+		tempSecret, _ := auth.GenerateSecureSecret(32)
+		jwtSecret = tempSecret
+		logger.Warn("Generated temporary JWT secret for development - DO NOT use in production!")
+	}
+
+	jwtExpiration := cfg.API.JWTExpiration
+	if jwtExpiration == 0 {
+		jwtExpiration = 24 * time.Hour // Default to 24 hours
+	}
+
+	jwtIssuer := cfg.API.JWTIssuer
+	if jwtIssuer == "" {
+		jwtIssuer = "lumo-api"
+	}
+
+	jwtManager, err := auth.NewJWTManager(jwtSecret, jwtExpiration, jwtIssuer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create JWT manager: %w", err)
+	}
+
+	logger.WithFields(logrus.Fields{
+		"jwt_expiration": jwtExpiration,
+		"jwt_issuer":     jwtIssuer,
+	}).Info("JWT authentication enabled")
+
 	// Create router
-	router := NewRouter(db, cfg, logger)
+	router := NewRouter(db, cfg, jwtManager, logger)
 
 	// Create HTTP server
 	httpServer := &http.Server{

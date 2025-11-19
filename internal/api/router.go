@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/ignacio/lumo/internal/api/auth"
 	"github.com/ignacio/lumo/internal/api/handlers"
 	apimiddleware "github.com/ignacio/lumo/internal/api/middleware"
 	"github.com/ignacio/lumo/internal/config"
@@ -12,7 +13,7 @@ import (
 )
 
 // NewRouter creates and configures the HTTP router
-func NewRouter(db *database.DB, cfg *config.Config, logger *logrus.Logger) *chi.Mux {
+func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager, logger *logrus.Logger) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -30,7 +31,9 @@ func NewRouter(db *database.DB, cfg *config.Config, logger *logrus.Logger) *chi.
 
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db, logger)
+	authHandler := handlers.NewAuthHandler(apiKeyRepo, jwtManager, logger)
 	diagnosticsHandler := handlers.NewDiagnosticsHandler(jobRepo, cfg, logger)
+	remediationHandler := handlers.NewRemediationHandler(jobRepo, cfg, logger)
 	jobsHandler := handlers.NewJobsHandler(jobRepo, logger)
 	agentsHandler := handlers.NewAgentsHandler(agentRepo, logger)
 
@@ -41,12 +44,28 @@ func NewRouter(db *database.DB, cfg *config.Config, logger *logrus.Logger) *chi.
 		r.Get("/ready", healthHandler.Ready)
 		r.Get("/live", healthHandler.Live)
 
-		// Authenticated endpoints (require API key)
+		// Auth endpoints (public - used to obtain JWT tokens)
+		r.Post("/auth/token", authHandler.GenerateToken)
+
+		// JWT-authenticated endpoints (require JWT token)
 		r.Group(func(r chi.Router) {
+			r.Use(apimiddleware.JWTAuth(jwtManager, logger))
+
+			// Token management
+			r.Post("/auth/refresh", authHandler.RefreshToken)
+			r.Get("/auth/validate", authHandler.ValidateToken)
+		})
+
+		// Authenticated endpoints (require API key OR JWT token)
+		r.Group(func(r chi.Router) {
+			// Support both API key and JWT authentication
 			r.Use(apimiddleware.APIKeyAuth(apiKeyRepo, logger))
 
 			// Diagnostic endpoints
 			r.Post("/diagnostics", diagnosticsHandler.Run)
+
+			// Remediation endpoints
+			r.Post("/remediation", remediationHandler.Run)
 
 			// Job endpoints
 			r.Get("/jobs", jobsHandler.List)
@@ -60,9 +79,6 @@ func NewRouter(db *database.DB, cfg *config.Config, logger *logrus.Logger) *chi.
 			r.Get("/agents/stats", agentsHandler.Stats)
 			r.Get("/agents/{id}", agentsHandler.Get)
 			r.Delete("/agents/{id}", agentsHandler.Delete)
-
-			// TODO: Remediation endpoints (Phase 7 completion)
-			// r.Post("/remediation", remediationHandler.Run)
 		})
 	})
 
