@@ -50,7 +50,7 @@ func (e *EmailNotifier) Send(ctx context.Context, notification *Notification) er
 	msg := e.buildMessage(notification)
 
 	// Connect to SMTP server
-	addr := fmt.Sprintf("%s:%d", e.config.SMTPHost, e.config.SMTPPort)
+	addr := net.JoinHostPort(e.config.SMTPHost, fmt.Sprintf("%d", e.config.SMTPPort))
 
 	// Setup authentication
 	var auth smtp.Auth
@@ -213,7 +213,7 @@ func htmlEscape(s string) string {
 
 // TestSMTPConnection tests the SMTP connection without sending a message.
 func TestSMTPConnection(host string, port int, username, password string, useTLS bool) error {
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 
 	// Try to connect
 	var conn net.Conn
