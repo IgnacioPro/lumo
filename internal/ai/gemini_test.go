@@ -161,7 +161,7 @@ func TestGeminiProvider_Analyze(t *testing.T) {
 
 	// Override for testing
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -242,6 +242,9 @@ func TestGeminiProvider_Health(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tt.statusCode)
+				if tt.statusCode == http.StatusOK {
+					_, _ = w.Write([]byte(`{"name": "models/gemini-pro"}`))
+				}
 			}))
 			defer server.Close()
 
@@ -253,7 +256,7 @@ func TestGeminiProvider_Health(t *testing.T) {
 			}
 
 			provider.config.Endpoint = server.URL
-			provider.client = server.Client()
+			provider.httpClient.SetClient(server.Client())
 
 			ctx := context.Background()
 			err = provider.Health(ctx)
@@ -312,7 +315,7 @@ func TestGeminiProvider_Analyze_ErrorHandling(t *testing.T) {
 			statusCode: http.StatusOK,
 			response:   "not valid json",
 			wantErr:    true,
-			errMsg:     "failed to parse",
+			errMsg:     "failed to unmarshal",
 		},
 	}
 
@@ -336,7 +339,7 @@ func TestGeminiProvider_Analyze_ErrorHandling(t *testing.T) {
 			}
 
 			provider.config.Endpoint = server.URL
-			provider.client = server.Client()
+			provider.httpClient.SetClient(server.Client())
 
 			req := &AnalysisRequest{
 				Report: &diagnostics.Report{
@@ -387,7 +390,7 @@ func TestGeminiProvider_Analyze_ContextCancellation(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -499,7 +502,7 @@ func TestGeminiProvider_AnalyzeStream(t *testing.T) {
 			// Override endpoint to point to test server
 			// Gemini URL format includes model, so we need to strip that
 			provider.config.Endpoint = server.URL
-			provider.client = server.Client()
+			provider.httpClient.SetClient(server.Client())
 
 			req := &AnalysisRequest{
 				Report: &diagnostics.Report{
@@ -598,7 +601,7 @@ func TestGeminiProvider_AnalyzeStream_Success(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -653,7 +656,7 @@ func TestGeminiProvider_AnalyzeStream_ErrorResponse(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
