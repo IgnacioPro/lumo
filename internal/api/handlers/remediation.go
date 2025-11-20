@@ -47,12 +47,12 @@ func NewRemediationHandler(jobRepo JobRepository, cfg *config.Config, logger *lo
 // RemediationRequest represents a remediation request
 type RemediationRequest struct {
 	Target         string   `json:"target"`
-	Actions        []string `json:"actions,omitempty"`      // Specific action IDs to execute
-	AutoApprove    bool     `json:"auto_approve,omitempty"` // Auto-approve safe operations
+	Actions        []string `json:"actions,omitempty"` // Specific action IDs to execute
+	AutoApprove    bool     `json:"auto_approve,omitempty"` // DEPRECATED: Ignored for security reasons (prevents approval bypass)
 	SkipCategories []string `json:"skip_categories,omitempty"`
 	DryRun         bool     `json:"dry_run,omitempty"`
 	Username       string   `json:"username,omitempty"`
-	Password       string   `json:"password,omitempty"`
+	Password       string   `json:"password,omitempty"` // Never stored in database
 	KeyPath        string   `json:"key_path,omitempty"`
 }
 
@@ -77,6 +77,14 @@ func (h *RemediationHandler) Run(w http.ResponseWriter, r *http.Request) {
 	if req.Target == "" {
 		response.BadRequest(w, "Target is required")
 		return
+	}
+
+	// Validate SSH target to prevent SSRF attacks (unless it's localhost)
+	if !isLocalhost(req.Target) {
+		if err := ssh.ValidateSSHTarget(req.Target); err != nil {
+			response.BadRequest(w, fmt.Sprintf("Invalid target: %v", err))
+			return
+		}
 	}
 
 	// Get authenticated API key from context
@@ -257,7 +265,9 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 
 	// Configure plan based on request
 	plan.DryRun = req.DryRun
-	plan.AutoApprove = req.AutoApprove
+	// SECURITY: Never allow user-controlled auto_approve to prevent bypassing human-in-the-loop approval
+	// Auto-approval should only be configured server-side based on action risk levels and organizational policy
+	// plan.AutoApprove = req.AutoApprove  // REMOVED - security vulnerability
 
 	// Parse skip categories
 	for _, cat := range req.SkipCategories {

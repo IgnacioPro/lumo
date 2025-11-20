@@ -363,8 +363,13 @@ func (a *KillProcessByNameAction) Validate(ctx context.Context, executor diagnos
 		return err
 	}
 
-	// Find matching processes
-	cmd := fmt.Sprintf("pgrep -f '%s'", a.processPattern)
+	// Validate process pattern to prevent command injection
+	if err := validateProcessPattern(a.processPattern); err != nil {
+		return err
+	}
+
+	// Find matching processes - use shellQuote for defense in depth
+	cmd := fmt.Sprintf("pgrep -f %s", shellQuote(a.processPattern))
 	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, cmd)
 
 	if exitCode != 0 || strings.TrimSpace(stdout) == "" {
@@ -381,8 +386,8 @@ func (a *KillProcessByNameAction) Execute(ctx context.Context, executor diagnost
 		StartTime: time.Now(),
 	}
 
-	// Get list of matching PIDs
-	cmd := fmt.Sprintf("pgrep -f '%s'", a.processPattern)
+	// Get list of matching PIDs - use shellQuote to prevent command injection
+	cmd := fmt.Sprintf("pgrep -f %s", shellQuote(a.processPattern))
 	stdout, _, _, _ := executor.ExecuteWithContext(ctx, cmd)
 	pids := strings.Fields(strings.TrimSpace(stdout))
 
