@@ -73,33 +73,39 @@ func runServeGRPC(cmd *cobra.Command, args []string) error {
 	}).Info("Starting gRPC server")
 
 	// Initialize database
-	var db *database.DB
-	if cfg.Database.Enabled {
-		log.Info("Connecting to database...")
-		db, err = database.NewPostgresDB(&cfg.Database)
-		if err != nil {
-			return fmt.Errorf("failed to connect to database: %w", err)
-		}
-		defer db.Close()
-
-		// Run migrations
-		log.Info("Running database migrations...")
-		if err := database.RunMigrations(cfg.Database.URL); err != nil {
-			return fmt.Errorf("failed to run migrations: %w", err)
-		}
-		log.Info("Database migrations completed")
-	} else {
-		log.Warn("Database disabled - some features will not be available")
+	log.Info("Connecting to database...")
+	dbConfig := &database.PostgresConfig{
+		Host:            cfg.Database.Host,
+		Port:            cfg.Database.Port,
+		Name:            cfg.Database.Name,
+		User:            cfg.Database.User,
+		Password:        cfg.Database.Password,
+		SSLMode:         cfg.Database.SSLMode,
+		MaxConnections:  cfg.Database.MaxConnections,
+		MaxIdle:         cfg.Database.MaxIdle,
+		ConnMaxLifetime: cfg.Database.ConnMaxLifetime,
 	}
+
+	db, err := database.NewPostgresDB(dbConfig, log)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.WithError(err).Warn("Failed to close database connection")
+		}
+	}()
+
+	// Run migrations
+	log.Info("Running database migrations...")
+	if err := database.RunMigrations(db.DB, log); err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+	log.Info("Database migrations completed")
 
 	// Initialize repositories
-	var jobRepo repository.JobRepository
-	var agentRepo repository.AgentRepository
-
-	if db != nil {
-		jobRepo = repository.NewJobRepository(db.DB)
-		agentRepo = repository.NewAgentRepository(db.DB)
-	}
+	jobRepo := repository.NewJobRepository(db.DB)
+	agentRepo := repository.NewAgentRepository(db.DB)
 
 	// Create gRPC server
 	grpcServer, err := grpcserver.NewServer(cfg, grpcserver.ServerOptions{

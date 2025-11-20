@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	lumov1 "github.com/ignacio/lumo/api/proto/v1"
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/database/models"
+	"github.com/ignacio/lumo/internal/database/repository"
 )
 
 // Mock repository interfaces
@@ -34,7 +34,7 @@ func (m *mockJobRepository) Create(ctx context.Context, job *models.Job) error {
 	return nil
 }
 
-func (m *mockJobRepository) Get(ctx context.Context, id uuid.UUID) (*models.Job, error) {
+func (m *mockJobRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Job, error) {
 	job, ok := m.jobs[id]
 	if !ok {
 		return nil, sql.ErrNoRows
@@ -42,20 +42,38 @@ func (m *mockJobRepository) Get(ctx context.Context, id uuid.UUID) (*models.Job,
 	return job, nil
 }
 
-func (m *mockJobRepository) List(ctx context.Context, limit, offset int) ([]*models.Job, error) {
+func (m *mockJobRepository) List(ctx context.Context, opts repository.ListOptions) ([]*models.Job, int, error) {
 	jobs := make([]*models.Job, 0, len(m.jobs))
 	for _, job := range m.jobs {
 		jobs = append(jobs, job)
 	}
-	return jobs, nil
+	return jobs, len(jobs), nil
 }
 
-func (m *mockJobRepository) Count(ctx context.Context) (int, error) {
-	return len(m.jobs), nil
+func (m *mockJobRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status models.JobStatus) error {
+	job, ok := m.jobs[id]
+	if !ok {
+		return sql.ErrNoRows
+	}
+	job.Status = status
+	return nil
 }
 
-func (m *mockJobRepository) Update(ctx context.Context, job *models.Job) error {
-	m.jobs[job.ID] = job
+func (m *mockJobRepository) UpdateResult(ctx context.Context, id uuid.UUID, result []byte) error {
+	job, ok := m.jobs[id]
+	if !ok {
+		return sql.ErrNoRows
+	}
+	job.Result = result
+	return nil
+}
+
+func (m *mockJobRepository) UpdateError(ctx context.Context, id uuid.UUID, errorMsg string) error {
+	job, ok := m.jobs[id]
+	if !ok {
+		return sql.ErrNoRows
+	}
+	job.Error = &errorMsg
 	return nil
 }
 
@@ -79,7 +97,7 @@ func (m *mockAgentRepository) Create(ctx context.Context, agent *models.Agent) e
 	return nil
 }
 
-func (m *mockAgentRepository) Get(ctx context.Context, id uuid.UUID) (*models.Agent, error) {
+func (m *mockAgentRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Agent, error) {
 	agent, ok := m.agents[id]
 	if !ok {
 		return nil, sql.ErrNoRows
@@ -87,7 +105,16 @@ func (m *mockAgentRepository) Get(ctx context.Context, id uuid.UUID) (*models.Ag
 	return agent, nil
 }
 
-func (m *mockAgentRepository) List(ctx context.Context, limit, offset int) ([]*models.Agent, error) {
+func (m *mockAgentRepository) GetByHostname(ctx context.Context, hostname string) (*models.Agent, error) {
+	for _, agent := range m.agents {
+		if agent.Hostname == hostname {
+			return agent, nil
+		}
+	}
+	return nil, sql.ErrNoRows
+}
+
+func (m *mockAgentRepository) List(ctx context.Context, filters map[string]interface{}) ([]*models.Agent, error) {
 	agents := make([]*models.Agent, 0, len(m.agents))
 	for _, agent := range m.agents {
 		agents = append(agents, agent)
@@ -95,8 +122,32 @@ func (m *mockAgentRepository) List(ctx context.Context, limit, offset int) ([]*m
 	return agents, nil
 }
 
-func (m *mockAgentRepository) Count(ctx context.Context) (int, error) {
-	return len(m.agents), nil
+func (m *mockAgentRepository) Update(ctx context.Context, agent *models.Agent) error {
+	if _, ok := m.agents[agent.ID]; !ok {
+		return sql.ErrNoRows
+	}
+	m.agents[agent.ID] = agent
+	return nil
+}
+
+func (m *mockAgentRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status models.AgentStatus) error {
+	agent, ok := m.agents[id]
+	if !ok {
+		return sql.ErrNoRows
+	}
+	agent.Status = status
+	return nil
+}
+
+func (m *mockAgentRepository) MarkStaleAgentsOffline(ctx context.Context, threshold time.Duration) (int64, error) {
+	count := int64(0)
+	for _, agent := range m.agents {
+		if agent.Status == models.AgentStatusOnline && agent.TimeSinceHeartbeat() > threshold {
+			agent.Status = models.AgentStatusOffline
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (m *mockAgentRepository) UpdateHeartbeat(ctx context.Context, id uuid.UUID) error {
@@ -114,14 +165,12 @@ func (m *mockAgentRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (m *mockAgentRepository) GetStats(ctx context.Context) (*models.AgentStats, error) {
-	return &models.AgentStats{
-		TotalAgents:   len(m.agents),
-		OnlineAgents:  len(m.agents),
-		OfflineAgents: 0,
-		ErrorAgents:   0,
-		ByPlatform:    map[string]int32{"linux": int32(len(m.agents))},
-	}, nil
+func (m *mockAgentRepository) CountByStatus(ctx context.Context) (map[models.AgentStatus]int, error) {
+	counts := make(map[models.AgentStatus]int)
+	for _, agent := range m.agents {
+		counts[agent.Status]++
+	}
+	return counts, nil
 }
 
 // TestHealthHandler tests the health service handler
@@ -227,7 +276,7 @@ func TestAgentsHandler_RegisterAgent(t *testing.T) {
 				// Verify agent was stored
 				agentID, err := uuid.Parse(resp.AgentId)
 				require.NoError(t, err)
-				agent, err := repo.Get(ctx, agentID)
+				agent, err := repo.GetByID(ctx, agentID)
 				require.NoError(t, err)
 				assert.Equal(t, tt.req.Name, agent.Name)
 				assert.Equal(t, tt.req.Hostname, agent.Hostname)
@@ -427,7 +476,7 @@ func TestAgentsHandler_DeleteAgent(t *testing.T) {
 	assert.True(t, resp.Success)
 
 	// Verify agent was deleted
-	_, err = repo.Get(ctx, agent.ID)
+	_, err = repo.GetByID(ctx, agent.ID)
 	assert.Error(t, err)
 }
 
@@ -511,7 +560,7 @@ func TestDiagnosticsHandler_RunDiagnostics(t *testing.T) {
 				// Verify job was created
 				jobID, err := uuid.Parse(resp.JobId)
 				require.NoError(t, err)
-				job, err := repo.Get(ctx, jobID)
+				job, err := repo.GetByID(ctx, jobID)
 				require.NoError(t, err)
 				assert.Equal(t, tt.req.Target, job.Target)
 			}
@@ -651,17 +700,20 @@ func TestToProtoJobType(t *testing.T) {
 }
 
 func TestToProtoAgent(t *testing.T) {
+	ipAddr := "192.168.1.100"
+	labels, _ := models.MapToJSONB(map[string]string{"env": "test"})
+
 	agent := &models.Agent{
 		ID:              uuid.New(),
 		Name:            "test-agent",
 		Hostname:        "test-host",
-		IPAddress:       "192.168.1.100",
-		Platform:        "linux",
+		IPAddress:       &ipAddr,
+		Platform:        models.AgentPlatformLinux,
 		Architecture:    "amd64",
 		Version:         "1.0.0",
-		Status:          "online",
+		Status:          models.AgentStatusOnline,
 		Capabilities:    []string{"cpu", "memory"},
-		Labels:          map[string]interface{}{"env": "test"},
+		Labels:          labels,
 		LastHeartbeatAt: time.Now(),
 		RegisteredAt:    time.Now(),
 	}
@@ -671,11 +723,11 @@ func TestToProtoAgent(t *testing.T) {
 	assert.Equal(t, agent.ID.String(), proto.Id)
 	assert.Equal(t, agent.Name, proto.Name)
 	assert.Equal(t, agent.Hostname, proto.Hostname)
-	assert.Equal(t, agent.IPAddress, proto.IpAddress)
-	assert.Equal(t, agent.Platform, proto.Platform)
+	assert.Equal(t, *agent.IPAddress, proto.IpAddress)
+	assert.Equal(t, string(agent.Platform), proto.Platform)
 	assert.Equal(t, agent.Architecture, proto.Architecture)
 	assert.Equal(t, agent.Version, proto.Version)
-	assert.Equal(t, agent.Status, proto.Status)
+	assert.Equal(t, string(agent.Status), proto.Status)
 	assert.Equal(t, agent.Capabilities, proto.Capabilities)
 	assert.NotNil(t, proto.LastHeartbeatAt)
 	assert.NotNil(t, proto.RegisteredAt)

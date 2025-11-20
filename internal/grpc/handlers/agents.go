@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
@@ -10,18 +11,31 @@ import (
 
 	lumov1 "github.com/ignacio/lumo/api/proto/v1"
 	"github.com/ignacio/lumo/internal/database/models"
-	"github.com/ignacio/lumo/internal/database/repository"
 )
+
+// AgentRepository defines the interface for agent data operations
+type AgentRepository interface {
+	Create(ctx context.Context, agent *models.Agent) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.Agent, error)
+	GetByHostname(ctx context.Context, hostname string) (*models.Agent, error)
+	List(ctx context.Context, filters map[string]interface{}) ([]*models.Agent, error)
+	Update(ctx context.Context, agent *models.Agent) error
+	UpdateHeartbeat(ctx context.Context, id uuid.UUID) error
+	UpdateStatus(ctx context.Context, id uuid.UUID, status models.AgentStatus) error
+	Delete(ctx context.Context, id uuid.UUID) error
+	CountByStatus(ctx context.Context) (map[models.AgentStatus]int, error)
+	MarkStaleAgentsOffline(ctx context.Context, threshold time.Duration) (int64, error)
+}
 
 // AgentsHandler implements the AgentsService gRPC service
 type AgentsHandler struct {
 	lumov1.UnimplementedAgentsServiceServer
 
-	agentRepo repository.AgentRepository
+	agentRepo AgentRepository
 }
 
 // NewAgentsHandler creates a new agents service handler
-func NewAgentsHandler(agentRepo repository.AgentRepository) *AgentsHandler {
+func NewAgentsHandler(agentRepo AgentRepository) *AgentsHandler {
 	return &AgentsHandler{
 		agentRepo: agentRepo,
 	}
@@ -38,17 +52,23 @@ func (h *AgentsHandler) RegisterAgent(ctx context.Context, req *lumov1.RegisterA
 	}
 
 	// Create agent model
+	ipAddr := req.IpAddress
+	labelsJSON, err := models.MapToJSONB(req.Labels)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to convert labels: %v", err)
+	}
+
 	agent := &models.Agent{
 		ID:           uuid.New(),
 		Name:         req.Name,
 		Hostname:     req.Hostname,
-		IPAddress:    req.IpAddress,
-		Platform:     req.Platform,
+		IPAddress:    &ipAddr,
+		Platform:     models.AgentPlatform(req.Platform),
 		Architecture: req.Architecture,
 		Version:      req.Version,
-		Status:       "online",
+		Status:       models.AgentStatusOnline,
 		Capabilities: req.Capabilities,
-		Labels:       req.Labels,
+		Labels:       labelsJSON,
 	}
 
 	// Save to database
@@ -89,8 +109,19 @@ func (h *AgentsHandler) ListAgents(ctx context.Context, req *lumov1.ListAgentsRe
 	}
 	offset := int(req.Offset)
 
+	// Build filters
+	filters := map[string]interface{}{
+		"limit":  limit,
+		"offset": offset,
+	}
+
+	// Add status filter if provided
+	if req.Status != "" {
+		filters["status"] = models.AgentStatus(req.Status)
+	}
+
 	// List agents from database
-	agents, err := h.agentRepo.List(ctx, limit, offset)
+	agents, err := h.agentRepo.List(ctx, filters)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list agents: %v", err)
 	}
@@ -101,15 +132,9 @@ func (h *AgentsHandler) ListAgents(ctx context.Context, req *lumov1.ListAgentsRe
 		protoAgents[i] = toProtoAgent(agent)
 	}
 
-	// Get total count
-	totalCount, err := h.agentRepo.Count(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to count agents: %v", err)
-	}
-
 	return &lumov1.ListAgentsResponse{
 		Agents:     protoAgents,
-		TotalCount: int32(totalCount),
+		TotalCount: int32(len(agents)),
 	}, nil
 }
 
@@ -120,7 +145,7 @@ func (h *AgentsHandler) GetAgent(ctx context.Context, req *lumov1.GetAgentReques
 		return nil, status.Error(codes.InvalidArgument, "invalid agent ID")
 	}
 
-	agent, err := h.agentRepo.Get(ctx, agentID)
+	agent, err := h.agentRepo.GetByID(ctx, agentID)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "agent not found: %v", err)
 	}
@@ -148,34 +173,58 @@ func (h *AgentsHandler) DeleteAgent(ctx context.Context, req *lumov1.DeleteAgent
 
 // GetAgentStats returns aggregate agent statistics
 func (h *AgentsHandler) GetAgentStats(ctx context.Context, req *lumov1.GetAgentStatsRequest) (*lumov1.GetAgentStatsResponse, error) {
-	stats, err := h.agentRepo.GetStats(ctx)
+	// Get counts by status
+	statusCounts, err := h.agentRepo.CountByStatus(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get agent stats: %v", err)
 	}
 
+	// Calculate totals
+	totalAgents := 0
+	onlineAgents := statusCounts[models.AgentStatusOnline]
+	offlineAgents := statusCounts[models.AgentStatusOffline]
+	errorAgents := statusCounts[models.AgentStatusError]
+
+	for _, count := range statusCounts {
+		totalAgents += count
+	}
+
 	return &lumov1.GetAgentStatsResponse{
-		TotalAgents:   int32(stats.TotalAgents),
-		OnlineAgents:  int32(stats.OnlineAgents),
-		OfflineAgents: int32(stats.OfflineAgents),
-		ErrorAgents:   int32(stats.ErrorAgents),
-		ByPlatform:    stats.ByPlatform,
+		TotalAgents:   int32(totalAgents),
+		OnlineAgents:  int32(onlineAgents),
+		OfflineAgents: int32(offlineAgents),
+		ErrorAgents:   int32(errorAgents),
+		ByPlatform:    make(map[string]int32), // TODO: Add platform stats
 	}, nil
 }
 
 // Helper functions
 
 func toProtoAgent(agent *models.Agent) *lumov1.Agent {
+	ipAddress := ""
+	if agent.IPAddress != nil {
+		ipAddress = *agent.IPAddress
+	}
+
+	labels := make(map[string]string)
+	if agent.Labels != nil {
+		labelsMap, err := models.JSONBToMap(agent.Labels)
+		if err == nil {
+			labels = labelsMap
+		}
+	}
+
 	return &lumov1.Agent{
 		Id:               agent.ID.String(),
 		Name:             agent.Name,
 		Hostname:         agent.Hostname,
-		IpAddress:        agent.IPAddress,
-		Platform:         agent.Platform,
+		IpAddress:        ipAddress,
+		Platform:         string(agent.Platform),
 		Architecture:     agent.Architecture,
 		Version:          agent.Version,
-		Status:           agent.Status,
+		Status:           string(agent.Status),
 		Capabilities:     agent.Capabilities,
-		Labels:           agent.Labels,
+		Labels:           labels,
 		LastHeartbeatAt:  timestamppb.New(agent.LastHeartbeatAt),
 		RegisteredAt:     timestamppb.New(agent.RegisteredAt),
 	}

@@ -1,3 +1,4 @@
+//nolint:staticcheck // Tests use deprecated gRPC APIs supported throughout 1.x
 package grpc_test
 
 import (
@@ -7,115 +8,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
 	lumov1 "github.com/ignacio/lumo/api/proto/v1"
 	"github.com/ignacio/lumo/internal/config"
-	"github.com/ignacio/lumo/internal/grpc/client"
 	"github.com/ignacio/lumo/internal/grpc/handlers"
-	grpcserver "github.com/ignacio/lumo/internal/grpc/server"
 )
 
 const bufSize = 1024 * 1024
-
-// mockJobRepo is a minimal in-memory job repository for testing
-type mockJobRepo struct{}
-
-func (m *mockJobRepo) Create(ctx context.Context, job interface{}) error { return nil }
-func (m *mockJobRepo) Get(ctx context.Context, id interface{}) (interface{}, error) {
-	return nil, nil
-}
-func (m *mockJobRepo) List(ctx context.Context, limit, offset int) (interface{}, error) {
-	return []interface{}{}, nil
-}
-func (m *mockJobRepo) Count(ctx context.Context) (int, error) { return 0, nil }
-func (m *mockJobRepo) Update(ctx context.Context, job interface{}) error { return nil }
-func (m *mockJobRepo) Delete(ctx context.Context, id interface{}) error  { return nil }
-
-// mockAgentRepo is a minimal in-memory agent repository for testing
-type mockAgentRepo struct{}
-
-func (m *mockAgentRepo) Create(ctx context.Context, agent interface{}) error { return nil }
-func (m *mockAgentRepo) Get(ctx context.Context, id interface{}) (interface{}, error) {
-	return nil, nil
-}
-func (m *mockAgentRepo) List(ctx context.Context, limit, offset int) (interface{}, error) {
-	return []interface{}{}, nil
-}
-func (m *mockAgentRepo) Count(ctx context.Context) (int, error) { return 5, nil }
-func (m *mockAgentRepo) UpdateHeartbeat(ctx context.Context, id interface{}) error {
-	return nil
-}
-func (m *mockAgentRepo) Delete(ctx context.Context, id interface{}) error { return nil }
-func (m *mockAgentRepo) GetStats(ctx context.Context) (interface{}, error) {
-	return struct {
-		TotalAgents   int
-		OnlineAgents  int
-		OfflineAgents int
-		ErrorAgents   int
-		ByPlatform    map[string]int32
-	}{
-		TotalAgents:  5,
-		OnlineAgents: 4,
-		ByPlatform:   map[string]int32{"linux": 3, "darwin": 2},
-	}, nil
-}
-
-// setupTestServerAndClient creates a test gRPC server and client using bufconn
-func setupTestServerAndClient(t *testing.T) (*grpc.Server, *client.Client, func()) {
-	// Create bufconn listener for in-memory connection
-	lis := bufconn.Listen(bufSize)
-
-	// Create gRPC server
-	srv := grpc.NewServer()
-
-	// Register services with mock repos
-	cfg := &config.Config{}
-	log := logrus.New()
-	log.SetLevel(logrus.WarnLevel) // Reduce noise in tests
-
-	// Note: These are simplified mocks. In real tests, use proper mock implementations
-	// from internal/database/repository
-	healthHandler := handlers.NewHealthHandler(cfg, nil)
-	lumov1.RegisterHealthServiceServer(srv, healthHandler)
-
-	// Start server
-	go func() {
-		if err := srv.Serve(lis); err != nil {
-			t.Logf("Server exited: %v", err)
-		}
-	}()
-
-	// Create bufconn dialer
-	bufDialer := func(context.Context, string) (net.Conn, error) {
-		return lis.Dial()
-	}
-
-	// Create client connection
-	ctx := context.Background()
-	conn, err := grpc.DialContext(ctx, "bufnet",
-		grpc.WithContextDialer(bufDialer),
-		grpc.WithInsecure(),
-		grpc.WithBlock(),
-	)
-	require.NoError(t, err)
-
-	// Create client
-	grpcClient := &client.Client{}
-	// Note: In a real scenario, you'd use client.NewClient() with proper options
-
-	cleanup := func() {
-		conn.Close()
-		srv.Stop()
-		lis.Close()
-	}
-
-	return srv, grpcClient, cleanup
-}
 
 func TestIntegration_HealthCheck(t *testing.T) {
 	if testing.Short() {
@@ -124,7 +28,7 @@ func TestIntegration_HealthCheck(t *testing.T) {
 
 	// Create bufconn listener
 	lis := bufconn.Listen(bufSize)
-	defer lis.Close()
+	defer func() { _ = lis.Close() }()
 
 	// Create and start server
 	srv := grpc.NewServer()
@@ -141,18 +45,19 @@ func TestIntegration_HealthCheck(t *testing.T) {
 	}()
 
 	// Create client
-	ctx := context.Background()
-	conn, err := grpc.DialContext(ctx, "bufnet",
+//nolint:staticcheck // Deprecated API supported throughout 1.x
+	conn, err := grpc.Dial("bufnet",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()
 		}),
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Test health check
 	healthClient := lumov1.NewHealthServiceClient(conn)
+	ctx := context.Background()
 
 	t.Run("Live", func(t *testing.T) {
 		resp, err := healthClient.Live(ctx, &lumov1.LiveRequest{})
@@ -185,7 +90,7 @@ func TestIntegration_ConcurrentRequests(t *testing.T) {
 
 	// Create bufconn listener
 	lis := bufconn.Listen(bufSize)
-	defer lis.Close()
+	defer func() { _ = lis.Close() }()
 
 	// Create and start server
 	srv := grpc.NewServer()
@@ -202,15 +107,15 @@ func TestIntegration_ConcurrentRequests(t *testing.T) {
 	}()
 
 	// Create client
-	ctx := context.Background()
-	conn, err := grpc.DialContext(ctx, "bufnet",
+//nolint:staticcheck // Deprecated API supported throughout 1.x
+	conn, err := grpc.Dial("bufnet",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()
 		}),
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	healthClient := lumov1.NewHealthServiceClient(conn)
 
@@ -250,7 +155,7 @@ func TestIntegration_Timeouts(t *testing.T) {
 
 	// Create bufconn listener
 	lis := bufconn.Listen(bufSize)
-	defer lis.Close()
+	defer func() { _ = lis.Close() }()
 
 	// Create and start server
 	srv := grpc.NewServer()
@@ -268,14 +173,15 @@ func TestIntegration_Timeouts(t *testing.T) {
 
 	// Create client
 	baseCtx := context.Background()
-	conn, err := grpc.DialContext(baseCtx, "bufnet",
+//nolint:staticcheck // Deprecated API supported throughout 1.x
+	conn, err := grpc.Dial("bufnet",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()
 		}),
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	healthClient := lumov1.NewHealthServiceClient(conn)
 
@@ -306,7 +212,7 @@ func TestIntegration_ErrorHandling(t *testing.T) {
 
 	// Create bufconn listener
 	lis := bufconn.Listen(bufSize)
-	defer lis.Close()
+	defer func() { _ = lis.Close() }()
 
 	// Create and start server
 	srv := grpc.NewServer()
@@ -323,17 +229,18 @@ func TestIntegration_ErrorHandling(t *testing.T) {
 	}()
 
 	// Create client
-	ctx := context.Background()
-	conn, err := grpc.DialContext(ctx, "bufnet",
+//nolint:staticcheck // Deprecated API supported throughout 1.x
+	conn, err := grpc.Dial("bufnet",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()
 		}),
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	healthClient := lumov1.NewHealthServiceClient(conn)
+	ctx := context.Background()
 
 	// Test with valid request
 	resp, err := healthClient.Live(ctx, &lumov1.LiveRequest{})
@@ -367,38 +274,40 @@ func TestIntegration_ConnectionManagement(t *testing.T) {
 
 	t.Run("MultipleConnections", func(t *testing.T) {
 		// Create multiple connections
-		ctx := context.Background()
 
 		for i := 0; i < 5; i++ {
-			conn, err := grpc.DialContext(ctx, "bufnet",
+//nolint:staticcheck // Deprecated API supported throughout 1.x
+			conn, err := grpc.Dial("bufnet",
 				grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 					return lis.Dial()
 				}),
-				grpc.WithInsecure(),
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
 			)
 			require.NoError(t, err)
 
 			healthClient := lumov1.NewHealthServiceClient(conn)
+	ctx := context.Background()
 			resp, err := healthClient.Live(ctx, &lumov1.LiveRequest{})
 			require.NoError(t, err)
 			assert.True(t, resp.Alive)
 
-			conn.Close()
+			_ = conn.Close()
 		}
 	})
 
 	t.Run("ReuseConnection", func(t *testing.T) {
-		ctx := context.Background()
-		conn, err := grpc.DialContext(ctx, "bufnet",
+//nolint:staticcheck // Deprecated API supported throughout 1.x
+		conn, err := grpc.Dial("bufnet",
 			grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 				return lis.Dial()
 			}),
-			grpc.WithInsecure(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		)
 		require.NoError(t, err)
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		healthClient := lumov1.NewHealthServiceClient(conn)
+	ctx := context.Background()
 
 		// Make multiple requests on the same connection
 		for i := 0; i < 10; i++ {
@@ -410,14 +319,14 @@ func TestIntegration_ConnectionManagement(t *testing.T) {
 
 	// Cleanup
 	srv.Stop()
-	lis.Close()
+	_ = lis.Close()
 }
 
 // BenchmarkGRPCHealthCheck benchmarks the health check RPC
 func BenchmarkGRPCHealthCheck(b *testing.B) {
 	// Create bufconn listener
 	lis := bufconn.Listen(bufSize)
-	defer lis.Close()
+	defer func() { _ = lis.Close() }()
 
 	// Create and start server
 	srv := grpc.NewServer()
@@ -434,17 +343,18 @@ func BenchmarkGRPCHealthCheck(b *testing.B) {
 	}()
 
 	// Create client
-	ctx := context.Background()
-	conn, err := grpc.DialContext(ctx, "bufnet",
+//nolint:staticcheck // Deprecated API supported throughout 1.x
+	conn, err := grpc.Dial("bufnet",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()
 		}),
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(b, err)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	healthClient := lumov1.NewHealthServiceClient(conn)
+	ctx := context.Background()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -459,7 +369,7 @@ func BenchmarkGRPCHealthCheck(b *testing.B) {
 func BenchmarkGRPCConcurrentHealthCheck(b *testing.B) {
 	// Create bufconn listener
 	lis := bufconn.Listen(bufSize)
-	defer lis.Close()
+	defer func() { _ = lis.Close() }()
 
 	// Create and start server
 	srv := grpc.NewServer()
@@ -476,17 +386,18 @@ func BenchmarkGRPCConcurrentHealthCheck(b *testing.B) {
 	}()
 
 	// Create client
-	ctx := context.Background()
-	conn, err := grpc.DialContext(ctx, "bufnet",
+//nolint:staticcheck // Deprecated API supported throughout 1.x
+	conn, err := grpc.Dial("bufnet",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()
 		}),
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(b, err)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	healthClient := lumov1.NewHealthServiceClient(conn)
+	ctx := context.Background()
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
