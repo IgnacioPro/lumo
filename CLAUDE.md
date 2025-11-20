@@ -82,6 +82,7 @@ lumo/
 │   │   ├── vectorstore/   # Vector database (chromem-go)
 │   │   ├── embeddings/    # Embedding providers (OpenAI, Anthropic)
 │   │   └── ingestion/     # Document ingestion, parsing, building
+│   ├── doctor/            # ✅ Health check system (config, API keys, dependencies)
 │   └── messaging/         # (Phase 11) Pub/sub: NATS, Kafka, RabbitMQ, Redis
 ├── deployments/
 │   ├── kubernetes/        # ✅ (Phase 9) DaemonSet, Deployment, RBAC, Helm
@@ -195,6 +196,7 @@ export LUMO_AGENT_MESSAGING_PROVIDER=nats      # nats|kafka|rabbitmq|redis
 | Command | Status | Purpose |
 |---------|--------|---------|
 | `init` | ✅ | Interactive setup wizard (Usability Week 1) |
+| `doctor` | ✅ | Validate configuration and dependencies (Usability Week 2) |
 | `examples` | ✅ | Show usage examples and tutorials (Usability Week 1) |
 | `connect` | ✅ | SSH connection |
 | `diagnose` | ✅ | System diagnostics + AI analysis + RAG context |
@@ -219,6 +221,60 @@ export LUMO_AGENT_MESSAGING_PROVIDER=nats      # nats|kafka|rabbitmq|redis
 **Log Levels:** Debug (verbose), Info (default), Warn, Error, Fatal
 **Structured Logging:** `log.WithFields(logrus.Fields{...}).Info("msg")`
 **Dry-Run:** Check flag before executing destructive operations
+
+---
+
+## Health Check System (`lumo doctor`)
+
+**Purpose:** Validate Lumo configuration and dependencies before running diagnostics
+
+**What it checks:**
+- ✅ Configuration file exists and is readable
+- ✅ AI provider is configured and valid
+- ✅ API keys are set and working (tests with actual API requests)
+- ✅ RAG system configuration (if enabled)
+- ✅ System dependencies available (ps, df, netstat, etc.)
+- ✅ Updates available from GitHub
+
+**Usage:**
+```bash
+lumo doctor           # Run all health checks
+lumo doctor -v        # Verbose output with timing
+```
+
+**Example Output:**
+```
+╔═══════════════════════════════════════════════════════════════╗
+║               Lumo Health Check                           ║
+╚═══════════════════════════════════════════════════════════════╝
+
+✓ Configuration file exists: /Users/user/.lumo/config.yaml
+✓ AI Provider: anthropic
+✓ API key validated successfully (anthropic)
+○ RAG system disabled
+⚠ Some diagnostic tools are missing
+  → Install missing tools: free
+✓ Up to date (v1.0.7)
+
+Health Check Summary (0.45s)
+  ✓ OK:       4
+  ⚠ Warnings: 1
+  ○ Skipped:  1
+
+⚠ Lumo is working but has some warnings
+  Review warnings above for potential improvements
+```
+
+**When to use:**
+- First-time setup validation
+- Troubleshooting configuration issues
+- Before running diagnostics in CI/CD
+- After upgrading Lumo or changing API keys
+
+**Implementation:**
+- Framework: `internal/doctor/doctor.go` (Check interface, Doctor runner)
+- Checks: `internal/doctor/checks.go` (6 health checks)
+- Command: `cmd/lumo/doctor.go` (CLI integration)
 
 ---
 
@@ -725,6 +781,7 @@ go build -o lumo ./cmd/lumo
 go test ./... && go vet ./... && go fmt ./...
 
 # Usage
+lumo doctor                                        # Validate setup before first use
 lumo diagnose localhost --analyze --format toon
 lumo fix localhost --dry-run
 LUMO_ANTHROPIC_API_KEY=sk-ant-... lumo diagnose --analyze
