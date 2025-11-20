@@ -176,6 +176,11 @@ func (p *ProcessChecker) parseProcessStates(output string) (*ProcessCounts, erro
 
 // getTopCPUProcesses retrieves top N CPU-consuming processes
 func (p *ProcessChecker) getTopCPUProcesses(ctx context.Context, executor diagnostics.CommandExecutor, limit int) ([]ProcessInfo, error) {
+	// Validate limit to prevent abuse (1-10000 is reasonable)
+	if limit < 1 || limit > 10000 {
+		return nil, fmt.Errorf("invalid limit: must be between 1 and 10000, got %d", limit)
+	}
+
 	// ps command to get CPU usage
 	// Format: PID USER %CPU COMMAND
 	stdout, _, exitCode, err := executor.ExecuteWithContext(ctx,
@@ -189,6 +194,11 @@ func (p *ProcessChecker) getTopCPUProcesses(ctx context.Context, executor diagno
 
 // getTopMemoryProcesses retrieves top N memory-consuming processes
 func (p *ProcessChecker) getTopMemoryProcesses(ctx context.Context, executor diagnostics.CommandExecutor, limit int) ([]ProcessInfo, error) {
+	// Validate limit to prevent abuse (1-10000 is reasonable)
+	if limit < 1 || limit > 10000 {
+		return nil, fmt.Errorf("invalid limit: must be between 1 and 10000, got %d", limit)
+	}
+
 	// ps command to get memory usage
 	// Format: PID USER %MEM COMMAND
 	stdout, _, exitCode, err := executor.ExecuteWithContext(ctx,

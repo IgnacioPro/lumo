@@ -69,6 +69,30 @@ func (h *DiagnosticsHandler) Run(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate SSH target to prevent SSRF attacks (unless it's localhost)
+	if !isLocalhost(req.Target) {
+		if err := ssh.ValidateSSHTarget(req.Target); err != nil {
+			response.BadRequest(w, fmt.Sprintf("Invalid target: %v", err))
+			return
+		}
+	}
+
+	// Validate checks parameter against known checker names
+	if len(req.Checks) > 0 {
+		validCheckers := map[string]bool{
+			"cpu": true, "memory": true, "disk": true, "process": true,
+			"service": true, "network": true, "patch": true, "ports": true,
+			"ssh_security": true, "auth_failures": true, "kubernetes": true, "proxmox": true,
+		}
+
+		for _, check := range req.Checks {
+			if !validCheckers[check] {
+				response.BadRequest(w, fmt.Sprintf("Invalid checker name: %s", check))
+				return
+			}
+		}
+	}
+
 	// Get authenticated API key from context
 	apiKey, ok := middleware.GetAPIKeyFromContext(r.Context())
 	if !ok {

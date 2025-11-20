@@ -237,9 +237,16 @@ func (s *ServiceChecker) getSysvinitServices(ctx context.Context, executor diagn
 			continue
 		}
 
-		// Check service status
+		// Validate service name to prevent command injection from malicious filenames
+		if !isValidServiceName(name) {
+			// Skip files with potentially dangerous names
+			continue
+		}
+
+		// Check service status - use shell quoting for defense in depth
 		stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx,
-			fmt.Sprintf("service %s status 2>/dev/null || /etc/init.d/%s status 2>/dev/null", name, name))
+			fmt.Sprintf("service %s status 2>/dev/null || /etc/init.d/%s status 2>/dev/null",
+				shellQuote(name), shellQuote(name)))
 
 		state := "inactive"
 		if exitCode == 0 {
@@ -344,4 +351,41 @@ func (s *ServiceChecker) formatMessage(total, running, failed, inactive int, fai
 	}
 
 	return strings.Join(parts, ", ")
+}
+
+// isValidServiceName validates a service name to prevent command injection
+// Returns true if the name contains only safe characters
+func isValidServiceName(name string) bool {
+	if name == "" {
+		return false
+	}
+
+	// Check length (systemd has a 256 char limit for unit names)
+	if len(name) > 256 {
+		return false
+	}
+
+	// Only allow alphanumeric, dots, dashes, underscores
+	// This matches standard systemd/sysvinit naming conventions
+	for _, ch := range name {
+		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+			(ch >= '0' && ch <= '9') || ch == '.' || ch == '-' || ch == '_') {
+			return false
+		}
+	}
+
+	return true
+}
+
+// shellQuote safely quotes a string for use in POSIX shell commands
+// This prevents command injection by escaping all special characters.
+func shellQuote(s string) string {
+	// Handle empty string
+	if s == "" {
+		return "''"
+	}
+
+	// POSIX shell quoting: wrap in single quotes and escape existing single quotes
+	s = strings.ReplaceAll(s, "'", `'\''`)
+	return "'" + s + "'"
 }
