@@ -60,6 +60,10 @@ func TestRestartServiceAction_Validate(t *testing.T) {
 					stdout:   "nginx.service                enabled",
 					exitCode: 0,
 				},
+				"grep -E": {
+					stdout:   "nginx.service                enabled",
+					exitCode: 0,
+				},
 			},
 		}
 
@@ -137,11 +141,11 @@ func TestRestartServiceAction_Execute(t *testing.T) {
 		action := NewRestartServiceAction("nginx", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl is-active nginx": {
+				"systemctl is-active 'nginx'": {
 					stdout:   "active",
 					exitCode: 0,
 				},
-				"systemctl restart nginx": {
+				"systemctl restart 'nginx'": {
 					stdout:   "",
 					exitCode: 0,
 				},
@@ -175,11 +179,11 @@ func TestRestartServiceAction_Execute(t *testing.T) {
 		action := NewRestartServiceAction("mysql", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl is-active mysql": {
+				"systemctl is-active 'mysql'": {
 					stdout:   "failed",
 					exitCode: 3,
 				},
-				"systemctl restart mysql": {
+				"systemctl restart 'mysql'": {
 					stdout:   "",
 					exitCode: 0,
 				},
@@ -205,11 +209,11 @@ func TestRestartServiceAction_Execute(t *testing.T) {
 		action := NewRestartServiceAction("nginx", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl is-active nginx": {
+				"systemctl is-active 'nginx'": {
 					stdout:   "active",
 					exitCode: 0,
 				},
-				"systemctl restart nginx": {
+				"systemctl restart 'nginx'": {
 					stdout:   "",
 					stderr:   "Job for nginx.service failed",
 					exitCode: 1,
@@ -236,11 +240,11 @@ func TestRestartServiceAction_Execute(t *testing.T) {
 		action := NewRestartServiceAction("nginx", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl is-active nginx": {
+				"systemctl is-active 'nginx'": {
 					stdout:   "active",
 					exitCode: 0,
 				},
-				"systemctl restart nginx": {
+				"systemctl restart 'nginx'": {
 					stdout:   "",
 					exitCode: 0,
 				},
@@ -271,7 +275,7 @@ func TestRestartServiceAction_Rollback(t *testing.T) {
 		action := NewRestartServiceAction("nginx", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl stop nginx": {
+				"systemctl stop 'nginx'": {
 					stdout:   "",
 					exitCode: 0,
 				},
@@ -297,7 +301,7 @@ func TestRestartServiceAction_Rollback(t *testing.T) {
 		action := NewRestartServiceAction("nginx", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl stop nginx": {
+				"systemctl stop 'nginx'": {
 					stdout:   "",
 					exitCode: 0,
 				},
@@ -360,7 +364,7 @@ func TestRestartServiceAction_Rollback(t *testing.T) {
 		action := NewRestartServiceAction("nginx", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl stop nginx": {
+				"systemctl stop 'nginx'": {
 					stdout:   "",
 					stderr:   "Permission denied",
 					exitCode: 1,
@@ -396,7 +400,7 @@ func TestRestartServiceAction_GetServiceStatus(t *testing.T) {
 		action := NewRestartServiceAction("nginx", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl is-active nginx": {
+				"systemctl is-active 'nginx'": {
 					stdout:   "active\n",
 					exitCode: 0,
 				},
@@ -418,7 +422,7 @@ func TestRestartServiceAction_GetServiceStatus(t *testing.T) {
 		action := NewRestartServiceAction("nginx", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl is-active nginx": {
+				"systemctl is-active 'nginx'": {
 					stdout:   "failed",
 					exitCode: 3,
 				},
@@ -506,7 +510,7 @@ func TestStartServiceAction_Execute(t *testing.T) {
 		action := NewStartServiceAction("postgresql", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl start postgresql": {
+				"systemctl start 'postgresql'": {
 					stdout:   "",
 					exitCode: 0,
 				},
@@ -540,7 +544,7 @@ func TestStartServiceAction_Execute(t *testing.T) {
 		action := NewStartServiceAction("postgresql", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl start postgresql": {
+				"systemctl start 'postgresql'": {
 					stdout:   "",
 					stderr:   "Job for postgresql.service failed",
 					exitCode: 1,
@@ -567,7 +571,7 @@ func TestStartServiceAction_Execute(t *testing.T) {
 		action := NewStartServiceAction("postgresql", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl start postgresql": {
+				"systemctl start 'postgresql'": {
 					stdout:   "",
 					exitCode: 0,
 				},
@@ -598,7 +602,7 @@ func TestStartServiceAction_Rollback(t *testing.T) {
 		action := NewStartServiceAction("postgresql", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl stop postgresql": {
+				"systemctl stop 'postgresql'": {
 					stdout:   "",
 					exitCode: 0,
 				},
@@ -623,7 +627,7 @@ func TestStartServiceAction_Rollback(t *testing.T) {
 		action := NewStartServiceAction("postgresql", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl stop postgresql": {
+				"systemctl stop 'postgresql'": {
 					stdout:   "",
 					stderr:   "Permission denied",
 					exitCode: 1,
@@ -715,7 +719,7 @@ func TestStopServiceAction_Execute(t *testing.T) {
 		action := NewStopServiceAction("apache2", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl stop apache2": {
+				"systemctl stop 'apache2'": {
 					stdout:   "",
 					exitCode: 0,
 				},
@@ -749,7 +753,7 @@ func TestStopServiceAction_Execute(t *testing.T) {
 		action := NewStopServiceAction("apache2", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl stop apache2": {
+				"systemctl stop 'apache2'": {
 					stdout:   "",
 					stderr:   "Failed to stop apache2.service",
 					exitCode: 1,
@@ -776,7 +780,7 @@ func TestStopServiceAction_Execute(t *testing.T) {
 		action := NewStopServiceAction("apache2", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl stop apache2": {
+				"systemctl stop 'apache2'": {
 					stdout:   "",
 					exitCode: 0,
 				},
@@ -807,7 +811,7 @@ func TestStopServiceAction_Rollback(t *testing.T) {
 		action := NewStopServiceAction("apache2", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl start apache2": {
+				"systemctl start 'apache2'": {
 					stdout:   "",
 					exitCode: 0,
 				},
@@ -832,7 +836,7 @@ func TestStopServiceAction_Rollback(t *testing.T) {
 		action := NewStopServiceAction("apache2", logger)
 		executor := &serviceMockExecutor{
 			responses: map[string]mockServiceResponse{
-				"systemctl start apache2": {
+				"systemctl start 'apache2'": {
 					stdout:   "",
 					stderr:   "Permission denied",
 					exitCode: 1,
