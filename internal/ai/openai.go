@@ -1,13 +1,9 @@
 package ai
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
@@ -24,8 +20,8 @@ const (
 
 // OpenAIProvider implements the Provider interface for OpenAI GPT.
 type OpenAIProvider struct {
+	*BaseProvider
 	config *ProviderConfig
-	client *http.Client
 	log    *logrus.Logger
 }
 
@@ -61,86 +57,65 @@ func NewOpenAIProvider(config *ProviderConfig, log *logrus.Logger) (*OpenAIProvi
 		return nil, fmt.Errorf("invalid endpoint: %w", err)
 	}
 
-	return &OpenAIProvider{
+	// Create adapter
+	adapter := &openaiAdapter{
 		config: config,
-		client: &http.Client{
-			Timeout: config.Timeout,
-		},
-		log: log,
+		log:    log,
+	}
+
+	// Create base provider
+	base := NewBaseProvider(adapter, log)
+
+	return &OpenAIProvider{
+		BaseProvider: base,
+		config:       config,
+		log:          log,
 	}, nil
 }
 
-// Name returns the provider name.
-func (p *OpenAIProvider) Name() string {
-	return "openai"
-}
-
-// Analyze analyzes diagnostic results using GPT.
-func (p *OpenAIProvider) Analyze(ctx context.Context, req *AnalysisRequest) (*AnalysisResponse, error) {
-	start := time.Now()
-
-	// Build prompts
-	pb := NewPromptBuilder()
-	if len(req.Focus) > 0 {
-		pb.WithFocus(req.Focus...)
-	}
-
-	systemPrompt := pb.BuildSystemPrompt()
-	userPrompt, err := pb.BuildAnalysisPrompt(req)
+// Health checks if the OpenAI API is accessible.
+func (p *OpenAIProvider) Health(ctx context.Context) error {
+	// Override to use higher token limit for reasoning models
+	// Note: Use 1000 tokens to accommodate reasoning models (e.g., o1, o3, gpt-5-nano)
+	// which use significant tokens for internal reasoning before generating content.
+	adapter := p.adapter.(*openaiAdapter)
+	req, err := adapter.buildHealthRequest()
 	if err != nil {
-		return nil, &Error{
-			Op:       "build_prompt",
-			Provider: p.Name(),
-			Err:      err,
+		return &Error{
+			Op:        "health_check",
+			Provider:  p.Name(),
+			Err:       fmt.Errorf("failed to build health check request: %w", err),
+			Retryable: false,
 		}
 	}
 
-	p.log.WithFields(logrus.Fields{
-		"model":        p.config.Model,
-		"system_chars": len(systemPrompt),
-		"user_chars":   len(userPrompt),
-	}).Debug("Built analysis prompts")
-
-	// Make API request
-	apiReq := p.buildRequest(systemPrompt, userPrompt)
-	respContent, usage, err := p.callAPI(ctx, apiReq)
+	// Execute request
+	resp, err := p.httpClient.Do(ctx, RequestOptions{
+		Method:       "POST",
+		URL:          adapter.GetEndpoint(),
+		Body:         req,
+		Headers:      adapter.BuildHeaders(),
+		ProviderName: p.Name(),
+	})
 	if err != nil {
-		return nil, err
-	}
-
-	// Parse response
-	p.log.WithFields(logrus.Fields{
-		"content_length":  len(respContent),
-		"content_preview": truncateString(respContent, 300),
-	}).Debug("Parsing AI response content")
-
-	response, err := ParseAnalysisResponse(respContent, p.Name(), p.config.Model)
-	if err != nil {
-		p.log.WithFields(logrus.Fields{
-			"error":          err.Error(),
-			"content_length": len(respContent),
-		}).Error("Failed to parse analysis response")
-		return nil, &Error{
-			Op:       "parse_response",
-			Provider: p.Name(),
-			Err:      err,
+		return &Error{
+			Op:        "health_check",
+			Provider:  p.Name(),
+			Err:       err,
+			Retryable: true,
 		}
 	}
 
-	// Set metadata
-	response.Timestamp = time.Now()
-	response.Duration = time.Since(start)
-	response.TokensUsed = usage
+	if len(resp.Body) == 0 {
+		return &Error{
+			Op:        "health_check",
+			Provider:  p.Name(),
+			Err:       fmt.Errorf("empty response body"),
+			Retryable: true,
+		}
+	}
 
-	p.log.WithFields(logrus.Fields{
-		"findings":        len(response.Findings),
-		"recommendations": len(response.Recommendations),
-		"health":          response.OverallHealth,
-		"duration":        response.Duration,
-		"tokens":          usage.TotalTokens,
-	}).Info("Analysis complete")
-
-	return response, nil
+	return nil
 }
 
 // AnalyzeStream analyzes with streaming response.
@@ -161,16 +136,42 @@ func (p *OpenAIProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest
 		}
 	}
 
-	// Create streaming request
-	apiReq := p.buildRequest(systemPrompt, userPrompt)
-	apiReq.Stream = true
+	// Build streaming request
+	adapter := p.adapter.(*openaiAdapter)
+	apiReq, err := adapter.BuildRequest(systemPrompt, userPrompt, true)
+	if err != nil {
+		return nil, &Error{
+			Op:       "build_request",
+			Provider: p.Name(),
+			Err:      err,
+		}
+	}
 
 	ch := make(chan StreamChunk, 10)
 
 	go func() {
 		defer close(ch)
 
-		if err := p.streamAPI(ctx, apiReq, ch); err != nil {
+		// Execute streaming HTTP request
+		resp, err := p.httpClient.DoStreaming(ctx, RequestOptions{
+			Method:       "POST",
+			URL:          adapter.GetEndpoint(),
+			Body:         apiReq,
+			Headers:      adapter.BuildHeaders(),
+			ProviderName: p.Name(),
+		})
+		if err != nil {
+			ch <- StreamChunk{
+				Type:  ChunkError,
+				Error: err,
+				Done:  true,
+			}
+			return
+		}
+
+		// Use streaming parser
+		parser := &openaiStreamParser{}
+		if err := StreamToChannel(resp.Body, parser, ch, p.log); err != nil {
 			ch <- StreamChunk{
 				Type:  ChunkError,
 				Error: err,
@@ -182,39 +183,21 @@ func (p *OpenAIProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest
 	return ch, nil
 }
 
-// Health checks if the OpenAI API is accessible.
-func (p *OpenAIProvider) Health(ctx context.Context) error {
-	// Simple health check: send a minimal request
-	// Note: Use 1000 tokens to accommodate reasoning models (e.g., o1, o3, gpt-5-nano)
-	// which use significant tokens for internal reasoning before generating content.
-	// Previous limit of 100 tokens was insufficient and caused empty responses.
-	req := &openaiRequest{
-		Model:               p.config.Model,
-		MaxCompletionTokens: 1000,
-		Messages: []openaiMessage{
-			{Role: "user", Content: "Respond with 'OK'"},
-		},
-	}
-
-	_, _, err := p.callAPI(ctx, req)
-	if err != nil {
-		return &Error{
-			Op:        "health_check",
-			Provider:  p.Name(),
-			Err:       err,
-			Retryable: true,
-		}
-	}
-
-	return nil
+// openaiAdapter implements ProviderAdapter for OpenAI.
+type openaiAdapter struct {
+	config *ProviderConfig
+	log    *logrus.Logger
 }
 
-// buildRequest constructs an OpenAI API request.
-func (p *OpenAIProvider) buildRequest(systemPrompt, userPrompt string) *openaiRequest {
+func (a *openaiAdapter) Name() string {
+	return "openai"
+}
+
+func (a *openaiAdapter) BuildRequest(systemPrompt, userPrompt string, stream bool) (interface{}, error) {
 	req := &openaiRequest{
-		Model:               p.config.Model,
-		MaxCompletionTokens: p.config.MaxTokens,
-		Temperature:         p.config.Temperature,
+		Model:               a.config.Model,
+		MaxCompletionTokens: a.config.MaxTokens,
+		Temperature:         a.config.Temperature,
 		Messages: []openaiMessage{
 			{
 				Role:    "system",
@@ -228,248 +211,129 @@ func (p *OpenAIProvider) buildRequest(systemPrompt, userPrompt string) *openaiRe
 	}
 
 	// Add reasoning_effort if configured (for reasoning models like o1, o3, gpt-5-nano)
-	if p.config.ReasoningEffort != "" {
-		req.ReasoningEffort = p.config.ReasoningEffort
-		p.log.WithFields(logrus.Fields{
-			"model":            p.config.Model,
-			"reasoning_effort": p.config.ReasoningEffort,
+	if a.config.ReasoningEffort != "" {
+		req.ReasoningEffort = a.config.ReasoningEffort
+		a.log.WithFields(logrus.Fields{
+			"model":            a.config.Model,
+			"reasoning_effort": a.config.ReasoningEffort,
 		}).Debug("Using reasoning effort configuration")
 	}
 
-	return req
+	if stream {
+		req.Stream = true
+	}
+
+	return req, nil
 }
 
-// callAPI makes a non-streaming API call.
-func (p *OpenAIProvider) callAPI(ctx context.Context, req *openaiRequest) (string, *TokenUsage, error) {
-	reqBody, err := json.Marshal(req)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to marshal request: %w", err)
+func (a *openaiAdapter) buildHealthRequest() (interface{}, error) {
+	return &openaiRequest{
+		Model:               a.config.Model,
+		MaxCompletionTokens: 1000, // Higher limit for reasoning models
+		Messages: []openaiMessage{
+			{Role: "user", Content: "Respond with 'OK'"},
+		},
+	}, nil
+}
+
+func (a *openaiAdapter) ParseResponse(body []byte) (string, *TokenUsage, error) {
+	var resp openaiResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return "", nil, fmt.Errorf("failed to unmarshal response: %w (body preview: %s)",
+			err, truncateString(string(body), 200))
 	}
 
-	p.log.WithFields(logrus.Fields{
-		"endpoint": p.config.Endpoint,
-		"model":    req.Model,
-		"messages": len(req.Messages),
-	}).Debug("Sending OpenAI API request")
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.Endpoint, bytes.NewReader(reqBody))
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	p.setHeaders(httpReq)
-
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		return "", nil, &Error{
-			Op:        "api_call",
-			Provider:  p.Name(),
-			Err:       err,
-			Retryable: true,
-		}
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	// Read the entire response body for logging and parsing
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	p.log.WithFields(logrus.Fields{
-		"status_code":  resp.StatusCode,
-		"content_type": resp.Header.Get("Content-Type"),
-		"body_length":  len(body),
-		"body_preview": truncateString(string(body), 200),
-	}).Debug("Received OpenAI API response")
-
-	if resp.StatusCode != http.StatusOK {
-		p.log.WithFields(logrus.Fields{
-			"status_code": resp.StatusCode,
-			"body":        string(body),
-		}).Error("OpenAI API returned non-OK status")
-		return "", nil, &Error{
-			Op:        "api_call",
-			Provider:  p.Name(),
-			Err:       fmt.Errorf("API error %d: %s", resp.StatusCode, string(body)),
-			Retryable: resp.StatusCode >= 500,
-		}
-	}
-
-	var apiResp openaiResponse
-	if err := json.Unmarshal(body, &apiResp); err != nil {
-		p.log.WithFields(logrus.Fields{
-			"error":        err.Error(),
-			"body_length":  len(body),
-			"body_preview": truncateString(string(body), 500),
-			"body_full":    string(body), // Include full body for debugging
-		}).Error("Failed to parse OpenAI response JSON")
-		return "", nil, fmt.Errorf("failed to decode response: %w (body preview: %s)", err, truncateString(string(body), 200))
-	}
-
-	if len(apiResp.Choices) == 0 {
-		p.log.WithField("response", string(body)).Error("OpenAI returned no choices")
+	if len(resp.Choices) == 0 {
 		return "", nil, fmt.Errorf("no response choices returned")
 	}
 
-	// Build usage info
-	usage := &TokenUsage{
-		InputTokens:  apiResp.Usage.PromptTokens,
-		OutputTokens: apiResp.Usage.CompletionTokens,
-		TotalTokens:  apiResp.Usage.TotalTokens,
-	}
-
-	choice := apiResp.Choices[0]
+	choice := resp.Choices[0]
 	content := choice.Message.Content
 	refusal := choice.Message.Refusal
 
 	// Handle refusal field (OpenAI content policy)
 	if refusal != "" {
-		p.log.WithFields(logrus.Fields{
-			"refusal":       refusal,
-			"finish_reason": choice.FinishReason,
-		}).Warn("OpenAI refused to generate response")
-		return "", usage, fmt.Errorf("OpenAI refused request: %s", refusal)
+		return "", nil, fmt.Errorf("OpenAI refused request: %s", refusal)
 	}
 
 	// Handle empty content (can occur with reasoning models that exhaust tokens on reasoning)
 	if content == "" {
-		p.log.WithFields(logrus.Fields{
-			"model":             apiResp.Model,
-			"finish_reason":     choice.FinishReason,
-			"completion_tokens": usage.OutputTokens,
-			"full_response":     string(body),
-		}).Error("OpenAI returned empty content")
-
-		// Provide helpful error message based on finish_reason
 		if choice.FinishReason == "length" {
-			return "", usage, fmt.Errorf("OpenAI returned empty content: reasoning model exhausted token limit (model: %s, tokens used: %d). Consider increasing max_tokens or using a model with higher limits",
-				apiResp.Model, usage.OutputTokens)
+			return "", nil, fmt.Errorf("OpenAI returned empty content: reasoning model exhausted token limit (model: %s, tokens used: %d). Consider increasing max_tokens or using a model with higher limits",
+				resp.Model, resp.Usage.CompletionTokens)
 		}
-		return "", usage, fmt.Errorf("OpenAI returned empty content (model: %s, finish_reason: %s, tokens: %d)",
-			apiResp.Model, choice.FinishReason, usage.OutputTokens)
+		return "", nil, fmt.Errorf("OpenAI returned empty content (model: %s, finish_reason: %s, tokens: %d)",
+			resp.Model, choice.FinishReason, resp.Usage.CompletionTokens)
 	}
 
-	p.log.WithFields(logrus.Fields{
-		"content_length":    len(content),
-		"prompt_tokens":     usage.InputTokens,
-		"completion_tokens": usage.OutputTokens,
-		"total_tokens":      usage.TotalTokens,
-		"finish_reason":     choice.FinishReason,
-	}).Debug("Successfully parsed OpenAI response")
+	// Build usage info
+	usage := &TokenUsage{
+		InputTokens:  resp.Usage.PromptTokens,
+		OutputTokens: resp.Usage.CompletionTokens,
+		TotalTokens:  resp.Usage.TotalTokens,
+	}
 
 	return content, usage, nil
 }
 
-// streamAPI makes a streaming API call.
-func (p *OpenAIProvider) streamAPI(ctx context.Context, req *openaiRequest, ch chan<- StreamChunk) error {
-	reqBody, err := json.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
+func (a *openaiAdapter) BuildHeaders() map[string]string {
+	headers := map[string]string{
+		"Content-Type":  "application/json",
+		"Authorization": "Bearer " + a.config.APIKey,
 	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.Endpoint, bytes.NewReader(reqBody))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	p.setHeaders(httpReq)
-
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		return &Error{
-			Op:        "stream_call",
-			Provider:  p.Name(),
-			Err:       err,
-			Retryable: true,
-		}
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return &Error{
-			Op:        "stream_call",
-			Provider:  p.Name(),
-			Err:       fmt.Errorf("API error %d: %s", resp.StatusCode, string(body)),
-			Retryable: resp.StatusCode >= 500,
-		}
-	}
-
-	// Read streaming response
-	scanner := bufio.NewScanner(resp.Body)
-	var fullContent strings.Builder
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// Skip empty lines
-		if line == "" {
-			continue
-		}
-
-		// Parse SSE format: "data: {json}"
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-
-		data := strings.TrimPrefix(line, "data: ")
-
-		// End of stream marker
-		if data == "[DONE]" {
-			ch <- StreamChunk{
-				Type:    ChunkSummary,
-				Content: fullContent.String(),
-				Done:    true,
-			}
-			break
-		}
-
-		var event openaiStreamEvent
-		if err := json.Unmarshal([]byte(data), &event); err != nil {
-			p.log.WithError(err).Warn("Failed to parse stream event")
-			continue
-		}
-
-		// Extract content delta
-		if len(event.Choices) > 0 {
-			delta := event.Choices[0].Delta.Content
-			if delta != "" {
-				fullContent.WriteString(delta)
-				ch <- StreamChunk{
-					Type:    ChunkSummary,
-					Content: delta,
-				}
-			}
-
-			// Check for finish
-			if event.Choices[0].FinishReason != "" {
-				ch <- StreamChunk{
-					Type:    ChunkSummary,
-					Content: fullContent.String(),
-					Done:    true,
-				}
-				break
-			}
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("stream read error: %w", err)
-	}
-
-	return nil
-}
-
-// setHeaders sets required OpenAI API headers.
-func (p *OpenAIProvider) setHeaders(req *http.Request) {
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+p.config.APIKey)
 
 	// Add custom headers
-	for k, v := range p.config.CustomHeaders {
-		req.Header.Set(k, v)
+	for k, v := range a.config.CustomHeaders {
+		headers[k] = v
 	}
+
+	return headers
+}
+
+func (a *openaiAdapter) GetEndpoint() string {
+	return a.config.Endpoint
+}
+
+func (a *openaiAdapter) GetConfig() *ProviderConfig {
+	return a.config
+}
+
+// openaiStreamParser parses OpenAI SSE streams.
+type openaiStreamParser struct{}
+
+func (p *openaiStreamParser) ParseLine(line string) (string, bool, error) {
+	// Check for SSE "data: " prefix
+	if !strings.HasPrefix(line, "data: ") {
+		return "", false, nil
+	}
+
+	data := strings.TrimPrefix(line, "data: ")
+
+	// Check for [DONE] marker
+	if data == "[DONE]" {
+		return "", true, nil
+	}
+
+	// Parse JSON event
+	var event openaiStreamEvent
+	if err := json.Unmarshal([]byte(data), &event); err != nil {
+		return "", false, fmt.Errorf("failed to parse stream event: %w", err)
+	}
+
+	// Extract content delta
+	if len(event.Choices) > 0 {
+		delta := event.Choices[0].Delta.Content
+		if delta != "" {
+			return delta, false, nil
+		}
+
+		// Check for finish
+		if event.Choices[0].FinishReason != "" {
+			return "", true, nil
+		}
+	}
+
+	return "", false, nil
 }
 
 // OpenAI API request/response types

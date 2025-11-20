@@ -1,13 +1,9 @@
 package ai
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
@@ -24,8 +20,8 @@ const (
 
 // OllamaProvider implements the Provider interface for Ollama (local models).
 type OllamaProvider struct {
+	*BaseProvider
 	config *ProviderConfig
-	client *http.Client
 	log    *logrus.Logger
 }
 
@@ -53,76 +49,51 @@ func NewOllamaProvider(config *ProviderConfig, log *logrus.Logger) (*OllamaProvi
 		return nil, fmt.Errorf("invalid endpoint: %w", err)
 	}
 
-	return &OllamaProvider{
+	// Create adapter
+	adapter := &ollamaAdapter{
 		config: config,
-		client: &http.Client{
-			Timeout: config.Timeout,
-		},
-		log: log,
+	}
+
+	// Create base provider
+	base := NewBaseProvider(adapter, log)
+
+	return &OllamaProvider{
+		BaseProvider: base,
+		config:       config,
+		log:          log,
 	}, nil
 }
 
-// Name returns the provider name.
-func (p *OllamaProvider) Name() string {
-	return "ollama"
-}
+// Health checks if the Ollama service is accessible.
+func (p *OllamaProvider) Health(ctx context.Context) error {
+	// Check if Ollama is running by hitting the health endpoint
+	healthURL := strings.Replace(p.config.Endpoint, "/api/chat", "/api/tags", 1)
 
-// Analyze analyzes diagnostic results using a local Ollama model.
-func (p *OllamaProvider) Analyze(ctx context.Context, req *AnalysisRequest) (*AnalysisResponse, error) {
-	start := time.Now()
-
-	// Build prompts
-	pb := NewPromptBuilder()
-	if len(req.Focus) > 0 {
-		pb.WithFocus(req.Focus...)
-	}
-
-	systemPrompt := pb.BuildSystemPrompt()
-	userPrompt, err := pb.BuildAnalysisPrompt(req)
+	resp, err := p.httpClient.Do(ctx, RequestOptions{
+		Method:       "GET",
+		URL:          healthURL,
+		Headers:      nil,
+		ProviderName: p.Name(),
+	})
 	if err != nil {
-		return nil, &Error{
-			Op:       "build_prompt",
-			Provider: p.Name(),
-			Err:      err,
+		return &Error{
+			Op:        "health_check",
+			Provider:  p.Name(),
+			Err:       fmt.Errorf("ollama service not accessible: %w", err),
+			Retryable: true,
 		}
 	}
 
-	p.log.WithFields(logrus.Fields{
-		"model":        p.config.Model,
-		"endpoint":     p.config.Endpoint,
-		"system_chars": len(systemPrompt),
-		"user_chars":   len(userPrompt),
-	}).Debug("Built analysis prompts")
-
-	// Make API request
-	apiReq := p.buildRequest(systemPrompt, userPrompt)
-	respContent, err := p.callAPI(ctx, apiReq)
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse response
-	response, err := ParseAnalysisResponse(respContent, p.Name(), p.config.Model)
-	if err != nil {
-		return nil, &Error{
-			Op:       "parse_response",
-			Provider: p.Name(),
-			Err:      err,
+	if len(resp.Body) == 0 {
+		return &Error{
+			Op:        "health_check",
+			Provider:  p.Name(),
+			Err:       fmt.Errorf("empty response from ollama"),
+			Retryable: true,
 		}
 	}
 
-	// Set metadata (Ollama doesn't provide token usage)
-	response.Timestamp = time.Now()
-	response.Duration = time.Since(start)
-
-	p.log.WithFields(logrus.Fields{
-		"findings":        len(response.Findings),
-		"recommendations": len(response.Recommendations),
-		"health":          response.OverallHealth,
-		"duration":        response.Duration,
-	}).Info("Analysis complete")
-
-	return response, nil
+	return nil
 }
 
 // AnalyzeStream analyzes with streaming response.
@@ -143,16 +114,42 @@ func (p *OllamaProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest
 		}
 	}
 
-	// Create streaming request
-	apiReq := p.buildRequest(systemPrompt, userPrompt)
-	apiReq.Stream = true
+	// Build streaming request
+	adapter := p.adapter.(*ollamaAdapter)
+	apiReq, err := adapter.BuildRequest(systemPrompt, userPrompt, true)
+	if err != nil {
+		return nil, &Error{
+			Op:       "build_request",
+			Provider: p.Name(),
+			Err:      err,
+		}
+	}
 
 	ch := make(chan StreamChunk, 10)
 
 	go func() {
 		defer close(ch)
 
-		if err := p.streamAPI(ctx, apiReq, ch); err != nil {
+		// Execute streaming HTTP request
+		resp, err := p.httpClient.DoStreaming(ctx, RequestOptions{
+			Method:       "POST",
+			URL:          adapter.GetEndpoint(),
+			Body:         apiReq,
+			Headers:      adapter.BuildHeaders(),
+			ProviderName: p.Name(),
+		})
+		if err != nil {
+			ch <- StreamChunk{
+				Type:  ChunkError,
+				Error: err,
+				Done:  true,
+			}
+			return
+		}
+
+		// Use JSON line parser (not SSE)
+		parser := &ollamaStreamParser{}
+		if err := StreamToChannel(resp.Body, parser, ch, p.log); err != nil {
 			ch <- StreamChunk{
 				Type:  ChunkError,
 				Error: err,
@@ -164,43 +161,18 @@ func (p *OllamaProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest
 	return ch, nil
 }
 
-// Health checks if the Ollama service is accessible.
-func (p *OllamaProvider) Health(ctx context.Context) error {
-	// Check if Ollama is running by hitting the health endpoint
-	healthURL := strings.Replace(p.config.Endpoint, "/api/chat", "/api/tags", 1)
-
-	httpReq, err := http.NewRequestWithContext(ctx, "GET", healthURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create health check request: %w", err)
-	}
-
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		return &Error{
-			Op:        "health_check",
-			Provider:  p.Name(),
-			Err:       fmt.Errorf("ollama service not accessible: %w", err),
-			Retryable: true,
-		}
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return &Error{
-			Op:        "health_check",
-			Provider:  p.Name(),
-			Err:       fmt.Errorf("ollama service returned status %d", resp.StatusCode),
-			Retryable: true,
-		}
-	}
-
-	return nil
+// ollamaAdapter implements ProviderAdapter for Ollama.
+type ollamaAdapter struct {
+	config *ProviderConfig
 }
 
-// buildRequest constructs an Ollama API request.
-func (p *OllamaProvider) buildRequest(systemPrompt, userPrompt string) *ollamaRequest {
-	return &ollamaRequest{
-		Model: p.config.Model,
+func (a *ollamaAdapter) Name() string {
+	return "ollama"
+}
+
+func (a *ollamaAdapter) BuildRequest(systemPrompt, userPrompt string, stream bool) (interface{}, error) {
+	req := &ollamaRequest{
+		Model: a.config.Model,
 		Messages: []ollamaMessage{
 			{
 				Role:    "system",
@@ -212,128 +184,68 @@ func (p *OllamaProvider) buildRequest(systemPrompt, userPrompt string) *ollamaRe
 			},
 		},
 		Options: ollamaOptions{
-			Temperature: p.config.Temperature,
-			NumPredict:  p.config.MaxTokens,
+			Temperature: a.config.Temperature,
+			NumPredict:  a.config.MaxTokens,
 		},
 	}
+
+	if stream {
+		req.Stream = true
+	}
+
+	return req, nil
 }
 
-// callAPI makes a non-streaming API call.
-func (p *OllamaProvider) callAPI(ctx context.Context, req *ollamaRequest) (string, error) {
-	reqBody, err := json.Marshal(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+func (a *ollamaAdapter) ParseResponse(body []byte) (string, *TokenUsage, error) {
+	var resp ollamaResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return "", nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.Endpoint, bytes.NewReader(reqBody))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
+	content := resp.Message.Content
 
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		return "", &Error{
-			Op:        "api_call",
-			Provider:  p.Name(),
-			Err:       err,
-			Retryable: true,
-		}
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", &Error{
-			Op:        "api_call",
-			Provider:  p.Name(),
-			Err:       fmt.Errorf("API error %d: %s", resp.StatusCode, string(body)),
-			Retryable: resp.StatusCode >= 500,
-		}
-	}
-
-	var apiResp ollamaResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return apiResp.Message.Content, nil
+	// Ollama doesn't provide token usage
+	return content, nil, nil
 }
 
-// streamAPI makes a streaming API call.
-func (p *OllamaProvider) streamAPI(ctx context.Context, req *ollamaRequest, ch chan<- StreamChunk) error {
-	reqBody, err := json.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
+func (a *ollamaAdapter) BuildHeaders() map[string]string {
+	headers := map[string]string{
+		"Content-Type": "application/json",
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.Endpoint, bytes.NewReader(reqBody))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+	// Add custom headers
+	for k, v := range a.config.CustomHeaders {
+		headers[k] = v
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
+	return headers
+}
 
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		return &Error{
-			Op:        "stream_call",
-			Provider:  p.Name(),
-			Err:       err,
-			Retryable: true,
-		}
-	}
-	defer func() { _ = resp.Body.Close() }()
+func (a *ollamaAdapter) GetEndpoint() string {
+	return a.config.Endpoint
+}
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return &Error{
-			Op:        "stream_call",
-			Provider:  p.Name(),
-			Err:       fmt.Errorf("API error %d: %s", resp.StatusCode, string(body)),
-			Retryable: resp.StatusCode >= 500,
-		}
+func (a *ollamaAdapter) GetConfig() *ProviderConfig {
+	return a.config
+}
+
+// ollamaStreamParser parses Ollama JSON-per-line streams.
+type ollamaStreamParser struct{}
+
+func (p *ollamaStreamParser) ParseLine(line string) (string, bool, error) {
+	// Ollama uses JSON-per-line, not SSE
+	var event ollamaStreamEvent
+	if err := json.Unmarshal([]byte(line), &event); err != nil {
+		return "", false, fmt.Errorf("failed to parse JSON line: %w", err)
 	}
 
-	// Read streaming response (Ollama sends JSON objects line by line)
-	scanner := bufio.NewScanner(resp.Body)
-	var fullContent strings.Builder
+	// Extract content
+	content := event.Message.Content
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	// Check if done
+	done := event.Done
 
-		var event ollamaStreamEvent
-		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			p.log.WithError(err).Warn("Failed to parse stream event")
-			continue
-		}
-
-		// Append content
-		if event.Message.Content != "" {
-			fullContent.WriteString(event.Message.Content)
-			ch <- StreamChunk{
-				Type:    ChunkSummary,
-				Content: event.Message.Content,
-			}
-		}
-
-		// Check if done
-		if event.Done {
-			ch <- StreamChunk{
-				Type:    ChunkSummary,
-				Content: fullContent.String(),
-				Done:    true,
-			}
-			break
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("stream read error: %w", err)
-	}
-
-	return nil
+	return content, done, nil
 }
 
 // Ollama API request/response types
