@@ -6,8 +6,8 @@
 [![CI](https://github.com/IgnacioPro/lumo/actions/workflows/ci.yml/badge.svg)](https://github.com/IgnacioPro/lumo/actions/workflows/ci.yml)
 [![Go Version](https://img.shields.io/badge/Go-1.25.4-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Coverage](https://img.shields.io/badge/coverage-50.4%25-yellow.svg)](https://github.com/IgnacioPro/lumo)
-[![Release](https://img.shields.io/badge/version-0.8.0-brightgreen.svg)](https://github.com/IgnacioPro/lumo/releases)
+[![Coverage](https://img.shields.io/badge/coverage-66.7%25-green.svg)](https://github.com/IgnacioPro/lumo)
+[![Release](https://img.shields.io/badge/version-0.9.1-brightgreen.svg)](https://github.com/IgnacioPro/lumo/releases)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20BSD-lightgrey.svg)](https://github.com/IgnacioPro/lumo)
 
 **AI-powered diagnostics + SSH automation + Kubernetes monitoring = Better SRE workflows**
@@ -30,7 +30,7 @@
 - 🏗️ **Agent Architecture** - REST API + Agent daemon with hybrid push/pull model (Phases 7-8)
 - 🔐 **Security-First** - Built-in security diagnostics and audit trails
 - 🎯 **Token-Optimized** - TOON format reduces AI costs by 30-60%
-- 🚀 **Production-Ready** - 50%+ test coverage, CI/CD, cross-platform
+- 🚀 **Production-Ready** - 66%+ test coverage, CI/CD, cross-platform
 
 ---
 
@@ -385,7 +385,7 @@ rules:
 
 ## 🧪 Testing
 
-**Overall Coverage**: 50.4% (11,059 lines of test code)
+**Overall Coverage**: 66.7% (52 test files)
 
 ### Coverage by Package
 
@@ -428,12 +428,13 @@ go tool cover -html=coverage.out
 - [x] **Phase 5**: Security & Specialized Diagnostics (4 security checkers + Kubernetes + Proxmox)
 - [x] **Phase 6**: Auto-Remediation (Human-in-the-loop approval, risk classification, audit logging)
 - [x] **Phase 7**: API Server Foundation (REST API, PostgreSQL, Redis, Agent registration)
-- [x] **Phase 8**: Agent Daemon (Scheduled diagnostics, API reporter, offline mode, health/metrics) ✨ **NEW**
+- [x] **Phase 8**: Agent Daemon (Scheduled diagnostics, API reporter, offline mode, health/metrics)
+- [x] **Phase 9**: Kubernetes Deployment (DaemonSet, Deployment, Helm charts, RBAC, Kustomize)
+- [x] **Phase 10**: VM Deployment (systemd units, RPM/DEB packages, installation scripts)
+- [x] **Usability Week 1**: Installation & First-Run Experience (Quick start, init wizard, examples, docs) ✨ **NEW**
 
 ### 🚧 In Progress
 
-- [ ] **Phase 9**: Kubernetes Deployment (DaemonSet, Deployment, Helm charts)
-- [ ] **Phase 10**: VM Deployment (systemd units, RPM/DEB packages)
 - [ ] **Phase 11**: Messaging Integration (NATS, Kafka, RabbitMQ, Redis)
 
 ### 🔮 Future Phases

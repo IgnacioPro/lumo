@@ -16,7 +16,7 @@
 - AI analysis (5 providers: Anthropic, OpenAI, Ollama, Gemini, OpenRouter)
 - Auto-remediation with human-in-the-loop approval
 - **Notifications:** Multi-platform alerting (Slack, Telegram, Discord, Teams, Email)
-- Multiple output formats (text, JSON, TOON)
+- Multiple output formats (text, TOON, JSON)
 - TOON format for 30-60% AI token reduction
 
 **Tech:** Go 1.25.4 | Module: `github.com/ignacio/lumo` | License: MIT
@@ -41,7 +41,7 @@ lumo/
 │   │   ├── checkers/      # CPU, Memory, Disk, Process, Service, Network
 │   │   │                  # Patch, Ports, SSH Security, Auth Failures
 │   │   │                  # Kubernetes, Proxmox
-│   │   └── formatters/    # text, JSON, TOON
+│   │   └── formatters/    # text, TOON (JSON via Report.ToJSON())
 │   ├── ai/                # 5 providers: Anthropic, OpenAI, Ollama, Gemini, OpenRouter
 │   ├── remediation/       # Actions, executor, approval, audit
 │   ├── notifications/     # ✅ Multi-platform notifications (Slack, Telegram, Webhook, Email)
@@ -67,8 +67,9 @@ lumo/
 ├── configs/config.example.yaml  # Updated with DB and Cache sections
 └── docker-compose.yaml    # ✅ PostgreSQL + Redis for development
 
-Total: 84 Go files (54 + 30 new) + 35 test files | Test Coverage: 66.7%
+Total: 97 Go files + 52 test files (149 total) | Test Coverage: 66.7%
 Phase 7: +4,336 LOC across 30 files (jobs, api_keys, agents systems)
+Note: File counts are approximate and represent minimum counts as of last update
 ```
 
 ---
@@ -169,11 +170,11 @@ export LUMO_AGENT_MESSAGING_PROVIDER=nats      # nats|kafka|rabbitmq|redis
 
 ## Testing & CI
 
-**Current Coverage:** 50.4% (35 test files)
+**Current Coverage:** 66.7% (52 test files)
 **Pattern:** Table-driven tests, mock executors for checkers
 **Run:** `go test ./...` or `go test -cover ./...`
 
-**Coverage by Package:**
+**Coverage by Package:** *(last verified: 2025-11-19, re-verify recommended)*
 - internal/diagnostics/formatters: 98.1%
 - internal/diagnostics: 87.6%
 - internal/config: 68.8%
@@ -494,7 +495,7 @@ systemctl enable --now lumo-agent
   - Auto-detects OS and architecture
   - Downloads latest release from GitHub
   - Provides PATH setup instructions
-- ✅ Interactive Setup Wizard (`cmd/lumo/init.go` - 764 LOC)
+- ✅ Interactive Setup Wizard (`cmd/lumo/init.go` - 522 LOC)
   - Interactive prompts for AI provider, API key, settings
   - 3 configuration presets (local, agent, production)
   - Validates API key format
@@ -593,7 +594,10 @@ systemctl enable --now lumo-agent
 - `--analyze` automatically uses TOON internally for AI (user still sees text/JSON)
 - Best for: process lists, service status, metrics arrays
 
-**Implementation:** `formatters.NewToonFormatter()` | Uses `github.com/alpkeskin/gotoon`
+**Implementation:**
+- Text: `formatters.NewTextFormatter()`
+- TOON: `formatters.NewToonFormatter()` | Uses `github.com/alpkeskin/gotoon`
+- JSON: `Report.ToJSON()` method (not a separate formatter class)
 
 ---
 
