@@ -4,13 +4,13 @@
 BINARY_NAME=lumo
 MAIN_PATH=./cmd/lumo
 GO=go
-GOFLAGS=-v
+GOFLAGS=-v -trimpath
 INSTALL_PATH=$(shell go env GOPATH)/bin
 
 # Build variables
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
-LDFLAGS=-ldflags "-X main.version=$(VERSION)"
+LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)"
 
 # Colors for output
 COLOR_RESET=\033[0m
@@ -34,8 +34,28 @@ help:
 ## build: Build the lumo binary
 build:
 	@echo "$(COLOR_BLUE)Building $(BINARY_NAME)...$(COLOR_RESET)"
-	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) $(MAIN_PATH)
+	CGO_ENABLED=0 $(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) $(MAIN_PATH)
 	@echo "$(COLOR_GREEN)✓ Build complete: $(BINARY_NAME)$(COLOR_RESET)"
+
+## sign: Sign the binaries (requires cosign or gpg installed)
+sign:
+	@echo "$(COLOR_BLUE)Signing binaries...$(COLOR_RESET)"
+	@if command -v cosign >/dev/null 2>&1; then \
+		cosign sign-blob --key cosign.key $(BINARY_NAME) > $(BINARY_NAME).sig; \
+		echo "$(COLOR_GREEN)✓ Signed $(BINARY_NAME)$(COLOR_RESET)"; \
+	else \
+		echo "$(COLOR_YELLOW)⚠ cosign not installed. Skipping signing.$(COLOR_RESET)"; \
+	fi
+
+## sbom: Generate SBOM (requires syft installed)
+sbom:
+	@echo "$(COLOR_BLUE)Generating SBOM...$(COLOR_RESET)"
+	@if command -v syft >/dev/null 2>&1; then \
+		syft $(BINARY_NAME) -o cyclonedx-json=sbom.json; \
+		echo "$(COLOR_GREEN)✓ SBOM generated: sbom.json$(COLOR_RESET)"; \
+	else \
+		echo "$(COLOR_YELLOW)⚠ syft not installed. Skipping SBOM generation.$(COLOR_RESET)"; \
+	fi
 
 ## run: Run the application (use ARGS to pass arguments, e.g., make run ARGS="diagnose localhost")
 run: build
@@ -161,9 +181,9 @@ ci-test:
 ## ci-build: Build both CLI and Agent binaries (used by GitHub CI)
 ci-build:
 	@echo "$(COLOR_BLUE)Building CLI binary...$(COLOR_RESET)"
-	$(GO) build -v ./cmd/lumo
+	CGO_ENABLED=0 $(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/lumo
 	@echo "$(COLOR_BLUE)Building Agent binary...$(COLOR_RESET)"
-	$(GO) build -v ./cmd/lumo-agent
+	CGO_ENABLED=0 $(GO) build $(GOFLAGS) $(LDFLAGS) -o lumo-agent ./cmd/lumo-agent
 	@echo "$(COLOR_GREEN)✓ Build complete$(COLOR_RESET)"
 
 ## ci: Run all CI checks (matches GitHub CI workflow)

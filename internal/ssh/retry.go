@@ -62,6 +62,7 @@ func WithRetry(operation func() error, config *RetryConfig) error {
 	// Wrap with max retries if specified
 	var b backoff.BackOff = expBackoff
 	if config.MaxAttempts > 0 {
+		// #nosec G115 -- MaxAttempts checked > 0, cast is safe
 		b = backoff.WithMaxRetries(expBackoff, uint64(config.MaxAttempts))
 	}
 
@@ -121,6 +122,7 @@ func WithRetryContext(ctx context.Context, operation func() error, config *Retry
 	// Wrap with max retries if specified
 	var b backoff.BackOff = expBackoff
 	if config.MaxAttempts > 0 {
+		// #nosec G115 -- MaxAttempts checked > 0, cast is safe
 		b = backoff.WithMaxRetries(expBackoff, uint64(config.MaxAttempts))
 	}
 

@@ -41,12 +41,13 @@ type Auditor struct {
 func NewAuditor(logPath string, logger *logrus.Logger) (*Auditor, error) {
 	// Ensure log directory exists
 	logDir := filepath.Dir(logPath)
-	if err := os.MkdirAll(logDir, 0755); err != nil {
+	if err := os.MkdirAll(logDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create audit log directory: %w", err)
 	}
 
 	// Open log file for appending
-	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	// #nosec G304 -- logPath is expected to be variable
+	file, err := os.OpenFile(filepath.Clean(logPath), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open audit log file: %w", err)
 	}
@@ -157,7 +158,8 @@ func (a *Auditor) Close() error {
 
 // ReadAuditLog reads and parses audit log entries from the log file.
 func ReadAuditLog(logPath string) ([]AuditEntry, error) {
-	file, err := os.Open(logPath)
+	// #nosec G304 -- logPath is expected to be variable
+	file, err := os.Open(filepath.Clean(logPath))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return []AuditEntry{}, nil
