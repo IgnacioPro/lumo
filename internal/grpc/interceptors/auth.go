@@ -13,6 +13,14 @@ import (
 	"github.com/ignacio/lumo/internal/config"
 )
 
+// Context key types to avoid collisions
+type contextKey string
+
+const (
+	contextKeyClaims contextKey = "claims"
+	contextKeyUserID contextKey = "user_id"
+)
+
 // AuthInterceptor validates JWT tokens from gRPC metadata
 func AuthInterceptor(cfg *config.Config) grpc.UnaryServerInterceptor {
 	// Initialize JWT manager
@@ -62,8 +70,8 @@ func AuthInterceptor(cfg *config.Config) grpc.UnaryServerInterceptor {
 		}
 
 		// Inject claims into context
-		ctx = context.WithValue(ctx, "claims", claims)
-		ctx = context.WithValue(ctx, "user_id", claims.UserID)
+		ctx = context.WithValue(ctx, contextKeyClaims, claims)
+		ctx = context.WithValue(ctx, contextKeyUserID, claims.UserID)
 
 		return handler(ctx, req)
 	}
@@ -111,7 +119,7 @@ func StreamAuthInterceptor(cfg *config.Config) grpc.StreamServerInterceptor {
 		// Wrap stream with authenticated context
 		wrappedStream := &authenticatedStream{
 			ServerStream: ss,
-			ctx:          context.WithValue(ss.Context(), "claims", claims),
+			ctx:          context.WithValue(ss.Context(), contextKeyClaims, claims),
 		}
 
 		return handler(srv, wrappedStream)

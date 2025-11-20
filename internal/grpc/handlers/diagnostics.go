@@ -13,15 +13,26 @@ import (
 	"github.com/ignacio/lumo/internal/database/repository"
 )
 
+// JobRepository defines the interface for job data operations
+type JobRepository interface {
+	Create(ctx context.Context, job *models.Job) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.Job, error)
+	List(ctx context.Context, opts repository.ListOptions) ([]*models.Job, int, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status models.JobStatus) error
+	UpdateResult(ctx context.Context, id uuid.UUID, result []byte) error
+	UpdateError(ctx context.Context, id uuid.UUID, errorMsg string) error
+	Delete(ctx context.Context, id uuid.UUID) error
+}
+
 // DiagnosticsHandler implements the DiagnosticsService gRPC service
 type DiagnosticsHandler struct {
 	lumov1.UnimplementedDiagnosticsServiceServer
 
-	jobRepo repository.JobRepository
+	jobRepo JobRepository
 }
 
 // NewDiagnosticsHandler creates a new diagnostics service handler
-func NewDiagnosticsHandler(jobRepo repository.JobRepository) *DiagnosticsHandler {
+func NewDiagnosticsHandler(jobRepo JobRepository) *DiagnosticsHandler {
 	return &DiagnosticsHandler{
 		jobRepo: jobRepo,
 	}
@@ -69,7 +80,7 @@ func (h *DiagnosticsHandler) GetDiagnosticsResult(ctx context.Context, req *lumo
 		return nil, status.Error(codes.InvalidArgument, "invalid job ID")
 	}
 
-	job, err := h.jobRepo.Get(ctx, jobID)
+	job, err := h.jobRepo.GetByID(ctx, jobID)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "job not found: %v", err)
 	}
@@ -98,8 +109,8 @@ func (h *DiagnosticsHandler) GetDiagnosticsResult(ctx context.Context, req *lumo
 	//     resp.Result = result
 	// }
 
-	if job.Error != "" {
-		resp.Error = job.Error
+	if job.Error != nil && *job.Error != "" {
+		resp.Error = *job.Error
 	}
 
 	return resp, nil
@@ -137,8 +148,24 @@ func (h *DiagnosticsHandler) ListDiagnostics(ctx context.Context, req *lumov1.Li
 	}
 	offset := int(req.Offset)
 
+	// Build list options
+	opts := repository.ListOptions{
+		Limit:  limit,
+		Offset: offset,
+	}
+
+	// Add optional filters
+	if req.Status != lumov1.JobStatus_JOB_STATUS_UNSPECIFIED {
+		jobStatus := toModelJobStatusFromProto(req.Status)
+		opts.Status = &jobStatus
+	}
+
+	if req.Target != "" {
+		opts.Target = req.Target
+	}
+
 	// List jobs from database
-	jobs, err := h.jobRepo.List(ctx, limit, offset)
+	jobs, totalCount, err := h.jobRepo.List(ctx, opts)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list jobs: %v", err)
 	}
@@ -147,21 +174,15 @@ func (h *DiagnosticsHandler) ListDiagnostics(ctx context.Context, req *lumov1.Li
 	protoJobs := make([]*lumov1.JobSummary, len(jobs))
 	for i, job := range jobs {
 		protoJobs[i] = &lumov1.JobSummary{
-			JobId:    job.ID.String(),
-			Type:     toProtoJobType(job.Type),
-			Status:   toProtoJobStatus(job.Status),
-			Target:   job.Target,
+			JobId:     job.ID.String(),
+			Type:      toProtoJobType(job.Type),
+			Status:    toProtoJobStatus(job.Status),
+			Target:    job.Target,
 			CreatedAt: timestamppb.New(job.CreatedAt),
 		}
 		if job.CompletedAt != nil {
 			protoJobs[i].CompletedAt = timestamppb.New(*job.CompletedAt)
 		}
-	}
-
-	// Get total count
-	totalCount, err := h.jobRepo.Count(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to count jobs: %v", err)
 	}
 
 	return &lumov1.ListDiagnosticsResponse{
@@ -197,5 +218,22 @@ func toProtoJobType(jobType models.JobType) lumov1.JobType {
 		return lumov1.JobType_JOB_TYPE_REMEDIATION
 	default:
 		return lumov1.JobType_JOB_TYPE_UNSPECIFIED
+	}
+}
+
+func toModelJobStatusFromProto(status lumov1.JobStatus) models.JobStatus {
+	switch status {
+	case lumov1.JobStatus_JOB_STATUS_PENDING:
+		return models.JobStatusPending
+	case lumov1.JobStatus_JOB_STATUS_RUNNING:
+		return models.JobStatusRunning
+	case lumov1.JobStatus_JOB_STATUS_COMPLETED:
+		return models.JobStatusCompleted
+	case lumov1.JobStatus_JOB_STATUS_FAILED:
+		return models.JobStatusFailed
+	case lumov1.JobStatus_JOB_STATUS_CANCELLED:
+		return models.JobStatusCancelled
+	default:
+		return models.JobStatusPending
 	}
 }

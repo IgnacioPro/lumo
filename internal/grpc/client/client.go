@@ -113,6 +113,7 @@ func NewClient(opts ClientOptions) (*Client, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), opts.Timeout)
 	defer cancel()
 
+	//nolint:staticcheck // SA1019: grpc.DialContext is deprecated but supported throughout 1.x
 	conn, err := grpc.DialContext(ctx, opts.Address, dialOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to %s: %w", opts.Address, err)
@@ -280,5 +281,13 @@ func (c *Client) WaitForReady(ctx context.Context) error {
 	if c.conn == nil {
 		return fmt.Errorf("connection is closed")
 	}
-	return c.conn.WaitForStateChange(ctx, c.conn.GetState())
+
+	// Wait for state change from current state
+	currentState := c.conn.GetState()
+	if !c.conn.WaitForStateChange(ctx, currentState) {
+		// Context was cancelled or deadline exceeded
+		return ctx.Err()
+	}
+
+	return nil
 }
