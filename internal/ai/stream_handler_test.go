@@ -213,7 +213,8 @@ func TestSSEStreamParser_ExtractContent_Anthropic(t *testing.T) {
 		ExtractContent: func(data map[string]interface{}) (string, bool, error) {
 			// Check for content_block_delta
 			if eventType, ok := data["type"].(string); ok {
-				if eventType == "content_block_delta" {
+				switch eventType {
+				case "content_block_delta":
 					if delta, ok := data["delta"].(map[string]interface{}); ok {
 						if deltaType, ok := delta["type"].(string); ok && deltaType == "text_delta" {
 							if text, ok := delta["text"].(string); ok {
@@ -221,7 +222,7 @@ func TestSSEStreamParser_ExtractContent_Anthropic(t *testing.T) {
 							}
 						}
 					}
-				} else if eventType == "message_stop" {
+				case "message_stop":
 					return "", true, nil
 				}
 			}

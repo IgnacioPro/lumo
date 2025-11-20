@@ -29,6 +29,11 @@ func NewHTTPClient(timeout time.Duration, log *logrus.Logger) *HTTPClient {
 	}
 }
 
+// SetClient sets a custom http.Client (primarily for testing).
+func (c *HTTPClient) SetClient(client *http.Client) {
+	c.client = client
+}
+
 // RequestOptions configures an HTTP request.
 type RequestOptions struct {
 	// Method is the HTTP method (GET, POST, etc.)
