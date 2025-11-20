@@ -1,0 +1,161 @@
+# golangci-lint configuration for Lumo
+# Compatible with golangci-lint v1.64.x
+# https://golangci-lint.run/usage/configuration/
+
+run:
+  # Timeout for analysis
+  timeout: 5m
+
+  # Go version to target
+  go: '1.25.4'
+
+  # Include test files
+  tests: true
+
+  # Which dirs to skip
+  skip-dirs:
+    - vendor
+    - deployments
+    - scripts
+    - examples
+
+  # Which files to skip
+  skip-files:
+    - ".*\\.pb\\.go$"
+    - ".*_mock\\.go$"
+
+# Linters configuration
+linters:
+  disable-all: false
+  enable:
+    # Enabled by default
+    - errcheck      # Check for unchecked errors
+    - gosimple      # Simplify code
+    - govet         # Reports suspicious constructs
+    - ineffassign   # Detect ineffectual assignments
+    - staticcheck   # Advanced Go linter
+    - unused        # Check for unused code
+
+    # Additional recommended linters
+    - gofmt         # Check code is formatted
+    - goimports     # Check imports are formatted
+    - misspell      # Fix common spelling mistakes
+    - revive        # Fast, configurable, extensible linter
+    - unconvert     # Remove unnecessary type conversions
+    - unparam       # Report unused function parameters
+    - gosec         # Security-focused linter
+    - bodyclose     # Check HTTP response bodies are closed
+    - noctx         # Detect http requests without context
+    - sqlclosecheck # Check sql.Rows/Stmt are closed
+    - rowserrcheck  # Check sql.Rows.Err is checked
+    - gocritic      # Comprehensive Go linter
+    - gocyclo       # Check function complexity
+    - dupl          # Check for duplicate code
+    - godot         # Check comments end with period
+    - whitespace    # Check for unnecessary whitespace
+
+linters-settings:
+  govet:
+    # Specify Go version for govet
+    go: '1.25.4'
+
+  errcheck:
+    # Report about not checking errors in type assertions
+    check-type-assertions: true
+    # Report about assignment of errors to blank identifier
+    check-blank: true
+
+  gocyclo:
+    # Minimal cyclomatic complexity to report
+    min-complexity: 15
+
+  dupl:
+    # Threshold for duplicate code detection
+    threshold: 100
+
+  gocritic:
+    # Enable multiple checks by tags
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+    disabled-checks:
+      - unnamedResult
+      - hugeParam
+
+  gosec:
+    # Exclude specific checks (G104 = unhandled errors, already covered by errcheck)
+    excludes:
+      - G104
+
+  misspell:
+    locale: US
+
+  revive:
+    # Minimal confidence to report issues
+    confidence: 0.8
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: exported
+      - name: if-return
+      - name: increment-decrement
+      - name: var-naming
+      - name: var-declaration
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: time-naming
+      - name: unexported-return
+      - name: indent-error-flow
+      - name: errorf
+      - name: empty-block
+      - name: superfluous-else
+      - name: unused-parameter
+      - name: unreachable-code
+      - name: redefines-builtin-id
+
+issues:
+  # Maximum issues count per linter
+  max-issues-per-linter: 0
+
+  # Maximum count of issues with the same text
+  max-same-issues: 0
+
+  # Exclude known issues
+  exclude-rules:
+    # Exclude some linters from running on tests files
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+        - gocritic
+
+    # Exclude command files from certain checks
+    - path: cmd/
+      linters:
+        - gocyclo
+
+    # Exclude specific text patterns
+    - text: "G104:"  # Duplicate of errcheck
+      linters:
+        - gosec
+
+    # Exclude deprecated warnings for third-party dependencies
+    - text: "SA1019:"
+      linters:
+        - staticcheck
+      path: vendor/
+
+  # Show only new issues
+  new: false
+
+  # Fix found issues (if possible)
+  fix: false
