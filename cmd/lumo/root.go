@@ -14,7 +14,7 @@ var (
 	verbose bool
 	dryRun  bool
 	log     = logrus.New()
-	version = "0.9.1"
+	version = "0.11.0" // Updated to reflect current state with RAG + gRPC foundation
 )
 
 var rootCmd = &cobra.Command{
