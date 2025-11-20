@@ -15,7 +15,7 @@ func NewAnthropicEmbedder() *AnthropicEmbedder {
 }
 
 func (e *AnthropicEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
-	return nil, fmt.Errorf("Anthropic embeddings not yet available, use Voyage AI or OpenAI")
+	return nil, fmt.Errorf("anthropic embeddings not yet available, use Voyage AI or OpenAI")
 }
 
 func (e *AnthropicEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
