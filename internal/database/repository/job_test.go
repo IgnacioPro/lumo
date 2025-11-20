@@ -18,7 +18,6 @@ func TestJobRepository_Create(t *testing.T) {
 	}
 	defer func() {
 		// Explicitly ignore error for sqlmock close
-		// Explicitly ignore error for sqlmock close
 		_ = db.Close()
 	}()
 
