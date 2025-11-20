@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,13 +21,12 @@ func (m *MockSecurityExecutor) ExecuteWithContext(ctx context.Context, command s
 	return "mocked output", "", 0, nil
 }
 
-func (m *MockSecurityExecutor) getLastCommand() string {
-	return m.lastCommand
+func (m *MockSecurityExecutor) Execute(command string, timeout time.Duration) (string, string, int, error) {
+	return m.ExecuteWithContext(context.Background(), command)
 }
 
-func (m *MockSecurityExecutor) reset() {
-	m.lastCommand = ""
-	m.commands = []string{}
+func (m *MockSecurityExecutor) getLastCommand() string {
+	return m.lastCommand
 }
 
 // TestServiceActionCommandInjection tests that service names are properly validated and quoted
@@ -36,64 +36,64 @@ func TestServiceActionCommandInjection(t *testing.T) {
 	ctx := context.Background()
 
 	injectionAttempts := []struct {
-		name          string
-		serviceName   string
-		expectError   bool
-		desc          string
+		name        string
+		serviceName string
+		expectError bool
+		desc        string
 	}{
 		{
-			name:          "normal service name",
-			serviceName:   "nginx",
-			expectError:   false,
-			desc:          "valid service name should work",
+			name:        "normal service name",
+			serviceName: "nginx",
+			expectError: false,
+			desc:        "valid service name should work",
 		},
 		{
-			name:          "service with extension",
-			serviceName:   "nginx.service",
-			expectError:   false,
-			desc:          "service name with .service extension should work",
+			name:        "service with extension",
+			serviceName: "nginx.service",
+			expectError: false,
+			desc:        "service name with .service extension should work",
 		},
 		{
-			name:          "command injection - semicolon",
-			serviceName:   "nginx; rm -rf /",
-			expectError:   true,
-			desc:          "semicolon command injection should be blocked",
+			name:        "command injection - semicolon",
+			serviceName: "nginx; rm -rf /",
+			expectError: true,
+			desc:        "semicolon command injection should be blocked",
 		},
 		{
-			name:          "command injection - pipe",
-			serviceName:   "nginx | cat /etc/passwd",
-			expectError:   true,
-			desc:          "pipe command injection should be blocked",
+			name:        "command injection - pipe",
+			serviceName: "nginx | cat /etc/passwd",
+			expectError: true,
+			desc:        "pipe command injection should be blocked",
 		},
 		{
-			name:          "command injection - ampersand",
-			serviceName:   "nginx && cat /etc/shadow",
-			expectError:   true,
-			desc:          "ampersand command injection should be blocked",
+			name:        "command injection - ampersand",
+			serviceName: "nginx && cat /etc/shadow",
+			expectError: true,
+			desc:        "ampersand command injection should be blocked",
 		},
 		{
-			name:          "command injection - backtick",
-			serviceName:   "nginx`whoami`",
-			expectError:   true,
-			desc:          "backtick command substitution should be blocked",
+			name:        "command injection - backtick",
+			serviceName: "nginx`whoami`",
+			expectError: true,
+			desc:        "backtick command substitution should be blocked",
 		},
 		{
-			name:          "command injection - dollar paren",
-			serviceName:   "nginx$(whoami)",
-			expectError:   true,
-			desc:          "dollar paren command substitution should be blocked",
+			name:        "command injection - dollar paren",
+			serviceName: "nginx$(whoami)",
+			expectError: true,
+			desc:        "dollar paren command substitution should be blocked",
 		},
 		{
-			name:          "command injection - newline",
-			serviceName:   "nginx\nrm -rf /",
-			expectError:   true,
-			desc:          "newline injection should be blocked",
+			name:        "command injection - newline",
+			serviceName: "nginx\nrm -rf /",
+			expectError: true,
+			desc:        "newline injection should be blocked",
 		},
 		{
-			name:          "command injection - redirect",
-			serviceName:   "nginx > /etc/passwd",
-			expectError:   true,
-			desc:          "output redirection should be blocked",
+			name:        "command injection - redirect",
+			serviceName: "nginx > /etc/passwd",
+			expectError: true,
+			desc:        "output redirection should be blocked",
 		},
 	}
 
@@ -120,8 +120,8 @@ func TestServiceActionCommandInjection(t *testing.T) {
 				lastCmd := executor.getLastCommand()
 				// Should not contain unquoted dangerous characters
 				if strings.Contains(tt.serviceName, ";") ||
-				   strings.Contains(tt.serviceName, "|") ||
-				   strings.Contains(tt.serviceName, "&") {
+					strings.Contains(tt.serviceName, "|") ||
+					strings.Contains(tt.serviceName, "&") {
 					// Command should have proper quoting
 					if !strings.Contains(lastCmd, "'") {
 						t.Errorf("Command not properly quoted: %s", lastCmd)
@@ -139,52 +139,52 @@ func TestProcessActionCommandInjection(t *testing.T) {
 	ctx := context.Background()
 
 	injectionAttempts := []struct {
-		name            string
-		processPattern  string
-		expectError     bool
-		desc            string
+		name           string
+		processPattern string
+		expectError    bool
+		desc           string
 	}{
 		{
-			name:            "normal process pattern",
-			processPattern:  "nginx",
-			expectError:     false,
-			desc:            "valid process pattern should work",
+			name:           "normal process pattern",
+			processPattern: "nginx",
+			expectError:    false,
+			desc:           "valid process pattern should work",
 		},
 		{
-			name:            "process with path",
-			processPattern:  "/usr/bin/nginx",
-			expectError:     false,
-			desc:            "process pattern with path should work",
+			name:           "process with path",
+			processPattern: "/usr/bin/nginx",
+			expectError:    false,
+			desc:           "process pattern with path should work",
 		},
 		{
-			name:            "command injection - quote escape",
-			processPattern:  "nginx' && cat /etc/shadow || pgrep -f '",
-			expectError:     true,
-			desc:            "quote escape injection should be blocked",
+			name:           "command injection - quote escape",
+			processPattern: "nginx' && cat /etc/shadow || pgrep -f '",
+			expectError:    true,
+			desc:           "quote escape injection should be blocked",
 		},
 		{
-			name:            "command injection - semicolon",
-			processPattern:  "nginx; rm -rf /",
-			expectError:     true,
-			desc:            "semicolon command injection should be blocked",
+			name:           "command injection - semicolon",
+			processPattern: "nginx; rm -rf /",
+			expectError:    true,
+			desc:           "semicolon command injection should be blocked",
 		},
 		{
-			name:            "command injection - pipe",
-			processPattern:  "nginx | cat /etc/passwd",
-			expectError:     true,
-			desc:            "pipe command injection should be blocked",
+			name:           "command injection - pipe",
+			processPattern: "nginx | cat /etc/passwd",
+			expectError:    true,
+			desc:           "pipe command injection should be blocked",
 		},
 		{
-			name:            "command injection - backtick",
-			processPattern:  "nginx`whoami`",
-			expectError:     true,
-			desc:            "backtick command substitution should be blocked",
+			name:           "command injection - backtick",
+			processPattern: "nginx`whoami`",
+			expectError:    true,
+			desc:           "backtick command substitution should be blocked",
 		},
 		{
-			name:            "command injection - dollar paren",
-			processPattern:  "nginx$(whoami)",
-			expectError:     true,
-			desc:            "dollar paren command substitution should be blocked",
+			name:           "command injection - dollar paren",
+			processPattern: "nginx$(whoami)",
+			expectError:    true,
+			desc:           "dollar paren command substitution should be blocked",
 		},
 	}
 
@@ -222,9 +222,9 @@ func TestProcessActionCommandInjection(t *testing.T) {
 // TestShellQuoteAgainstKnownAttacks tests shellQuote against known attack vectors
 func TestShellQuoteAgainstKnownAttacks(t *testing.T) {
 	attacks := []struct {
-		name     string
-		input    string
-		desc     string
+		name  string
+		input string
+		desc  string
 	}{
 		{
 			name:  "simple command injection",
@@ -301,7 +301,6 @@ func TestShellQuoteAgainstKnownAttacks(t *testing.T) {
 			// Verify that dangerous characters are inside the quotes (neutralized)
 			// The only exception is if there were single quotes in the input,
 			// which should be properly escaped
-			innerContent := quoted[1 : len(quoted)-1]
 			if strings.Contains(attack.input, "'") {
 				// Should contain '\'' escape sequences
 				if !strings.Contains(quoted, `'\''`) {
