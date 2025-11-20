@@ -180,7 +180,7 @@ func TestAnthropicProvider_Analyze(t *testing.T) {
 
 	// Override endpoint and client for testing
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	// Create analysis request
 	req := &AnalysisRequest{
@@ -284,7 +284,7 @@ func TestAnthropicProvider_Health(t *testing.T) {
 			}
 
 			provider.config.Endpoint = server.URL
-			provider.client = server.Client()
+			provider.httpClient.SetClient(server.Client())
 
 			ctx := context.Background()
 			err = provider.Health(ctx)
@@ -343,7 +343,7 @@ func TestAnthropicProvider_Analyze_ErrorHandling(t *testing.T) {
 			statusCode: http.StatusOK,
 			response:   "not valid json",
 			wantErr:    true,
-			errMsg:     "failed to decode",
+			errMsg:     "failed to unmarshal",
 		},
 	}
 
@@ -367,7 +367,7 @@ func TestAnthropicProvider_Analyze_ErrorHandling(t *testing.T) {
 			}
 
 			provider.config.Endpoint = server.URL
-			provider.client = server.Client()
+			provider.httpClient.SetClient(server.Client())
 
 			req := &AnalysisRequest{
 				Report: &diagnostics.Report{
@@ -419,7 +419,7 @@ func TestAnthropicProvider_Analyze_ContextCancellation(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -537,7 +537,7 @@ func TestAnthropicProvider_AnalyzeStream(t *testing.T) {
 			}
 
 			provider.config.Endpoint = server.URL
-			provider.client = server.Client()
+			provider.httpClient.SetClient(server.Client())
 
 			req := &AnalysisRequest{
 				Report: &diagnostics.Report{
@@ -624,7 +624,7 @@ func TestAnthropicProvider_AnalyzeStream_ContextCancellation(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -709,7 +709,7 @@ func TestAnthropicProvider_CustomHeaders(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -790,7 +790,7 @@ func TestAnthropicProvider_AnalyzeStream_Success(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -864,7 +864,7 @@ func TestAnthropicProvider_AnalyzeStream_ErrorResponse(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -917,7 +917,7 @@ func TestAnthropicProvider_AnalyzeStream_EmptyStream(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -979,7 +979,7 @@ func TestAnthropicProvider_AnalyzeStream_MalformedSSE(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{

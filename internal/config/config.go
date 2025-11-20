@@ -155,6 +155,9 @@ type AgentConfig struct {
 	Token            string        `mapstructure:"token"`              // JWT authentication token (prefer env var)
 	TLSEnabled       bool          `mapstructure:"tls_enabled"`        // Enable TLS for API communication
 	TLSInsecure      bool          `mapstructure:"tls_insecure"`       // Skip TLS verification (dev only)
+	TLSCertFile      string        `mapstructure:"tls_cert_file"`      // Client certificate for mTLS
+	TLSKeyFile       string        `mapstructure:"tls_key_file"`       // Client private key for mTLS
+	TLSCAFile        string        `mapstructure:"tls_ca_file"`        // CA certificate for server verification
 	EnabledChecks    []string      `mapstructure:"enabled_checks"`     // List of enabled diagnostic checks
 	ReportFormat     string        `mapstructure:"report_format"`      // Report format (text|json|toon)
 	OfflineMode      bool          `mapstructure:"offline_mode"`       // Continue without API availability

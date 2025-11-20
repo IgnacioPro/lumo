@@ -1,0 +1,138 @@
+syntax = "proto3";
+
+package lumo.v1;
+
+option go_package = "github.com/ignacio/lumo/api/proto/v1;lumov1";
+
+import "api/proto/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+service DiagnosticsService {
+  // Run diagnostics asynchronously, returns job ID
+  rpc RunDiagnostics(RunDiagnosticsRequest) returns (RunDiagnosticsResponse);
+
+  // Get diagnostic result by job ID
+  rpc GetDiagnosticsResult(GetDiagnosticsResultRequest) returns (GetDiagnosticsResultResponse);
+
+  // Stream diagnostic progress (real-time updates)
+  rpc StreamDiagnostics(StreamDiagnosticsRequest) returns (stream DiagnosticsEvent);
+
+  // List recent diagnostics
+  rpc ListDiagnostics(ListDiagnosticsRequest) returns (ListDiagnosticsResponse);
+}
+
+message RunDiagnosticsRequest {
+  string target = 1;                    // Hostname or IP
+  repeated string checks = 2;           // Empty = all checks
+  bool analyze = 3;                     // Run AI analysis
+  OutputFormat format = 4;              // Output format
+  map<string, string> metadata = 5;     // Additional context
+  repeated string focus_areas = 6;      // AI focus areas
+}
+
+message RunDiagnosticsResponse {
+  string job_id = 1;                    // UUID
+  JobStatus status = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+message GetDiagnosticsResultRequest {
+  string job_id = 1;
+}
+
+message GetDiagnosticsResultResponse {
+  string job_id = 1;
+  JobStatus status = 2;
+  JobType type = 3;
+  string target = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp started_at = 6;
+  google.protobuf.Timestamp completed_at = 7;
+  DiagnosticsResult result = 8;         // Only present if completed
+  string error = 9;                     // Only present if failed
+  map<string, string> metadata = 10;
+}
+
+message DiagnosticsResult {
+  repeated CheckResult results = 1;
+  ReportSummary summary = 2;
+  string analysis = 3;                  // AI analysis (if requested)
+  google.protobuf.Timestamp timestamp = 4;
+  int64 duration_ms = 5;
+}
+
+message CheckResult {
+  string name = 1;
+  string category = 2;
+  CheckStatus status = 3;
+  Severity severity = 4;
+  string message = 5;
+  google.protobuf.Struct data = 6;      // Flexible data (like current map[string]interface{})
+  repeated Metric metrics = 7;
+  google.protobuf.Timestamp timestamp = 8;
+  int64 duration_ms = 9;
+  string error = 10;
+}
+
+message Metric {
+  string name = 1;
+  double value = 2;                     // Numeric metrics
+  string unit = 3;                      // %, MB, count, etc.
+  google.protobuf.Timestamp timestamp = 4;
+  map<string, string> labels = 5;
+}
+
+message ReportSummary {
+  int32 total_checks = 1;
+  int32 passed = 2;
+  int32 failed = 3;
+  int32 warnings = 4;
+  int32 skipped = 5;
+  Severity overall_severity = 6;
+}
+
+message StreamDiagnosticsRequest {
+  string target = 1;
+  repeated string checks = 2;
+  bool analyze = 3;
+}
+
+message DiagnosticsEvent {
+  enum EventType {
+    EVENT_TYPE_UNSPECIFIED = 0;
+    EVENT_TYPE_STARTED = 1;
+    EVENT_TYPE_CHECK_STARTED = 2;
+    EVENT_TYPE_CHECK_COMPLETED = 3;
+    EVENT_TYPE_COMPLETED = 4;
+    EVENT_TYPE_FAILED = 5;
+  }
+
+  EventType type = 1;
+  string job_id = 2;
+  CheckResult check_result = 3;         // For CHECK_COMPLETED events
+  DiagnosticsResult final_result = 4;   // For COMPLETED events
+  string error = 5;                     // For FAILED events
+  int32 progress = 6;                   // 0-100 percentage
+}
+
+message ListDiagnosticsRequest {
+  JobStatus status = 1;                 // Filter by status
+  int32 limit = 2;                      // Max results (default 50)
+  int32 offset = 3;                     // Pagination offset
+  string target = 4;                    // Filter by target
+}
+
+message ListDiagnosticsResponse {
+  repeated JobSummary jobs = 1;
+  int32 total_count = 2;
+}
+
+message JobSummary {
+  string job_id = 1;
+  JobType type = 2;
+  JobStatus status = 3;
+  string target = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp completed_at = 6;
+}

@@ -193,7 +193,7 @@ func TestOpenRouterProvider_Analyze(t *testing.T) {
 
 	// Override for testing
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -295,7 +295,7 @@ func TestOpenRouterProvider_Analyze_EmptyContent(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -378,7 +378,7 @@ func TestOpenRouterProvider_Analyze_Refusal(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -482,7 +482,7 @@ func TestOpenRouterProvider_Health(t *testing.T) {
 			}
 
 			provider.config.Endpoint = server.URL
-			provider.client = server.Client()
+			provider.httpClient.SetClient(server.Client())
 
 			ctx := context.Background()
 			err = provider.Health(ctx)
@@ -535,7 +535,7 @@ func TestOpenRouterProvider_Analyze_ErrorHandling(t *testing.T) {
 			statusCode: http.StatusOK,
 			response:   "not valid json",
 			wantErr:    true,
-			errMsg:     "failed to decode",
+			errMsg:     "failed to unmarshal",
 		},
 	}
 
@@ -559,7 +559,7 @@ func TestOpenRouterProvider_Analyze_ErrorHandling(t *testing.T) {
 			}
 
 			provider.config.Endpoint = server.URL
-			provider.client = server.Client()
+			provider.httpClient.SetClient(server.Client())
 
 			req := &AnalysisRequest{
 				Report: &diagnostics.Report{
@@ -610,7 +610,7 @@ func TestOpenRouterProvider_Analyze_ContextCancellation(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -720,7 +720,7 @@ func TestOpenRouterProvider_AnalyzeStream(t *testing.T) {
 			}
 
 			provider.config.Endpoint = server.URL
-			provider.client = server.Client()
+			provider.httpClient.SetClient(server.Client())
 
 			req := &AnalysisRequest{
 				Report: &diagnostics.Report{
@@ -849,7 +849,7 @@ func TestOpenRouterProvider_CustomHeaders(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -909,7 +909,7 @@ func TestOpenRouterProvider_AnalyzeStream_Success(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -972,7 +972,7 @@ func TestOpenRouterProvider_AnalyzeStream_ErrorResponse(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{

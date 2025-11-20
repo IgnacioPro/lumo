@@ -303,6 +303,227 @@ runner.RegisterCheckers(
 
 ---
 
+### Adding a New AI Provider
+
+**Example: Adding Cohere AI provider using the adapter pattern (v0.11.0+)**
+
+Since v0.11.0, all AI providers use the adapter pattern, making it trivial to add new providers. You only need ~50 LOC instead of ~500 LOC.
+
+**1. Create provider file:** `internal/ai/cohere.go`
+
+```go
+package ai
+
+import (
+    "context"
+    "encoding/json"
+    "fmt"
+    "time"
+)
+
+// CohereProvider implements the Provider interface using BaseProvider
+type CohereProvider struct {
+    *BaseProvider
+}
+
+// NewCohereProvider creates a new Cohere AI provider
+func NewCohereProvider(apiKey, model string) (*CohereProvider, error) {
+    adapter := &cohereAdapter{
+        apiKey: apiKey,
+        model:  model,
+        config: &ProviderConfig{
+            Name:     "cohere",
+            Endpoint: "https://api.cohere.ai/v1/chat",
+            Timeout:  120 * time.Second,
+        },
+    }
+
+    base := NewBaseProvider(adapter)
+    return &CohereProvider{BaseProvider: base}, nil
+}
+
+// cohereAdapter implements ProviderAdapter interface
+type cohereAdapter struct {
+    apiKey string
+    model  string
+    config *ProviderConfig
+}
+
+func (a *cohereAdapter) Name() string {
+    return a.config.Name
+}
+
+func (a *cohereAdapter) GetEndpoint() string {
+    return a.config.Endpoint
+}
+
+func (a *cohereAdapter) GetConfig() *ProviderConfig {
+    return a.config
+}
+
+func (a *cohereAdapter) BuildHeaders() map[string]string {
+    return map[string]string{
+        "Authorization": fmt.Sprintf("Bearer %s", a.apiKey),
+        "Content-Type":  "application/json",
+    }
+}
+
+func (a *cohereAdapter) BuildRequest(systemPrompt, userPrompt string, stream bool) (interface{}, error) {
+    // Combine system and user prompts (Cohere-specific)
+    combinedPrompt := systemPrompt + "\n\n" + userPrompt
+
+    req := map[string]interface{}{
+        "model":   a.model,
+        "message": combinedPrompt,
+        "stream":  stream,
+    }
+
+    return req, nil
+}
+
+func (a *cohereAdapter) ParseResponse(body []byte) (string, *TokenUsage, error) {
+    var resp struct {
+        Text        string `json:"text"`
+        Meta        struct {
+            Tokens struct {
+                InputTokens  int `json:"input_tokens"`
+                OutputTokens int `json:"output_tokens"`
+            } `json:"tokens"`
+        } `json:"meta"`
+    }
+
+    if err := json.Unmarshal(body, &resp); err != nil {
+        return "", nil, fmt.Errorf("failed to parse response: %w", err)
+    }
+
+    tokens := &TokenUsage{
+        PromptTokens:     resp.Meta.Tokens.InputTokens,
+        CompletionTokens: resp.Meta.Tokens.OutputTokens,
+        TotalTokens:      resp.Meta.Tokens.InputTokens + resp.Meta.Tokens.OutputTokens,
+    }
+
+    return resp.Text, tokens, nil
+}
+
+// cohereStreamParser implements StreamParser for Cohere's SSE format
+type cohereStreamParser struct{}
+
+func (p *cohereStreamParser) ParseChunk(data string) (string, bool, error) {
+    var chunk struct {
+        EventType string `json:"event_type"`
+        Text      string `json:"text"`
+    }
+
+    if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+        return "", false, err
+    }
+
+    if chunk.EventType == "stream-end" {
+        return "", true, nil
+    }
+
+    if chunk.EventType == "text-generation" {
+        return chunk.Text, false, nil
+    }
+
+    return "", false, nil
+}
+```
+
+**2. Register in provider factory:** `internal/ai/providers.go`
+
+```go
+func NewProvider(cfg *config.Config) (Provider, error) {
+    switch cfg.AI.Provider {
+    case "anthropic":
+        return NewAnthropicProvider(cfg.AI.Anthropic.APIKey, cfg.AI.Anthropic.Model)
+    case "openai":
+        return NewOpenAIProvider(cfg.AI.OpenAI.APIKey, cfg.AI.OpenAI.Model, cfg.AI.OpenAI.ReasoningEffort)
+    case "gemini":
+        return NewGeminiProvider(cfg.AI.Gemini.APIKey, cfg.AI.Gemini.Model)
+    case "ollama":
+        return NewOllamaProvider(cfg.AI.Ollama.BaseURL, cfg.AI.Ollama.Model)
+    case "openrouter":
+        return NewOpenRouterProvider(cfg.AI.OpenRouter.APIKey, cfg.AI.OpenRouter.Model)
+    case "cohere":  // New!
+        return NewCohereProvider(cfg.AI.Cohere.APIKey, cfg.AI.Cohere.Model)
+    default:
+        return nil, fmt.Errorf("unsupported AI provider: %s", cfg.AI.Provider)
+    }
+}
+```
+
+**3. Add configuration:** `internal/config/config.go`
+
+```go
+type AIConfig struct {
+    Provider    string           `mapstructure:"provider"`
+    Anthropic   AnthropicConfig  `mapstructure:"anthropic"`
+    OpenAI      OpenAIConfig     `mapstructure:"openai"`
+    Gemini      GeminiConfig     `mapstructure:"gemini"`
+    Ollama      OllamaConfig     `mapstructure:"ollama"`
+    OpenRouter  OpenRouterConfig `mapstructure:"openrouter"`
+    Cohere      CohereConfig     `mapstructure:"cohere"`  // New!
+}
+
+type CohereConfig struct {
+    APIKey string `mapstructure:"api_key"`
+    Model  string `mapstructure:"model"`
+}
+```
+
+**4. Write tests:** `internal/ai/cohere_test.go`
+
+```go
+package ai
+
+import (
+    "context"
+    "testing"
+)
+
+func TestCohereProvider_Analyze(t *testing.T) {
+    // Mock HTTP client
+    mockClient := &mockHTTPClient{
+        response: []byte(`{"text": "Analysis result", "meta": {"tokens": {"input_tokens": 100, "output_tokens": 50}}}`),
+    }
+
+    provider, err := NewCohereProvider("test-key", "command")
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    provider.BaseProvider.SetHTTPClient(mockClient)
+
+    req := &AnalysisRequest{
+        SystemPrompt: "Analyze this",
+        UserPrompt:   "Test prompt",
+    }
+
+    resp, err := provider.Analyze(context.Background(), req)
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    if resp.Content != "Analysis result" {
+        t.Errorf("expected 'Analysis result', got '%s'", resp.Content)
+    }
+}
+```
+
+**Benefits of Adapter Pattern:**
+- ✅ Only implement 4 methods: `BuildRequest`, `ParseResponse`, `BuildHeaders`, `GetEndpoint`
+- ✅ HTTP handling, retries, logging automatic via `BaseProvider`
+- ✅ Streaming support via `StreamParser` interface
+- ✅ ~50 LOC vs ~500 LOC (10x reduction)
+- ✅ Easy to test with mock adapters
+
+**See Also:**
+- Existing providers: `internal/ai/{anthropic,openai,gemini,ollama,openrouter}.go`
+- Architecture docs: `REPORTS/ai-provider-refactoring-complete.md`
+
+---
+
 ## Common Tasks & Examples
 
 ### Task 1: Adding a New Flag to Existing Command
