@@ -88,7 +88,15 @@ func (p *GeminiProvider) Health(ctx context.Context) error {
 
 	// Accept both 200 (model info) and 404 (expected for GET on generateContent endpoint)
 	if err == nil {
-		return nil
+		if len(resp.Body) > 0 {
+			return nil
+		}
+		return &Error{
+			Op:        "health_check",
+			Provider:  p.Name(),
+			Err:       fmt.Errorf("unexpected empty response"),
+			Retryable: true,
+		}
 	}
 
 	// Check if it's just a 404 (which is OK for Gemini)
@@ -100,17 +108,6 @@ func (p *GeminiProvider) Health(ctx context.Context) error {
 		Op:        "health_check",
 		Provider:  p.Name(),
 		Err:       err,
-		Retryable: true,
-	}
-
-	if len(resp.Body) > 0 {
-		return nil
-	}
-
-	return &Error{
-		Op:        "health_check",
-		Provider:  p.Name(),
-		Err:       fmt.Errorf("unexpected response"),
 		Retryable: true,
 	}
 }
