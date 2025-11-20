@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package lumo.v1;
+
+option go_package = "github.com/ignacio/lumo/api/proto/v1;lumov1";
+
+import "google/protobuf/timestamp.proto";
+
+service HealthService {
+  // General health check
+  rpc Check(HealthCheckRequest) returns (HealthCheckResponse);
+
+  // Kubernetes readiness probe
+  rpc Ready(ReadyRequest) returns (ReadyResponse);
+
+  // Kubernetes liveness probe
+  rpc Live(LiveRequest) returns (LiveResponse);
+}
+
+message HealthCheckRequest {
+  string service = 1;  // Optional: check specific service
+}
+
+message HealthCheckResponse {
+  enum ServingStatus {
+    SERVING_STATUS_UNSPECIFIED = 0;
+    SERVING_STATUS_SERVING = 1;
+    SERVING_STATUS_NOT_SERVING = 2;
+    SERVING_STATUS_UNKNOWN = 3;
+  }
+
+  ServingStatus status = 1;
+  string version = 2;
+  google.protobuf.Timestamp uptime = 3;
+  map<string, ComponentHealth> components = 4;
+}
+
+message ComponentHealth {
+  bool healthy = 1;
+  string message = 2;
+}
+
+message ReadyRequest {}
+
+message ReadyResponse {
+  bool ready = 1;
+  string message = 2;
+}
+
+message LiveRequest {}
+
+message LiveResponse {
+  bool alive = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}

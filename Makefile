@@ -19,7 +19,7 @@ COLOR_GREEN=\033[32m
 COLOR_YELLOW=\033[33m
 COLOR_BLUE=\033[34m
 
-.PHONY: help build run clean test test-verbose test-ci test-ssh fmt fmt-check vet lint install coverage coverage-report coverage-html deps check ci ci-lint ci-test ci-build all diagnose-local diagnose-local-json version
+.PHONY: help build run clean test test-verbose test-ci test-ssh fmt fmt-check vet lint install coverage coverage-report coverage-html deps check ci ci-lint ci-test ci-build all diagnose-local diagnose-local-json version proto proto-gen proto-clean proto-fmt proto-lint
 
 # Default target
 .DEFAULT_GOAL := help
@@ -188,3 +188,43 @@ diagnose-local-json: build
 version:
 	@echo "Version: $(VERSION)"
 	@echo "Build Time: $(BUILD_TIME)"
+
+# Protocol Buffer generation targets
+
+## proto: Generate protobuf code (clean, generate, format)
+proto: proto-clean proto-gen proto-fmt
+	@echo "$(COLOR_GREEN)✓ Protobuf generation complete$(COLOR_RESET)"
+
+## proto-gen: Generate Go code from .proto files
+proto-gen:
+	@echo "$(COLOR_BLUE)Generating protobuf code...$(COLOR_RESET)"
+	@export PATH=$$PATH:/root/go/bin && protoc \
+		--go_out=. \
+		--go_opt=paths=source_relative \
+		--go-grpc_out=. \
+		--go-grpc_opt=paths=source_relative \
+		api/proto/v1/*.proto
+	@echo "$(COLOR_GREEN)✓ Protobuf code generated$(COLOR_RESET)"
+
+## proto-clean: Remove generated protobuf files
+proto-clean:
+	@echo "$(COLOR_YELLOW)Cleaning generated protobuf files...$(COLOR_RESET)"
+	@find api/proto -name "*.pb.go" -delete
+	@echo "$(COLOR_GREEN)✓ Cleaned$(COLOR_RESET)"
+
+## proto-fmt: Format proto files
+proto-fmt:
+	@echo "$(COLOR_BLUE)Formatting proto files...$(COLOR_RESET)"
+	@find api/proto -name "*.proto" -exec clang-format -i {} \; 2>/dev/null || true
+	@echo "$(COLOR_GREEN)✓ Formatted (or clang-format not installed)$(COLOR_RESET)"
+
+## proto-lint: Lint proto files (requires buf)
+proto-lint:
+	@echo "$(COLOR_BLUE)Linting proto files...$(COLOR_RESET)"
+	@if command -v buf >/dev/null 2>&1; then \
+		buf lint api/proto; \
+		echo "$(COLOR_GREEN)✓ Proto lint complete$(COLOR_RESET)"; \
+	else \
+		echo "$(COLOR_YELLOW)⚠ buf not installed. Skipping proto lint...$(COLOR_RESET)"; \
+		echo "Install with: brew install buf or go install github.com/bufbuild/buf/cmd/buf@latest"; \
+	fi
