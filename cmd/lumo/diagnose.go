@@ -71,9 +71,19 @@ func init() {
 	// AI analysis flags
 	diagnoseCmd.Flags().BoolP("analyze", "A", false, "Enable AI-powered analysis (requires AI provider configuration)")
 	diagnoseCmd.Flags().StringSlice("focus", []string{}, "Focus AI analysis on specific areas (cpu, memory, disk, etc.)")
+
+	// List checks flag
+	diagnoseCmd.Flags().BoolP("list-checks", "l", false, "List all available diagnostic checks and exit")
 }
 
 func runDiagnostics(cmd *cobra.Command, args []string) error {
+	// Check if user wants to list available checks
+	listChecks, _ := cmd.Flags().GetBool("list-checks")
+	if listChecks {
+		displayAvailableChecks()
+		return nil
+	}
+
 	// Default to localhost if no host argument provided
 	hostArg := "localhost"
 	if len(args) > 0 {
@@ -207,6 +217,9 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 	}
 
 	runner.RegisterCheckers(checkersToRegister...)
+
+	// Display pre-execution summary
+	displayDiagnosticsSummary(runner, checksFilter, format, enableAI, hostname)
 
 	// Run diagnostics
 	log.Info("Running diagnostic checks...")
@@ -519,4 +532,154 @@ func isLocalhost(hostname string) bool {
 	}
 
 	return false
+}
+
+// CheckInfo holds metadata about a diagnostic check
+type CheckInfo struct {
+	Name           string
+	Category       diagnostics.CheckCategory
+	Description    string
+	DefaultEnabled bool
+	AutoDetected   bool
+}
+
+// displayDiagnosticsSummary shows a summary of what checks will be run before execution
+func displayDiagnosticsSummary(runner *diagnostics.Runner, checksFilter []string, format string, enableAI bool, hostname string) {
+	// Get the list of checks that will actually run
+	registeredChecks := runner.GetRegisteredChecks()
+
+	// Group checks by category
+	categoryCounts := make(map[diagnostics.CheckCategory]int)
+	checkNames := []string{}
+
+	for _, checker := range registeredChecks {
+		categoryCounts[checker.Category()]++
+		checkNames = append(checkNames, checker.Name())
+	}
+
+	// Display summary
+	fmt.Println()
+	fmt.Println("╔═══════════════════════════════════════════════════════════════╗")
+	fmt.Printf("║  Running diagnostics on: %-33s║\n", hostname)
+	fmt.Println("╚═══════════════════════════════════════════════════════════════╝")
+	fmt.Println()
+
+	// Show filter info if specific checks were selected
+	if len(checksFilter) > 0 {
+		fmt.Printf("Checks Filter: %s\n", strings.Join(checksFilter, ", "))
+	} else {
+		fmt.Println("Checks: All available checks")
+	}
+
+	// Show category breakdown
+	fmt.Printf("Total Checks: %d\n", len(registeredChecks))
+
+	// Display categories with counts
+	if categoryCounts[diagnostics.CategoryCPU] > 0 ||
+		categoryCounts[diagnostics.CategoryMemory] > 0 ||
+		categoryCounts[diagnostics.CategoryDisk] > 0 ||
+		categoryCounts[diagnostics.CategoryProcess] > 0 ||
+		categoryCounts[diagnostics.CategoryService] > 0 ||
+		categoryCounts[diagnostics.CategoryNetwork] > 0 {
+		coreCount := categoryCounts[diagnostics.CategoryCPU] +
+			categoryCounts[diagnostics.CategoryMemory] +
+			categoryCounts[diagnostics.CategoryDisk] +
+			categoryCounts[diagnostics.CategoryProcess] +
+			categoryCounts[diagnostics.CategoryService] +
+			categoryCounts[diagnostics.CategoryNetwork]
+		if coreCount > 0 {
+			fmt.Printf("  • Core: %d\n", coreCount)
+		}
+	}
+
+	if categoryCounts[diagnostics.CategorySecurity] > 0 {
+		fmt.Printf("  • Security: %d\n", categoryCounts[diagnostics.CategorySecurity])
+	}
+
+	if categoryCounts[diagnostics.CategoryKubernetes] > 0 {
+		fmt.Printf("  • Kubernetes: %d\n", categoryCounts[diagnostics.CategoryKubernetes])
+	}
+
+	if categoryCounts[diagnostics.CategoryVirtualization] > 0 {
+		fmt.Printf("  • Virtualization: %d\n", categoryCounts[diagnostics.CategoryVirtualization])
+	}
+
+	// Show output format
+	fmt.Printf("Output Format: %s\n", format)
+
+	// Show AI analysis status
+	if enableAI {
+		fmt.Println("AI Analysis: enabled")
+	} else {
+		fmt.Println("AI Analysis: disabled")
+	}
+
+	fmt.Println()
+	fmt.Println("───────────────────────────────────────────────────────────────")
+	fmt.Println()
+}
+
+// displayAvailableChecks prints a formatted list of all available diagnostic checks
+func displayAvailableChecks() {
+	fmt.Println("Available Diagnostic Checks:")
+	fmt.Println()
+
+	// Define all available checks with their metadata
+	coreChecks := []CheckInfo{
+		{Name: "cpu", Category: diagnostics.CategoryCPU, Description: "CPU usage, load averages, and core utilization", DefaultEnabled: true},
+		{Name: "memory", Category: diagnostics.CategoryMemory, Description: "Memory usage, available, swap, and top consumers", DefaultEnabled: true},
+		{Name: "disk", Category: diagnostics.CategoryDisk, Description: "Disk usage, I/O stats, and mount points", DefaultEnabled: true},
+		{Name: "process", Category: diagnostics.CategoryProcess, Description: "Running processes and resource consumption", DefaultEnabled: true},
+		{Name: "service", Category: diagnostics.CategoryService, Description: "System service status (systemd/init)", DefaultEnabled: true},
+		{Name: "network", Category: diagnostics.CategoryNetwork, Description: "Network interfaces, connectivity, and traffic", DefaultEnabled: true},
+	}
+
+	securityChecks := []CheckInfo{
+		{Name: "patch", Category: diagnostics.CategorySecurity, Description: "System patch status and pending updates", DefaultEnabled: true},
+		{Name: "ports", Category: diagnostics.CategorySecurity, Description: "Open ports and listening services", DefaultEnabled: true},
+		{Name: "ssh", Category: diagnostics.CategorySecurity, Description: "SSH configuration and security settings", DefaultEnabled: true},
+		{Name: "authfail", Category: diagnostics.CategorySecurity, Description: "Failed authentication attempts", DefaultEnabled: true},
+	}
+
+	specializedChecks := []CheckInfo{
+		{Name: "kubernetes", Category: diagnostics.CategoryKubernetes, Description: "K8s cluster health (pods, nodes, services)", DefaultEnabled: false, AutoDetected: true},
+		{Name: "proxmox", Category: diagnostics.CategoryVirtualization, Description: "Proxmox VE cluster status (VMs, storage, HA)", DefaultEnabled: false, AutoDetected: true},
+	}
+
+	// Display core checks
+	fmt.Println("CORE CHECKS (6):")
+	for _, check := range coreChecks {
+		status := "✓"
+		fmt.Printf("  %s %-12s - %s\n", status, check.Name, check.Description)
+	}
+	fmt.Println()
+
+	// Display security checks
+	fmt.Println("SECURITY CHECKS (4):")
+	for _, check := range securityChecks {
+		status := "✓"
+		fmt.Printf("  %s %-12s - %s\n", status, check.Name, check.Description)
+	}
+	fmt.Println()
+
+	// Display specialized checks
+	fmt.Println("SPECIALIZED CHECKS (2):")
+	for _, check := range specializedChecks {
+		status := "○"
+		fmt.Printf("  %s %-12s - %s\n", status, check.Name, check.Description)
+	}
+	fmt.Println()
+
+	// Legend
+	fmt.Println("Legend:")
+	fmt.Println("  ✓ Enabled by default")
+	fmt.Println("  ○ Auto-detected when available (requires config or platform detection)")
+	fmt.Println()
+
+	// Usage examples
+	fmt.Println("Usage Examples:")
+	fmt.Println("  lumo diagnose                              # Run all default checks")
+	fmt.Println("  lumo diagnose --checks cpu,memory          # Run specific checks only")
+	fmt.Println("  lumo diagnose --checks kubernetes          # Run Kubernetes diagnostics only")
+	fmt.Println("  lumo diagnose --analyze                    # Run with AI analysis")
 }
