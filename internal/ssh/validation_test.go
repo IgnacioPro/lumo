@@ -8,11 +8,11 @@ import (
 
 func TestValidateSSHTarget(t *testing.T) {
 	tests := []struct {
-		name        string
-		target      string
-		expectError bool
+		name          string
+		target        string
+		expectError   bool
 		errorContains string
-		desc        string
+		desc          string
 	}{
 		{
 			name:        "valid public IP",
@@ -158,15 +158,15 @@ func TestValidateSSHTargetWithAllowlist(t *testing.T) {
 	}{
 		{
 			name:        "target in allowlist",
-			target:      "allowed-host.example.com",
-			allowlist:   []string{"allowed-host.example.com", "another-host.example.com"},
+			target:      "8.8.8.8",
+			allowlist:   []string{"8.8.8.8", "1.1.1.1"},
 			expectError: false,
 			desc:        "target in allowlist should be allowed",
 		},
 		{
 			name:          "target not in allowlist",
-			target:        "forbidden-host.example.com",
-			allowlist:     []string{"allowed-host.example.com", "another-host.example.com"},
+			target:        "1.1.1.1",
+			allowlist:     []string{"8.8.8.8"},
 			expectError:   true,
 			errorContains: "not in allowlist",
 			desc:          "target not in allowlist should be rejected",
@@ -187,11 +187,11 @@ func TestValidateSSHTargetWithAllowlist(t *testing.T) {
 			desc:        "empty allowlist should allow any valid target",
 		},
 		{
-			name:          "CIDR in allowlist - match",
-			target:        "203.0.114.5",
-			allowlist:     []string{"203.0.114.0/24"},
-			expectError:   false,
-			desc:          "IP in allowed CIDR should be allowed",
+			name:        "CIDR in allowlist - match",
+			target:      "203.0.114.5",
+			allowlist:   []string{"203.0.114.0/24"},
+			expectError: false,
+			desc:        "IP in allowed CIDR should be allowed",
 		},
 		{
 			name:          "CIDR in allowlist - no match",

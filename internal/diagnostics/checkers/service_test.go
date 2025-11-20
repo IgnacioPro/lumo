@@ -221,15 +221,15 @@ func TestServiceChecker_GetSysvinitServices(t *testing.T) {
 					stdout:   "nginx\nmysql\nREADME\nskeleton\n.hidden\nnetworking",
 					exitCode: 0,
 				},
-				"service nginx status": {
+				"service 'nginx' status": {
 					stdout:   "nginx is running",
 					exitCode: 0,
 				},
-				"service mysql status": {
+				"service 'mysql' status": {
 					stdout:   "mysql is not running",
 					exitCode: 3,
 				},
-				"service networking status": {
+				"service 'networking' status": {
 					stdout:   "networking service is stopped",
 					exitCode: 1,
 				},
@@ -269,7 +269,7 @@ func TestServiceChecker_GetSysvinitServices(t *testing.T) {
 					stdout:   "apache2",
 					exitCode: 0,
 				},
-				"service apache2 status": {
+				"service 'apache2' status": {
 					stdout:   "Apache is currently running",
 					exitCode: 1, // Non-zero exit but stdout says running
 				},
@@ -299,7 +299,7 @@ func TestServiceChecker_GetSysvinitServices(t *testing.T) {
 					stdout:   "postfix",
 					exitCode: 0,
 				},
-				"service postfix status": {
+				"service 'postfix' status": {
 					stdout:   "postfix is stopped",
 					exitCode: 3,
 				},
@@ -370,7 +370,7 @@ func TestServiceChecker_GetSysvinitServices(t *testing.T) {
 					stdout:   "README\nskeleton\n.dotfile\n..parent\nnginx",
 					exitCode: 0,
 				},
-				"service nginx status": {
+				"service 'nginx' status": {
 					stdout:   "running",
 					exitCode: 0,
 				},
@@ -400,7 +400,7 @@ func TestServiceChecker_GetSysvinitServices(t *testing.T) {
 					stdout:   "nginx",
 					exitCode: 0,
 				},
-				"service nginx status": {
+				"service 'nginx' status": {
 					stdout:   "",
 					exitCode: 0,
 				},
