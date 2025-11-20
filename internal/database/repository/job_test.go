@@ -17,6 +17,8 @@ func TestJobRepository_Create(t *testing.T) {
 		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
 	}
 	defer func() {
+		// Explicitly ignore error for sqlmock close
+		// Explicitly ignore error for sqlmock close
 		_ = db.Close()
 	}()
 
