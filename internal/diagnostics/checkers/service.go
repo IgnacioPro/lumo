@@ -368,8 +368,8 @@ func isValidServiceName(name string) bool {
 	// Only allow alphanumeric, dots, dashes, underscores
 	// This matches standard systemd/sysvinit naming conventions
 	for _, ch := range name {
-		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-			(ch >= '0' && ch <= '9') || ch == '.' || ch == '-' || ch == '_') {
+		if (ch < 'a' || ch > 'z') && (ch < 'A' || ch > 'Z') &&
+			(ch < '0' || ch > '9') && ch != '.' && ch != '-' && ch != '_' {
 			return false
 		}
 	}
