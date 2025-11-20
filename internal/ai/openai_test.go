@@ -366,7 +366,7 @@ func TestOpenAIProvider_Analyze_ErrorHandling(t *testing.T) {
 			statusCode: http.StatusOK,
 			response:   "not valid json",
 			wantErr:    true,
-			errMsg:     "failed to decode",
+			errMsg:     "failed to unmarshal",
 		},
 	}
 

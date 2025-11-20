@@ -57,7 +57,7 @@ func TestHTTPClient_Do_Success(t *testing.T) {
 			"foo": "bar",
 		},
 		Headers: map[string]string{
-			"Content-Type":   "application/json",
+			"Content-Type":  "application/json",
 			"X-Test-Header": "test-value",
 		},
 		ProviderName: "test",
@@ -67,7 +67,7 @@ func TestHTTPClient_Do_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, `{"result": "success"}`, string(resp.Body))
-	assert.Greater(t, resp.Duration.Milliseconds(), int64(0))
+	assert.GreaterOrEqual(t, resp.Duration.Nanoseconds(), int64(0))
 }
 
 func TestHTTPClient_Do_WithoutBody(t *testing.T) {

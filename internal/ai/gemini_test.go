@@ -242,6 +242,9 @@ func TestGeminiProvider_Health(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tt.statusCode)
+				if tt.statusCode == http.StatusOK {
+					_, _ = w.Write([]byte(`{"name": "models/gemini-pro"}`))
+				}
 			}))
 			defer server.Close()
 
@@ -312,7 +315,7 @@ func TestGeminiProvider_Analyze_ErrorHandling(t *testing.T) {
 			statusCode: http.StatusOK,
 			response:   "not valid json",
 			wantErr:    true,
-			errMsg:     "failed to parse",
+			errMsg:     "failed to unmarshal",
 		},
 	}
 
