@@ -76,14 +76,19 @@ jobs:
         echo "Building lumo-agent for $GOOS/$GOARCH..."
         CGO_ENABLED=0 go build -ldflags "$LDFLAGS" -o "lumo-agent-$GOOS-$GOARCH$EXT" ./cmd/lumo-agent
 
+        # Prepare files to include in archive
+        FILES_TO_ARCHIVE="lumo-$GOOS-$GOARCH$EXT lumo-agent-$GOOS-$GOARCH$EXT"
+        [ -f LICENSE ] && FILES_TO_ARCHIVE="$FILES_TO_ARCHIVE LICENSE"
+        [ -f README.md ] && FILES_TO_ARCHIVE="$FILES_TO_ARCHIVE README.md"
+
         # Create archives
         if [ "$GOOS" = "windows" ]; then
           # Windows: create zip
-          zip "lumo-$VERSION-$GOOS-$GOARCH.zip" "lumo-$GOOS-$GOARCH$EXT" "lumo-agent-$GOOS-$GOARCH$EXT" LICENSE README.md
+          zip "lumo-$VERSION-$GOOS-$GOARCH.zip" $FILES_TO_ARCHIVE
           ARCHIVE="lumo-$VERSION-$GOOS-$GOARCH.zip"
         else
           # Unix: create tar.gz
-          tar czf "lumo-$VERSION-$GOOS-$GOARCH.tar.gz" "lumo-$GOOS-$GOARCH$EXT" "lumo-agent-$GOOS-$GOARCH$EXT" LICENSE README.md
+          tar czf "lumo-$VERSION-$GOOS-$GOARCH.tar.gz" $FILES_TO_ARCHIVE
           ARCHIVE="lumo-$VERSION-$GOOS-$GOARCH.tar.gz"
         fi
 
