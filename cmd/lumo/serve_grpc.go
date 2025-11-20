@@ -37,8 +37,10 @@ func init() {
 
 	serveGRPCCmd.Flags().Int("port", 9443, "gRPC server port")
 	serveGRPCCmd.Flags().Bool("tls", false, "Enable TLS (requires cert and key files)")
+	serveGRPCCmd.Flags().Bool("mtls", false, "Enable mutual TLS (requires client certificates)")
 	serveGRPCCmd.Flags().String("cert", "deployments/certs/server.crt", "TLS certificate file")
 	serveGRPCCmd.Flags().String("key", "deployments/certs/server.key", "TLS key file")
+	serveGRPCCmd.Flags().String("ca-file", "deployments/certs/ca.crt", "CA certificate for mTLS client verification")
 	serveGRPCCmd.Flags().Int("max-msg-size", 10*1024*1024, "Max message size in bytes (default 10MB)")
 }
 
@@ -52,13 +54,22 @@ func runServeGRPC(cmd *cobra.Command, args []string) error {
 	// Get flags
 	port, _ := cmd.Flags().GetInt("port")
 	tlsEnabled, _ := cmd.Flags().GetBool("tls")
+	mtlsEnabled, _ := cmd.Flags().GetBool("mtls")
 	certFile, _ := cmd.Flags().GetString("cert")
 	keyFile, _ := cmd.Flags().GetString("key")
+	caFile, _ := cmd.Flags().GetString("ca-file")
 	maxMsgSize, _ := cmd.Flags().GetInt("max-msg-size")
 
+	// Validate TLS/mTLS flags
+	if mtlsEnabled && !tlsEnabled {
+		log.Warn("mTLS enabled, automatically enabling TLS")
+		tlsEnabled = true
+	}
+
 	log.WithFields(map[string]interface{}{
-		"port":        port,
-		"tls_enabled": tlsEnabled,
+		"port":         port,
+		"tls_enabled":  tlsEnabled,
+		"mtls_enabled": mtlsEnabled,
 	}).Info("Starting gRPC server")
 
 	// Initialize database
@@ -92,11 +103,13 @@ func runServeGRPC(cmd *cobra.Command, args []string) error {
 
 	// Create gRPC server
 	grpcServer, err := grpcserver.NewServer(cfg, grpcserver.ServerOptions{
-		Port:       port,
-		TLSEnabled: tlsEnabled,
-		CertFile:   certFile,
-		KeyFile:    keyFile,
-		MaxMsgSize: maxMsgSize,
+		Port:        port,
+		TLSEnabled:  tlsEnabled,
+		MTLSEnabled: mtlsEnabled,
+		CertFile:    certFile,
+		KeyFile:     keyFile,
+		CAFile:      caFile,
+		MaxMsgSize:  maxMsgSize,
 	}, log)
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC server: %w", err)

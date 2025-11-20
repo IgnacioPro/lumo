@@ -28,11 +28,13 @@ type Server struct {
 
 // ServerOptions contains configuration for the gRPC server
 type ServerOptions struct {
-	Port       int
-	TLSEnabled bool
-	CertFile   string
-	KeyFile    string
-	MaxMsgSize int // Max message size in bytes
+	Port        int
+	TLSEnabled  bool
+	MTLSEnabled bool   // Enable mutual TLS (requires client certificates)
+	CertFile    string
+	KeyFile     string
+	CAFile      string // CA certificate for mTLS client verification
+	MaxMsgSize  int    // Max message size in bytes
 }
 
 // NewServer creates a new gRPC server with the specified options
@@ -74,11 +76,24 @@ func NewServer(cfg *config.Config, opts ServerOptions, log *logrus.Logger) (*Ser
 		),
 	}
 
-	// Add TLS credentials if enabled
-	if opts.TLSEnabled {
-		creds, err := credentials.NewServerTLSFromFile(opts.CertFile, opts.KeyFile)
+	// Add TLS/mTLS credentials if enabled
+	if opts.MTLSEnabled {
+		// Mutual TLS requires client certificates
+		creds, err := NewMTLSCredentials(MTLSConfig{
+			CertFile: opts.CertFile,
+			KeyFile:  opts.KeyFile,
+			CAFile:   opts.CAFile,
+		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to load TLS credentials: %w", err)
+			return nil, fmt.Errorf("failed to setup mTLS: %w", err)
+		}
+		serverOpts = append(serverOpts, grpc.Creds(creds))
+		log.Info("gRPC server mTLS enabled (client certificates required)")
+	} else if opts.TLSEnabled {
+		// Standard TLS without client certificate requirement
+		creds, err := NewTLSCredentials(opts.CertFile, opts.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to setup TLS: %w", err)
 		}
 		serverOpts = append(serverOpts, grpc.Creds(creds))
 		log.Info("gRPC server TLS enabled")
