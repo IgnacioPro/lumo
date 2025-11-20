@@ -27,6 +27,7 @@ func NewReporter(cfg *config.AgentConfig, logger *logrus.Logger) *Reporter {
 	// Configure HTTP client with TLS settings
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
+			// #nosec G402 -- TLS InsecureSkipVerify is user-configurable
 			InsecureSkipVerify: cfg.TLSInsecure,
 		},
 		MaxIdleConns:       10,
@@ -162,7 +163,13 @@ func (r *Reporter) doWithRetry(method, url string, body []byte, respData interfa
 
 			// Wait before retry with exponential backoff
 			if attempt < maxAttempts-1 {
-				delay := baseDelay * time.Duration(1<<uint(attempt)) // 2s, 4s, 8s, 16s
+				// Cap the shift to prevent overflow (although maxAttempts is likely small)
+			// #nosec G115 -- attempt is positive and shift capped
+				shift := uint(attempt)
+				if shift > 30 {
+					shift = 30
+				}
+				delay := baseDelay * time.Duration(1<<shift)
 				time.Sleep(delay)
 			}
 			continue
@@ -207,7 +214,13 @@ func (r *Reporter) doWithRetry(method, url string, body []byte, respData interfa
 		}).Warn("Server error, retrying...")
 
 		if attempt < maxAttempts-1 {
-			delay := baseDelay * time.Duration(1<<uint(attempt))
+			// Cap the shift to prevent overflow
+			// #nosec G115 -- attempt is positive and shift capped
+			shift := uint(attempt)
+			if shift > 30 {
+				shift = 30
+			}
+			delay := baseDelay * time.Duration(1<<shift)
 			time.Sleep(delay)
 		}
 	}

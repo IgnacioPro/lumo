@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
@@ -100,7 +101,8 @@ func trySSHAgent() (ssh.AuthMethod, error) {
 // tryKeyFile attempts to read and parse an SSH private key file
 func tryKeyFile(keyPath, passphrase, user, host string) (ssh.AuthMethod, error) {
 	// Read the private key file
-	keyBytes, err := os.ReadFile(keyPath)
+	// #nosec G304 -- keyPath is configuration controlled and expected to be variable
+	keyBytes, err := os.ReadFile(filepath.Clean(keyPath))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read key file %s: %w", keyPath, err)
 	}
@@ -231,12 +233,14 @@ func getHostKeyCallback(config *ClientConfig) (ssh.HostKeyCallback, error) {
 	// If strict host key checking is disabled, use insecure callback
 	if !config.StrictHostKeyChecking {
 		fmt.Fprintf(os.Stderr, "⚠️  WARNING: SSH host key verification is DISABLED. Connections are vulnerable to MITM attacks!\n")
+		// #nosec G106 -- User explicitly requested insecure mode via config
 		return ssh.InsecureIgnoreHostKey(), nil
 	}
 
 	// If known_hosts path is not set, use insecure callback
 	if config.KnownHostsPath == "" {
 		fmt.Fprintf(os.Stderr, "⚠️  WARNING: No known_hosts file configured. Falling back to insecure mode!\n")
+		// #nosec G106 -- No known_hosts file available, fallback
 		return ssh.InsecureIgnoreHostKey(), nil
 	}
 

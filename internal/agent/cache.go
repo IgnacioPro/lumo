@@ -31,7 +31,7 @@ type Cache struct {
 // NewCache creates a new cache instance
 func NewCache(path string, maxSize int64, ttl time.Duration, logger *logrus.Logger) (*Cache, error) {
 	// Ensure cache directory exists
-	if err := os.MkdirAll(path, 0755); err != nil {
+	if err := os.MkdirAll(path, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
@@ -62,7 +62,7 @@ func (c *Cache) Set(key string, data interface{}) error {
 
 	// Write to file
 	filePath := c.getFilePath(key)
-	if err := os.WriteFile(filePath, jsonData, 0644); err != nil {
+	if err := os.WriteFile(filePath, jsonData, 0600); err != nil {
 		return fmt.Errorf("failed to write cache file: %w", err)
 	}
 
@@ -92,6 +92,7 @@ func (c *Cache) Get(key string) (interface{}, bool, error) {
 	}
 
 	// Read file
+	// #nosec G304 -- filePath is constructed from safe base path
 	jsonData, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to read cache file: %w", err)
@@ -275,6 +276,7 @@ func (c *Cache) CleanExpired() error {
 		}
 
 		filePath := filepath.Join(c.path, entry.Name())
+		// #nosec G304 -- filePath is constructed from safe base path
 		jsonData, err := os.ReadFile(filePath)
 		if err != nil {
 			continue

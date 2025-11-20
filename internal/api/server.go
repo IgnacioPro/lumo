@@ -12,6 +12,7 @@ import (
 	"github.com/ignacio/lumo/internal/api/auth"
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/database"
+	"github.com/ignacio/lumo/internal/observability"
 	"github.com/sirupsen/logrus"
 )
 
@@ -66,6 +67,14 @@ func NewServer(cfg *config.Config, db *database.DB, logger *logrus.Logger) (*Ser
 		"jwt_expiration": jwtExpiration,
 		"jwt_issuer":     jwtIssuer,
 	}).Info("JWT authentication enabled")
+
+	// Initialize tracing (basic setup)
+	shutdownTracer := observability.InitTracer("lumo-api")
+	defer func() {
+		if err := shutdownTracer(context.Background()); err != nil {
+			logger.WithError(err).Error("Failed to shutdown tracer")
+		}
+	}()
 
 	// Create router
 	router := NewRouter(db, cfg, jwtManager, logger)
