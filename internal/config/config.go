@@ -18,6 +18,7 @@ type Config struct {
 	Cache         CacheConfig         `mapstructure:"cache"`
 	Agent         AgentConfig         `mapstructure:"agent"`
 	Notifications NotificationsConfig `mapstructure:"notifications"`
+	RAG           RAGConfig           `mapstructure:"rag"`
 }
 
 // SSHConfig contains SSH connection settings
@@ -210,6 +211,19 @@ type NotifierConfig struct {
 	Timeout    int               `mapstructure:"timeout"`     // Request timeout in seconds
 }
 
+// RAGConfig contains RAG (Retrieval Augmented Generation) system settings
+type RAGConfig struct {
+	Enabled           bool    `mapstructure:"enabled"`            // Enable RAG system
+	StoragePath       string  `mapstructure:"storage_path"`       // ./data/rag/embeddings
+	EmbeddingProvider string  `mapstructure:"embedding_provider"` // openai, anthropic, local
+	EmbeddingModel    string  `mapstructure:"embedding_model"`    // text-embedding-3-small
+	MaxDocuments      int     `mapstructure:"max_documents"`      // 10000
+	SimilarityK       int     `mapstructure:"similarity_k"`       // 5 (top K results)
+	MinScore          float32 `mapstructure:"min_score"`          // 0.7 (minimum similarity)
+	IngestionMode     string  `mapstructure:"ingestion_mode"`     // realtime, batch, hybrid
+	BatchInterval     int     `mapstructure:"batch_interval"`     // 300 seconds
+}
+
 // DefaultConfig returns a Config with sensible defaults
 func DefaultConfig() *Config {
 	return &Config{
@@ -345,6 +359,17 @@ func DefaultConfig() *Config {
 		Notifications: NotificationsConfig{
 			Enabled:   false,              // Disabled by default
 			Notifiers: []NotifierConfig{}, // No notifiers configured by default
+		},
+		RAG: RAGConfig{
+			Enabled:           false,                       // Disabled by default
+			StoragePath:       "./data/rag/embeddings",     // Local storage path
+			EmbeddingProvider: "openai",                    // OpenAI for embeddings
+			EmbeddingModel:    "text-embedding-3-small",    // Efficient embedding model
+			MaxDocuments:      10000,                       // Maximum documents to store
+			SimilarityK:       5,                           // Return top 5 matches
+			MinScore:          0.7,                         // Minimum similarity threshold
+			IngestionMode:     "hybrid",                    // Hybrid ingestion (realtime for critical, batch for low-priority)
+			BatchInterval:     300,                         // 5 minutes batch interval
 		},
 	}
 }

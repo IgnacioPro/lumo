@@ -306,3 +306,51 @@ cache:
   max_retries: 3
   pool_size: 10
   ttl: 1h
+
+# RAG Configuration (Retrieval Augmented Generation)
+rag:
+  # Enable RAG system for enhanced AI analysis with historical context
+  enabled: true  # Set to false to disable RAG
+  
+  # Storage path for vector embeddings (local filesystem)
+  storage_path: "./data/rag/embeddings"
+  
+  # Embedding provider (openai, anthropic, local)
+  embedding_provider: "openai"  # OpenAI recommended for best quality
+  
+  # Embedding model to use
+  # OpenAI options: text-embedding-3-small (1536 dims), text-embedding-3-large (3072 dims)
+  embedding_model: "text-embedding-3-small"
+  
+  # Maximum documents to store in vector database
+  max_documents: 10000
+  
+  # Number of similar documents to retrieve (top K)
+  similarity_k: 5
+  
+  # Minimum similarity score threshold (0.0-1.0)
+  # Higher values return only very similar matches
+  min_score: 0.7
+  
+  # Ingestion mode: realtime, batch, hybrid
+  # - realtime: Process documents immediately
+  # - batch: Accumulate and process in batches
+  # - hybrid: Realtime for high-severity, batch for low-severity (recommended)
+  ingestion_mode: "hybrid"
+  
+  # Batch interval in seconds (for batch/hybrid modes)
+  batch_interval: 300  # 5 minutes
+
+# Environment Variables for RAG:
+#   LUMO_RAG_ENABLED=true
+#   LUMO_RAG_STORAGE_PATH=./data/rag/embeddings
+#   LUMO_RAG_EMBEDDING_PROVIDER=openai
+#   LUMO_RAG_EMBEDDING_MODEL=text-embedding-3-small
+#   LUMO_RAG_MAX_DOCUMENTS=10000
+#   LUMO_RAG_SIMILARITY_K=5
+#   LUMO_RAG_MIN_SCORE=0.7
+#   LUMO_RAG_INGESTION_MODE=hybrid
+#   LUMO_RAG_BATCH_INTERVAL=300
+#
+# Note: OpenAI API key required for embeddings
+# Set via: LUMO_OPENAI_API_KEY=sk-...

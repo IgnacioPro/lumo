@@ -1,12 +1,16 @@
 package ai
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/ignacio/lumo/internal/diagnostics/formatters"
+	"github.com/ignacio/lumo/internal/intelligence/vectorstore"
 )
 
 // PromptBuilder constructs prompts for AI analysis of diagnostic results.
@@ -14,6 +18,13 @@ type PromptBuilder struct {
 	includeThinking bool
 	focusAreas      []string
 	useTOON         bool // Use TOON format for diagnostic data (30-60% token reduction)
+
+	// RAG integration
+	ragEnabled  bool
+	vectorStore vectorstore.VectorStore
+	similarityK int
+	minScore    float32
+	log         *logrus.Logger
 }
 
 // NewPromptBuilder creates a new prompt builder.
@@ -41,6 +52,17 @@ func (pb *PromptBuilder) WithFocus(areas ...string) *PromptBuilder {
 // TOON achieves 30-60% token reduction compared to JSON/Markdown.
 func (pb *PromptBuilder) WithTOON(use bool) *PromptBuilder {
 	pb.useTOON = use
+	return pb
+}
+
+// WithRAG enables RAG (Retrieval Augmented Generation) with historical context.
+// Provides similar incidents from vector store to enhance AI analysis.
+func (pb *PromptBuilder) WithRAG(store vectorstore.VectorStore, k int, minScore float32, log *logrus.Logger) *PromptBuilder {
+	pb.ragEnabled = true
+	pb.vectorStore = store
+	pb.similarityK = k
+	pb.minScore = minScore
+	pb.log = log
 	return pb
 }
 
@@ -118,7 +140,40 @@ You can parse and analyze TOON data naturally - treat arrays as tables and key-v
 
 // BuildAnalysisPrompt creates the user prompt with diagnostic data.
 func (pb *PromptBuilder) BuildAnalysisPrompt(req *AnalysisRequest) (string, error) {
+	return pb.BuildAnalysisPromptWithContext(context.Background(), req)
+}
+
+// BuildAnalysisPromptWithContext creates the user prompt with diagnostic data and optional RAG context.
+func (pb *PromptBuilder) BuildAnalysisPromptWithContext(ctx context.Context, req *AnalysisRequest) (string, error) {
 	var sb strings.Builder
+
+	// Add RAG historical context if enabled
+	if pb.ragEnabled && pb.vectorStore != nil {
+		similarIncidents, err := pb.retrieveSimilarIncidents(ctx, req.Report)
+		if err != nil {
+			if pb.log != nil {
+				pb.log.WithError(err).Warn("Failed to retrieve similar incidents from RAG")
+			}
+		} else if len(similarIncidents) > 0 {
+			sb.WriteString("# Historical Context (Similar Past Incidents)\n\n")
+			sb.WriteString("The following similar incidents were found in the history:\n\n")
+
+			for i, match := range similarIncidents {
+				sb.WriteString(fmt.Sprintf("### Incident %d (similarity: %.0f%%)\n",
+					i+1, match.Score*100))
+				sb.WriteString("```\n")
+				sb.WriteString(match.Document.Content)
+				sb.WriteString("\n```\n\n")
+
+				// Add resolution if available
+				if resolution, ok := match.Document.Metadata[vectorstore.MetadataResolution].(string); ok {
+					sb.WriteString(fmt.Sprintf("**Resolution:** %s\n\n", resolution))
+				}
+			}
+
+			sb.WriteString("---\n\n")
+		}
+	}
 
 	// Add system information
 	sb.WriteString("# System Information\n\n")
@@ -170,14 +225,70 @@ func (pb *PromptBuilder) BuildAnalysisPrompt(req *AnalysisRequest) (string, erro
 
 	// Add analysis request
 	sb.WriteString("\n# Analysis Request\n\n")
-	sb.WriteString("Please analyze this diagnostic data and provide:\n")
-	sb.WriteString("1. A summary of overall system health\n")
-	sb.WriteString("2. Specific findings with evidence from the data\n")
-	sb.WriteString("3. Prioritized recommendations with commands\n")
-	sb.WriteString("4. Risk assessment for each recommendation\n\n")
+	if pb.ragEnabled {
+		sb.WriteString("Please analyze this diagnostic data and provide:\n")
+		sb.WriteString("1. Compare with the similar historical incidents provided above (if any)\n")
+		sb.WriteString("2. A summary of overall system health\n")
+		sb.WriteString("3. Specific findings with evidence from the data\n")
+		sb.WriteString("4. Identify if this matches any known patterns\n")
+		sb.WriteString("5. Recommend actions based on what worked in the past\n")
+		sb.WriteString("6. Highlight any differences that might require a new approach\n\n")
+	} else {
+		sb.WriteString("Please analyze this diagnostic data and provide:\n")
+		sb.WriteString("1. A summary of overall system health\n")
+		sb.WriteString("2. Specific findings with evidence from the data\n")
+		sb.WriteString("3. Prioritized recommendations with commands\n")
+		sb.WriteString("4. Risk assessment for each recommendation\n\n")
+	}
 	sb.WriteString("Respond in the JSON format specified in your system prompt.\n")
 
 	return sb.String(), nil
+}
+
+// retrieveSimilarIncidents queries the vector store for similar historical incidents
+func (pb *PromptBuilder) retrieveSimilarIncidents(ctx context.Context, report *diagnostics.Report) ([]*vectorstore.Match, error) {
+	if pb.vectorStore == nil {
+		return nil, nil
+	}
+
+	// Build query from current report (focus on failed/warning checks)
+	var queryBuilder strings.Builder
+
+	for _, result := range report.Results {
+		if result.Severity == diagnostics.SeverityCritical ||
+			result.Severity == diagnostics.SeverityError ||
+			result.Severity == diagnostics.SeverityWarning {
+			queryBuilder.WriteString(fmt.Sprintf("%s: %s. ", result.Name, result.Message))
+		}
+	}
+
+	query := queryBuilder.String()
+	if query == "" {
+		return nil, nil // No issues to query
+	}
+
+	// Query vector store
+	matches, err := pb.vectorStore.Query(ctx, query, pb.similarityK)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter by minimum similarity score
+	filtered := make([]*vectorstore.Match, 0)
+	for _, match := range matches {
+		if match.Score >= pb.minScore {
+			filtered = append(filtered, match)
+		}
+	}
+
+	if pb.log != nil && len(filtered) > 0 {
+		pb.log.WithFields(logrus.Fields{
+			"query":   query[:min(50, len(query))],
+			"matches": len(filtered),
+		}).Debug("Retrieved similar incidents from RAG")
+	}
+
+	return filtered, nil
 }
 
 // formatSystemInfo formats system information for the prompt.

@@ -36,6 +36,9 @@ type CheckResult struct {
 
 	// Error contains the error message if the check failed
 	Error string `json:"error,omitempty"`
+
+	// LogEntries contains structured log entries for RAG ingestion
+	LogEntries []LogEntry `json:"log_entries,omitempty"`
 }
 
 // Metric represents a measurable value with optional threshold information
@@ -63,6 +66,15 @@ const (
 	ThresholdTypeMax ThresholdType = "max" // Value should be below threshold
 	ThresholdTypeMin ThresholdType = "min" // Value should be above threshold
 )
+
+// LogEntry represents a structured log entry for RAG ingestion
+type LogEntry struct {
+	Timestamp time.Time              `json:"timestamp"`
+	Level     string                 `json:"level"`
+	Source    string                 `json:"source"`
+	Message   string                 `json:"message"`
+	Fields    map[string]interface{} `json:"fields,omitempty"`
+}
 
 // Report contains the complete diagnostic report
 type Report struct {
