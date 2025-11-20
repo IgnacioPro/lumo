@@ -21,7 +21,7 @@ on:
 jobs:
   test:
     name: Test & Build
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
     - name: Checkout code
@@ -61,7 +61,7 @@ jobs:
     name: Build (Cross-Platform)
     # Only run cross-platform builds on main/master or PRs to main/master
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.base_ref == 'main' || github.base_ref == 'master'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     strategy:
       matrix:
         goos: [linux, darwin]
