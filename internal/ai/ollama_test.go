@@ -468,7 +468,7 @@ func TestOllamaProvider_AnalyzeStream(t *testing.T) {
 			}
 
 			provider.config.Endpoint = server.URL
-			provider.client = server.Client()
+			provider.httpClient.SetClient(server.Client())
 
 			req := &AnalysisRequest{
 				Report: &diagnostics.Report{
@@ -562,7 +562,7 @@ func TestOllamaProvider_AnalyzeStream_Success(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -625,7 +625,7 @@ func TestOllamaProvider_AnalyzeStream_ErrorResponse(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{

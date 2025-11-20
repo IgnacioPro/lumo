@@ -53,6 +53,11 @@ func NewBaseProvider(adapter ProviderAdapter, log *logrus.Logger) *BaseProvider 
 	}
 }
 
+// SetHTTPClient sets a custom HTTP client (primarily for testing).
+func (p *BaseProvider) SetHTTPClient(client *HTTPClient) {
+	p.httpClient = client
+}
+
 // Name returns the provider name.
 func (p *BaseProvider) Name() string {
 	return p.adapter.Name()

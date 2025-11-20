@@ -3,11 +3,13 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -65,8 +67,8 @@ func (m *mockAdapter) ParseResponse(body []byte) (string, *TokenUsage, error) {
 
 func (m *mockAdapter) BuildHeaders() map[string]string {
 	return map[string]string{
-		"Content-Type":   "application/json",
-		"Authorization":  "Bearer " + m.config.APIKey,
+		"Content-Type":    "application/json",
+		"Authorization":   "Bearer " + m.config.APIKey,
 		"X-Test-Provider": m.name,
 	}
 }
@@ -134,7 +136,7 @@ System is healthy.
 
 ## Overall Health
 GOOD`
-		_, _ = w.Write([]byte(fmt.Sprintf(`{"content": %q}`, response)))
+		_, _ = fmt.Fprintf(w, `{"content": %q}`, response)
 	}))
 	defer server.Close()
 
@@ -160,8 +162,12 @@ GOOD`
 
 	// Execute analysis
 	req := &AnalysisRequest{
-		DiagnosticData: "test data",
-		Target:         "localhost",
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "localhost"},
 	}
 
 	resp, err := provider.Analyze(context.Background(), req)
@@ -215,8 +221,12 @@ func TestBaseProvider_Analyze_BuildRequestError(t *testing.T) {
 	provider := NewBaseProvider(adapter, logrus.New())
 
 	req := &AnalysisRequest{
-		DiagnosticData: "test data",
-		Target:         "localhost",
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "localhost"},
 	}
 
 	resp, err := provider.Analyze(context.Background(), req)
@@ -251,8 +261,12 @@ func TestBaseProvider_Analyze_HTTPError(t *testing.T) {
 	provider := NewBaseProvider(adapter, logrus.New())
 
 	req := &AnalysisRequest{
-		DiagnosticData: "test data",
-		Target:         "localhost",
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "localhost"},
 	}
 
 	resp, err := provider.Analyze(context.Background(), req)
@@ -288,8 +302,12 @@ func TestBaseProvider_Analyze_ParseResponseError(t *testing.T) {
 	provider := NewBaseProvider(adapter, logrus.New())
 
 	req := &AnalysisRequest{
-		DiagnosticData: "test data",
-		Target:         "localhost",
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "localhost"},
 	}
 
 	resp, err := provider.Analyze(context.Background(), req)
@@ -318,7 +336,7 @@ func TestBaseProvider_Analyze_WithFocus(t *testing.T) {
 
 		w.WriteHeader(http.StatusOK)
 		response := `# Analysis\n\n## Summary\nFocused on CPU and memory.\n\n## Overall Health\nGOOD`
-		_, _ = w.Write([]byte(fmt.Sprintf(`{"content": %q}`, response)))
+		_, _ = fmt.Fprintf(w, `{"content": %q}`, response)
 	}))
 	defer server.Close()
 
@@ -335,9 +353,13 @@ func TestBaseProvider_Analyze_WithFocus(t *testing.T) {
 	provider := NewBaseProvider(adapter, logrus.New())
 
 	req := &AnalysisRequest{
-		DiagnosticData: "test data",
-		Target:         "localhost",
-		Focus:          []string{"cpu", "memory"},
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "localhost"},
+		Focus:      []string{"cpu", "memory"},
 	}
 
 	resp, err := provider.Analyze(context.Background(), req)
@@ -360,8 +382,12 @@ func TestBaseProvider_AnalyzeStream(t *testing.T) {
 	provider := NewBaseProvider(adapter, logrus.New())
 
 	req := &AnalysisRequest{
-		DiagnosticData: "test data",
-		Target:         "localhost",
+		Report: &diagnostics.Report{
+			Timestamp: time.Now(),
+			Duration:  100 * time.Millisecond,
+			Results:   []*diagnostics.CheckResult{},
+		},
+		SystemInfo: SystemInfo{Hostname: "localhost"},
 	}
 
 	ch, err := provider.AnalyzeStream(context.Background(), req)

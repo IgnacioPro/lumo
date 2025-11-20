@@ -179,7 +179,7 @@ func TestOpenAIProvider_Analyze(t *testing.T) {
 
 	// Override for testing
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -307,7 +307,7 @@ func TestOpenAIProvider_Health(t *testing.T) {
 			}
 
 			provider.config.Endpoint = server.URL + "/v1/models"
-			provider.client = server.Client()
+			provider.httpClient.SetClient(server.Client())
 
 			ctx := context.Background()
 			err = provider.Health(ctx)
@@ -390,7 +390,7 @@ func TestOpenAIProvider_Analyze_ErrorHandling(t *testing.T) {
 			}
 
 			provider.config.Endpoint = server.URL
-			provider.client = server.Client()
+			provider.httpClient.SetClient(server.Client())
 
 			req := &AnalysisRequest{
 				Report: &diagnostics.Report{
@@ -441,7 +441,7 @@ func TestOpenAIProvider_Analyze_ContextCancellation(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -550,7 +550,7 @@ func TestOpenAIProvider_AnalyzeStream(t *testing.T) {
 			}
 
 			provider.config.Endpoint = server.URL
-			provider.client = server.Client()
+			provider.httpClient.SetClient(server.Client())
 
 			req := &AnalysisRequest{
 				Report: &diagnostics.Report{
@@ -650,15 +650,25 @@ func TestOpenAIProvider_BuildRequest_ReasoningEffort(t *testing.T) {
 				t.Fatalf("Failed to create provider: %v", err)
 			}
 
-			req := provider.buildRequest("system prompt", "user prompt")
+			// Access the adapter through the BaseProvider
+			adapter := provider.adapter.(*openaiAdapter)
+			reqInterface, err := adapter.BuildRequest("system prompt", "user prompt", false)
+			if err != nil {
+				t.Fatalf("Failed to build request: %v", err)
+			}
+
+			req, ok := reqInterface.(*openaiRequest)
+			if !ok {
+				t.Fatalf("BuildRequest() returned unexpected type: %T", reqInterface)
+			}
 
 			if tt.wantInRequest {
 				if req.ReasoningEffort != tt.reasoningEffort {
-					t.Errorf("buildRequest() ReasoningEffort = %q, want %q", req.ReasoningEffort, tt.reasoningEffort)
+					t.Errorf("BuildRequest() ReasoningEffort = %q, want %q", req.ReasoningEffort, tt.reasoningEffort)
 				}
 			} else {
 				if req.ReasoningEffort != "" {
-					t.Errorf("buildRequest() ReasoningEffort = %q, want empty", req.ReasoningEffort)
+					t.Errorf("BuildRequest() ReasoningEffort = %q, want empty", req.ReasoningEffort)
 				}
 			}
 		})
@@ -733,7 +743,7 @@ func TestOpenAIProvider_CustomHeaders(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -800,7 +810,7 @@ func TestOpenAIProvider_AnalyzeStream_Success(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -872,7 +882,7 @@ func TestOpenAIProvider_AnalyzeStream_ErrorResponse(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -936,7 +946,7 @@ func TestOpenAIProvider_AnalyzeStream_ContextCancellation(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -1010,7 +1020,7 @@ func TestOpenAIProvider_AnalyzeStream_MalformedSSE(t *testing.T) {
 	}
 
 	provider.config.Endpoint = server.URL
-	provider.client = server.Client()
+	provider.httpClient.SetClient(server.Client())
 
 	req := &AnalysisRequest{
 		Report: &diagnostics.Report{
@@ -1041,3 +1051,5 @@ func TestOpenAIProvider_AnalyzeStream_MalformedSSE(t *testing.T) {
 		t.Error("Expected to receive valid chunk despite malformed events")
 	}
 }
+
+// testLogWriter is a helper that writes log output to testing.T
