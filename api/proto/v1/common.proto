@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package lumo.v1;
+
+option go_package = "github.com/ignacio/lumo/api/proto/v1;lumov1";
+
+import "google/protobuf/timestamp.proto";
+
+// Common enums and types
+
+enum JobStatus {
+  JOB_STATUS_UNSPECIFIED = 0;
+  JOB_STATUS_PENDING = 1;
+  JOB_STATUS_RUNNING = 2;
+  JOB_STATUS_COMPLETED = 3;
+  JOB_STATUS_FAILED = 4;
+  JOB_STATUS_CANCELLED = 5;
+}
+
+enum JobType {
+  JOB_TYPE_UNSPECIFIED = 0;
+  JOB_TYPE_DIAGNOSTIC = 1;
+  JOB_TYPE_REMEDIATION = 2;
+}
+
+enum CheckStatus {
+  CHECK_STATUS_UNSPECIFIED = 0;
+  CHECK_STATUS_PASS = 1;
+  CHECK_STATUS_FAIL = 2;
+  CHECK_STATUS_WARNING = 3;
+  CHECK_STATUS_SKIP = 4;
+}
+
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  SEVERITY_INFO = 1;
+  SEVERITY_LOW = 2;
+  SEVERITY_MEDIUM = 3;
+  SEVERITY_HIGH = 4;
+  SEVERITY_CRITICAL = 5;
+}
+
+enum OutputFormat {
+  OUTPUT_FORMAT_UNSPECIFIED = 0;
+  OUTPUT_FORMAT_TEXT = 1;
+  OUTPUT_FORMAT_TOON = 2;
+  OUTPUT_FORMAT_JSON = 3;
+}
+
+message Metadata {
+  map<string, string> labels = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}

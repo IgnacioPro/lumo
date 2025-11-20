@@ -1,0 +1,129 @@
+syntax = "proto3";
+
+package lumo.v1;
+
+option go_package = "github.com/ignacio/lumo/api/proto/v1;lumov1";
+
+import "api/proto/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+service AgentsService {
+  // Register a new agent
+  rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
+
+  // Send heartbeat to maintain agent online status
+  rpc SendHeartbeat(SendHeartbeatRequest) returns (SendHeartbeatResponse);
+
+  // List registered agents
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+
+  // Get agent details
+  rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
+
+  // Delete (deregister) agent
+  rpc DeleteAgent(DeleteAgentRequest) returns (DeleteAgentResponse);
+
+  // Get agent statistics
+  rpc GetAgentStats(GetAgentStatsRequest) returns (GetAgentStatsResponse);
+}
+
+message RegisterAgentRequest {
+  string name = 1;
+  string hostname = 2;
+  string ip_address = 3;
+  string platform = 4;                  // linux, darwin, windows
+  string architecture = 5;              // amd64, arm64
+  string version = 6;                   // Agent version
+  repeated string capabilities = 7;     // cpu, memory, disk, etc.
+  map<string, string> labels = 8;
+  KubernetesMetadata kubernetes = 9;    // Optional
+}
+
+message KubernetesMetadata {
+  string namespace = 1;
+  string pod_name = 2;
+  string node_name = 3;
+  map<string, string> labels = 4;
+}
+
+message RegisterAgentResponse {
+  string agent_id = 1;                  // UUID
+  google.protobuf.Timestamp registered_at = 2;
+}
+
+message SendHeartbeatRequest {
+  string agent_id = 1;
+  AgentHealth health = 2;
+}
+
+message AgentHealth {
+  enum HealthStatus {
+    HEALTH_STATUS_UNSPECIFIED = 0;
+    HEALTH_STATUS_HEALTHY = 1;
+    HEALTH_STATUS_DEGRADED = 2;
+    HEALTH_STATUS_UNHEALTHY = 3;
+  }
+
+  HealthStatus status = 1;
+  map<string, string> errors = 2;       // Component → error message
+  google.protobuf.Timestamp last_run = 3;
+}
+
+message SendHeartbeatResponse {
+  bool acknowledged = 1;
+  google.protobuf.Timestamp server_time = 2;
+}
+
+message ListAgentsRequest {
+  string status = 1;                    // online, offline, error
+  int32 limit = 2;
+  int32 offset = 3;
+  map<string, string> labels = 4;       // Filter by labels
+}
+
+message ListAgentsResponse {
+  repeated Agent agents = 1;
+  int32 total_count = 2;
+}
+
+message Agent {
+  string id = 1;
+  string name = 2;
+  string hostname = 3;
+  string ip_address = 4;
+  string platform = 5;
+  string architecture = 6;
+  string version = 7;
+  string status = 8;                    // online, offline, error
+  repeated string capabilities = 9;
+  map<string, string> labels = 10;
+  KubernetesMetadata kubernetes = 11;
+  google.protobuf.Timestamp last_heartbeat_at = 12;
+  google.protobuf.Timestamp registered_at = 13;
+}
+
+message GetAgentRequest {
+  string agent_id = 1;
+}
+
+message GetAgentResponse {
+  Agent agent = 1;
+}
+
+message DeleteAgentRequest {
+  string agent_id = 1;
+}
+
+message DeleteAgentResponse {
+  bool success = 1;
+}
+
+message GetAgentStatsRequest {}
+
+message GetAgentStatsResponse {
+  int32 total_agents = 1;
+  int32 online_agents = 2;
+  int32 offline_agents = 3;
+  int32 error_agents = 4;
+  map<string, int32> by_platform = 5;   // platform → count
+}
