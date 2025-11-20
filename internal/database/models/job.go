@@ -111,3 +111,31 @@ func (j *Job) IsRunning() bool {
 func (j *Job) IsPending() bool {
 	return j.Status == JobStatusPending
 }
+
+// MapToJSONB converts a map[string]string to JSONB
+func MapToJSONB(m map[string]string) (JSONB, error) {
+	if m == nil {
+		return nil, nil
+	}
+	result := make(JSONB)
+	for k, v := range m {
+		result[k] = v
+	}
+	return result, nil
+}
+
+// JSONBToMap converts JSONB to map[string]string
+func JSONBToMap(j JSONB) (map[string]string, error) {
+	if j == nil {
+		return nil, nil
+	}
+	result := make(map[string]string)
+	for k, v := range j {
+		if str, ok := v.(string); ok {
+			result[k] = str
+		} else {
+			result[k] = fmt.Sprintf("%v", v)
+		}
+	}
+	return result, nil
+}
