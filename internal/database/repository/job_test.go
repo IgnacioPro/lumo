@@ -16,7 +16,11 @@ func TestJobRepository_Create(t *testing.T) {
 	if err != nil {
 		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("error closing database: %v", err)
+		}
+	}()
 
 	repo := NewJobRepository(db)
 	ctx := context.Background()
@@ -45,7 +49,11 @@ func TestJobRepository_GetByID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("error closing database: %v", err)
+		}
+	}()
 
 	repo := NewJobRepository(db)
 	ctx := context.Background()
