@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lumo-agent
+  namespace: lumo
+  labels:
+    app: lumo-agent
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: lumo-agent
+  template:
+    metadata:
+      labels:
+        app: lumo-agent
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: lumo-agent
+        image: lumo:latest
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+        env:
+        - name: LUMO_AGENT_MODE
+          value: "hybrid"
+        - name: LUMO_LOGGING_LEVEL
+          value: "info"
+        volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp
+      volumes:
+      - name: tmp-volume
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lumo-agent
+  namespace: lumo
+  labels:
+    app: lumo-agent
+spec:
+  selector:
+    app: lumo-agent
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  - port: 9090
+    targetPort: 9090
+    name: metrics
