@@ -7,6 +7,15 @@
 
 ---
 
+
+## Contribution Guidelines
+
+- When done with an effort, where code was added, always run the following:
+    ```bash
+    make ci
+    ```
+    This runs all linters, security checks, tests, and builds locally to ensure code quality before committing.
+
 ## Project Overview
 
 **Lumo** - Intelligent SRE/DevOps automation platform in Go:
