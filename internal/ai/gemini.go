@@ -79,7 +79,7 @@ func (p *GeminiProvider) Health(ctx context.Context) error {
 	adapter := p.adapter.(*geminiAdapter)
 	url := fmt.Sprintf("%s/%s?key=%s", adapter.GetEndpoint(), adapter.config.Model, adapter.config.APIKey)
 
-	_, err := p.httpClient.Do(ctx, RequestOptions{
+	resp, err := p.httpClient.Do(ctx, RequestOptions{
 		Method:       "GET",
 		URL:          url,
 		Headers:      nil,
