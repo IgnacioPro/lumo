@@ -550,11 +550,9 @@ func displayDiagnosticsSummary(runner *diagnostics.Runner, checksFilter []string
 
 	// Group checks by category
 	categoryCounts := make(map[diagnostics.CheckCategory]int)
-	checkNames := []string{}
 
 	for _, checker := range registeredChecks {
 		categoryCounts[checker.Category()]++
-		checkNames = append(checkNames, checker.Name())
 	}
 
 	// Display summary
