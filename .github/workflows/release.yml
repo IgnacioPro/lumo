@@ -9,63 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  create-release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-      version: ${{ steps.get_version.outputs.version }}
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - name: Get version from tag
-      id: get_version
-      run: |
-        VERSION=${GITHUB_REF#refs/tags/}
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "Version: $VERSION"
-
-    - name: Generate release notes
-      id: release_notes
-      run: |
-        VERSION=${GITHUB_REF#refs/tags/}
-
-        # Extract version from CHANGELOG.md if it exists
-        if [ -f CHANGELOG.md ]; then
-          # Get content between this version and previous version
-          NOTES=$(awk "/^## \[$VERSION\]/,/^## \[/" CHANGELOG.md | sed '1d;$d' || echo "")
-          if [ -z "$NOTES" ]; then
-            NOTES="Release $VERSION - See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/$VERSION/CHANGELOG.md) for details."
-          fi
-        else
-          NOTES="Release $VERSION"
-        fi
-
-        # Save to file to preserve formatting
-        echo "$NOTES" > /tmp/release_notes.md
-
-        # Also output for display
-        echo "Release notes:"
-        cat /tmp/release_notes.md
-
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref_name }}
-        release_name: Release ${{ github.ref_name }}
-        body_path: /tmp/release_notes.md
-        draft: false
-        prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
-
-  build-and-upload:
-    name: Build and Upload
-    needs: create-release
+  build-and-release:
+    name: Build and Release
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -89,12 +34,21 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
         go-version: '1.25.4'
         cache: true
+
+    - name: Get version from tag
+      id: get_version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
 
     - name: Download dependencies
       run: go mod download
@@ -103,7 +57,7 @@ jobs:
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
-        VERSION: ${{ needs.create-release.outputs.version }}
+        VERSION: ${{ steps.get_version.outputs.version }}
       run: |
         # Set binary extension for Windows
         EXT=""
@@ -140,86 +94,72 @@ jobs:
         # List created files
         ls -lh lumo-* *.sha256 *.md5
 
-    - name: Upload CLI binary
-      uses: actions/upload-release-asset@v1
+    - name: Extract release notes
+      id: release_notes
+      run: |
+        VERSION=${{ steps.get_version.outputs.version }}
+
+        # Extract version from CHANGELOG.md if it exists
+        if [ -f CHANGELOG.md ]; then
+          # Get content between this version and previous version
+          NOTES=$(awk "/^## \[$VERSION\]/,/^## \[/" CHANGELOG.md | sed '1d;$d' || echo "")
+          if [ -z "$NOTES" ]; then
+            NOTES="Release $VERSION - See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/$VERSION/CHANGELOG.md) for details."
+          fi
+        else
+          NOTES="Release $VERSION"
+        fi
+
+        # Save to file to preserve formatting
+        echo "$NOTES" > /tmp/release_notes.md
+
+        # Also output for display
+        echo "Release notes:"
+        cat /tmp/release_notes.md
+
+    - name: Upload Release Assets
+      uses: softprops/action-gh-release@v2
+      with:
+        body_path: /tmp/release_notes.md
+        files: |
+          lumo-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+          lumo-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+          lumo-${{ steps.get_version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.zip' || '.tar.gz' }}
+          lumo-${{ steps.get_version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.zip' || '.tar.gz' }}.sha256
+          lumo-${{ steps.get_version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.zip' || '.tar.gz' }}.md5
+        draft: false
+        prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./lumo-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
-        asset_name: lumo-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
-        asset_content_type: application/octet-stream
 
-    - name: Upload Agent binary
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./lumo-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
-        asset_name: lumo-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
-        asset_content_type: application/octet-stream
-
-    - name: Upload Archive
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./lumo-${{ needs.create-release.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.zip' || '.tar.gz' }}
-        asset_name: lumo-${{ needs.create-release.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.zip' || '.tar.gz' }}
-        asset_content_type: ${{ matrix.goos == 'windows' && 'application/zip' || 'application/gzip' }}
-
-    - name: Upload SHA256 checksum
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./lumo-${{ needs.create-release.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.zip' || '.tar.gz' }}.sha256
-        asset_name: lumo-${{ needs.create-release.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.zip' || '.tar.gz' }}.sha256
-        asset_content_type: text/plain
-
-    - name: Upload MD5 checksum
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./lumo-${{ needs.create-release.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.zip' || '.tar.gz' }}.md5
-        asset_name: lumo-${{ needs.create-release.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.zip' || '.tar.gz' }}.md5
-        asset_content_type: text/plain
-
-  generate-checksums:
+  generate-combined-checksums:
     name: Generate Combined Checksums
-    needs: [create-release, build-and-upload]
+    needs: build-and-release
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Download all release assets
-      uses: robinraju/release-downloader@v1
-      with:
-        tag: ${{ needs.create-release.outputs.version }}
-        fileName: "*.tar.gz"
-        out-file-path: "downloads"
+    - name: Get version from tag
+      id: get_version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-    - name: Download Windows assets
-      uses: robinraju/release-downloader@v1
-      with:
-        tag: ${{ needs.create-release.outputs.version }}
-        fileName: "*.zip"
-        out-file-path: "downloads"
+    - name: Download all release assets
+      run: |
+        gh release download ${{ steps.get_version.outputs.version }} --pattern "*.tar.gz" --pattern "*.zip" --dir downloads
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Generate combined checksums
       working-directory: downloads
       run: |
         # Generate combined SHA256 checksums
-        sha256sum *.tar.gz *.zip > SHA256SUMS.txt
+        sha256sum *.tar.gz *.zip 2>/dev/null > SHA256SUMS.txt || true
 
         # Generate combined MD5 checksums
-        md5sum *.tar.gz *.zip > MD5SUMS.txt
+        md5sum *.tar.gz *.zip 2>/dev/null > MD5SUMS.txt || true
 
         echo "SHA256 checksums:"
         cat SHA256SUMS.txt
@@ -227,22 +167,11 @@ jobs:
         echo "MD5 checksums:"
         cat MD5SUMS.txt
 
-    - name: Upload combined SHA256 checksums
-      uses: actions/upload-release-asset@v1
+    - name: Upload combined checksums
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          downloads/SHA256SUMS.txt
+          downloads/MD5SUMS.txt
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./downloads/SHA256SUMS.txt
-        asset_name: SHA256SUMS.txt
-        asset_content_type: text/plain
-
-    - name: Upload combined MD5 checksums
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./downloads/MD5SUMS.txt
-        asset_name: MD5SUMS.txt
-        asset_content_type: text/plain
