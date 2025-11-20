@@ -181,6 +181,7 @@ func (r *JobRepository) List(ctx context.Context, opts ListOptions) ([]*models.J
 	}
 
 	// Build final query
+	// #nosec G201 -- sortBy and sortOrder are explicitly whitelisted/sanitized above
 	query := fmt.Sprintf(`
 		SELECT id, type, status, target, created_at, started_at, completed_at,
 		       created_by, result, error, metadata
