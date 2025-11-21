@@ -470,3 +470,36 @@ func (r *AgentRepository) MarkStaleAgentsOffline(ctx context.Context, threshold 
 
 	return rows, nil
 }
+
+// CountByPlatform returns the count of agents by platform
+func (r *AgentRepository) CountByPlatform(ctx context.Context) (map[string]int, error) {
+	query := `
+		SELECT platform, COUNT(*) as count
+		FROM agents
+		GROUP BY platform
+	`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count agents by platform: %w", err)
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	counts := make(map[string]int)
+	for rows.Next() {
+		var platform string
+		var count int
+		if err := rows.Scan(&platform, &count); err != nil {
+			return nil, fmt.Errorf("failed to scan platform count: %w", err)
+		}
+		counts[platform] = count
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate platform counts: %w", err)
+	}
+
+	return counts, nil
+}
