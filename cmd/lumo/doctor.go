@@ -8,6 +8,7 @@ import (
 
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/doctor"
+	"github.com/ignacio/lumo/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -71,7 +72,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	d.AddCheck(doctor.NewAIKeyCheck(cfg, log))
 	d.AddCheck(doctor.NewRAGCheck(cfg, log))
 	d.AddCheck(doctor.NewDependencyCheck(cfg, log))
-	d.AddCheck(doctor.NewVersionCheck(version, log))
+	d.AddCheck(doctor.NewVersionCheck(version.Version, log))
 
 	// Run all checks
 	log.Debug("Running health checks...")

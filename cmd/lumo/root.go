@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ignacio/lumo/internal/version"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -14,7 +15,6 @@ var (
 	verbose bool
 	dryRun  bool
 	log     = logrus.New()
-	version = "0.11.0" // Updated to reflect current state with RAG + gRPC foundation
 )
 
 var rootCmd = &cobra.Command{
@@ -27,7 +27,7 @@ var rootCmd = &cobra.Command{
   - Generate detailed reports
 
 Lumo uses AI to analyze system health and suggest or execute fixes.`,
-	Version: version,
+	Version: version.Version,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Set up logging
 		if verbose {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/ignacio/lumo/internal/agent"
 	"github.com/ignacio/lumo/internal/config"
+	"github.com/ignacio/lumo/internal/version"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -37,7 +38,8 @@ The agent reports results to the Lumo API server and provides:
   - Health check endpoints for Kubernetes liveness/readiness probes
   - Prometheus metrics for monitoring
   - Local caching for offline resilience`,
-	RunE: runAgent,
+	Version: version.Version,
+	RunE:    runAgent,
 }
 
 func init() {

@@ -9,7 +9,7 @@ import (
 
 // Config represents the complete Lumo configuration
 type Config struct {
-	Environment   string              `mapstructure:"environment"`   // Deployment environment: development, staging, production
+	Environment   string              `mapstructure:"environment"` // Deployment environment: development, staging, production
 	SSH           SSHConfig           `mapstructure:"ssh"`
 	AI            AIConfig            `mapstructure:"ai"`
 	Logging       LoggingConfig       `mapstructure:"logging"`
@@ -73,10 +73,11 @@ type APIConfig struct {
 	JWTIssuer      string        `mapstructure:"jwt_issuer"`     // JWT issuer (default: lumo-api)
 
 	// Rate limiting settings
-	RateLimitEnabled         bool `mapstructure:"rate_limit_enabled"`           // Enable rate limiting
-	RateLimitRequestsPerMin  int  `mapstructure:"rate_limit_requests_per_min"`  // Per-IP rate limit (requests per minute)
-	RateLimitRequestsPerHour int  `mapstructure:"rate_limit_requests_per_hour"` // Per-user rate limit (requests per hour)
-	RateLimitBurstSize       int  `mapstructure:"rate_limit_burst_size"`        // Burst size for rate limiter
+	RateLimitEnabled         bool     `mapstructure:"rate_limit_enabled"`           // Enable rate limiting
+	RateLimitRequestsPerMin  int      `mapstructure:"rate_limit_requests_per_min"`  // Per-IP rate limit (requests per minute)
+	RateLimitRequestsPerHour int      `mapstructure:"rate_limit_requests_per_hour"` // Per-user rate limit (requests per hour)
+	RateLimitBurstSize       int      `mapstructure:"rate_limit_burst_size"`        // Burst size for rate limiter
+	AllowedOrigins           []string `mapstructure:"allowed_origins"`              // CORS allowed origins
 }
 
 // DiagnosticsConfig contains diagnostic settings
@@ -277,10 +278,11 @@ func DefaultConfig() *Config {
 			ReadTimeout:              15 * time.Second,
 			WriteTimeout:             15 * time.Second,
 			MaxConnections:           100,
-			RateLimitEnabled:         true,  // Enable by default for security
-			RateLimitRequestsPerMin:  60,    // 60 req/min per IP (1 req/sec average)
-			RateLimitRequestsPerHour: 3600,  // 3600 req/hour per user (1 req/sec average)
-			RateLimitBurstSize:       10,    // Allow bursts of 10 requests
+			RateLimitEnabled:         true, // Enable by default for security
+			RateLimitRequestsPerMin:  60,   // 60 req/min per IP (1 req/sec average)
+			RateLimitRequestsPerHour: 3600, // 3600 req/hour per user (1 req/sec average)
+			RateLimitBurstSize:       10,   // Allow bursts of 10 requests
+			AllowedOrigins:           []string{"*"},
 		},
 		Diagnostics: DiagnosticsConfig{
 			Network: NetworkConfig{
@@ -329,8 +331,8 @@ func DefaultConfig() *Config {
 			User:            "lumo",
 			Password:        "", // Set via LUMO_DATABASE_PASSWORD env var
 			SSLMode:         "disable",
-			MaxConnections:  50,              // Adaptive default for medium deployments (100-500 agents)
-			MaxIdle:         12,              // 25% of MaxConnections (keep warm connections)
+			MaxConnections:  50,               // Adaptive default for medium deployments (100-500 agents)
+			MaxIdle:         12,               // 25% of MaxConnections (keep warm connections)
 			ConnMaxLifetime: 30 * time.Minute, // Increased from 5m to reduce connection churn
 		},
 		Cache: CacheConfig{
@@ -373,15 +375,15 @@ func DefaultConfig() *Config {
 			Notifiers: []NotifierConfig{}, // No notifiers configured by default
 		},
 		RAG: RAGConfig{
-			Enabled:           false,                       // Disabled by default
-			StoragePath:       "./data/rag/embeddings",     // Local storage path
-			EmbeddingProvider: "openai",                    // OpenAI for embeddings
-			EmbeddingModel:    "text-embedding-3-small",    // Efficient embedding model
-			MaxDocuments:      10000,                       // Maximum documents to store
-			SimilarityK:       5,                           // Return top 5 matches
-			MinScore:          0.7,                         // Minimum similarity threshold
-			IngestionMode:     "hybrid",                    // Hybrid ingestion (realtime for critical, batch for low-priority)
-			BatchInterval:     300,                         // 5 minutes batch interval
+			Enabled:           false,                    // Disabled by default
+			StoragePath:       "./data/rag/embeddings",  // Local storage path
+			EmbeddingProvider: "openai",                 // OpenAI for embeddings
+			EmbeddingModel:    "text-embedding-3-small", // Efficient embedding model
+			MaxDocuments:      10000,                    // Maximum documents to store
+			SimilarityK:       5,                        // Return top 5 matches
+			MinScore:          0.7,                      // Minimum similarity threshold
+			IngestionMode:     "hybrid",                 // Hybrid ingestion (realtime for critical, batch for low-priority)
+			BatchInterval:     300,                      // 5 minutes batch interval
 		},
 	}
 }
