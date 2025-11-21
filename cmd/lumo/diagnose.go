@@ -548,6 +548,21 @@ func displayDiagnosticsSummary(runner *diagnostics.Runner, checksFilter []string
 	// Display header
 	fmt.Println()
 	fmt.Printf("═══ System Diagnostics for %s ═══\n", hostname)
+
+	if len(checksFilter) > 0 {
+		fmt.Printf("Checks: %s\n", strings.Join(checksFilter, ", "))
+	} else {
+		fmt.Println("Checks: All enabled")
+	}
+
+	fmt.Printf("Format: %s\n", format)
+
+	if enableAI {
+		fmt.Println("AI Analysis: Enabled")
+	} else {
+		fmt.Println("AI Analysis: Disabled")
+	}
+
 	fmt.Println()
 }
 

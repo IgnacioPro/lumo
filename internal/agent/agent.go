@@ -11,10 +11,9 @@ import (
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/ignacio/lumo/internal/diagnostics/checkers"
+	"github.com/ignacio/lumo/internal/version"
 	"github.com/sirupsen/logrus"
 )
-
-const Version = "1.0.0"
 
 // Agent represents the Lumo agent daemon
 type Agent struct {
@@ -87,7 +86,7 @@ func (a *Agent) Start(ctx context.Context) error {
 	a.logger.Info("Starting Lumo agent")
 
 	// Set agent info metrics
-	a.metrics.SetAgentInfo(Version, a.Hostname, runtime.GOOS, a.Mode)
+	a.metrics.SetAgentInfo(version.Version, a.Hostname, runtime.GOOS, a.Mode)
 
 	// Start health check server
 	if err := a.healthCheck.Start(); err != nil {
@@ -162,7 +161,7 @@ func (a *Agent) register() error {
 
 	// Build labels
 	labels := make(map[string]interface{})
-	labels["version"] = Version
+	labels["version"] = version.Version
 	labels["mode"] = a.Mode
 
 	// Build registration request
@@ -171,7 +170,7 @@ func (a *Agent) register() error {
 		Hostname:     a.Hostname,
 		Platform:     platform,
 		Architecture: runtime.GOARCH,
-		Version:      Version,
+		Version:      version.Version,
 		Capabilities: capabilities,
 		Labels:       labels,
 	}
@@ -245,7 +244,7 @@ func (a *Agent) setupMode(ctx context.Context) error {
 }
 
 // setupScheduledMode sets up scheduled diagnostic runs
-func (a *Agent) setupScheduledMode(ctx context.Context) error {
+func (a *Agent) setupScheduledMode(_ context.Context) error {
 	a.logger.WithField("schedule", a.cfg.Agent.Schedule).Info("Setting up scheduled mode")
 
 	task := func(ctx context.Context) error {
@@ -261,7 +260,7 @@ func (a *Agent) setupScheduledMode(ctx context.Context) error {
 }
 
 // setupOnDemandMode sets up on-demand mode (waits for API requests)
-func (a *Agent) setupOnDemandMode(ctx context.Context) error {
+func (a *Agent) setupOnDemandMode(_ context.Context) error {
 	a.logger.Info("Setting up on-demand mode")
 	// In on-demand mode, diagnostics are triggered via API calls
 	// This would be implemented with a webhook or message queue listener
@@ -294,7 +293,7 @@ func (a *Agent) setupContinuousMode(ctx context.Context) error {
 }
 
 // setupHybridMode sets up hybrid mode (scheduled + on-demand)
-func (a *Agent) setupHybridMode(ctx context.Context) error {
+func (a *Agent) setupHybridMode(_ context.Context) error {
 	a.logger.WithField("schedule", a.cfg.Agent.Schedule).Info("Setting up hybrid mode")
 
 	// Set up scheduled diagnostics

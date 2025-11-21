@@ -10,7 +10,7 @@ INSTALL_PATH=$(shell go env GOPATH)/bin
 # Build variables
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
-LDFLAGS=-ldflags "-X main.version=$(VERSION)"
+LDFLAGS=-ldflags "-X github.com/ignacio/lumo/internal/version.Version=$(VERSION)"
 
 # Colors for output
 COLOR_RESET=\033[0m
