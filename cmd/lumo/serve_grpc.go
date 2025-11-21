@@ -123,7 +123,7 @@ func runServeGRPC(cmd *cobra.Command, args []string) error {
 
 	// Register service handlers
 	if db != nil {
-		diagnosticsHandler := grpchandlers.NewDiagnosticsHandler(jobRepo)
+		diagnosticsHandler := grpchandlers.NewDiagnosticsHandler(jobRepo, cfg, log)
 		lumov1.RegisterDiagnosticsServiceServer(grpcServer.GetGRPCServer(), diagnosticsHandler)
 		log.Info("Registered DiagnosticsService")
 

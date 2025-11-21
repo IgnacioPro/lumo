@@ -326,6 +326,7 @@ func TestAuthenticationRequired(t *testing.T) {
 
 // setupTestRouter creates a test router with in-memory database
 func setupTestRouter(t *testing.T) (*http.ServeMux, string, func()) {
+	t.Helper()
 	// Create test logger
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel) // Suppress logs in tests

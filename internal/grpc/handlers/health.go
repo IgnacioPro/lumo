@@ -9,6 +9,7 @@ import (
 
 	lumov1 "github.com/ignacio/lumo/api/proto/v1"
 	"github.com/ignacio/lumo/internal/config"
+	"github.com/ignacio/lumo/internal/version"
 )
 
 // HealthHandler implements the HealthService gRPC service
@@ -33,7 +34,7 @@ func NewHealthHandler(cfg *config.Config, db *sql.DB) *HealthHandler {
 func (h *HealthHandler) Check(ctx context.Context, req *lumov1.HealthCheckRequest) (*lumov1.HealthCheckResponse, error) {
 	resp := &lumov1.HealthCheckResponse{
 		Status:     lumov1.HealthCheckResponse_SERVING_STATUS_SERVING,
-		Version:    "0.11.0", // TODO: Get from build-time variable
+		Version:    version.Version,
 		Uptime:     timestamppb.New(h.startTime),
 		Components: make(map[string]*lumov1.ComponentHealth),
 	}

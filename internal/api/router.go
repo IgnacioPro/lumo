@@ -28,7 +28,7 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 	// Global middleware
 	r.Use(apimiddleware.Recovery(logger))
 	r.Use(apimiddleware.Logger(logger))
-	r.Use(apimiddleware.CORS())
+	r.Use(apimiddleware.CORS(cfg.API.AllowedOrigins))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 

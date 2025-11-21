@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -513,7 +514,9 @@ func TestAgentsHandler_GetAgentStats(t *testing.T) {
 // TestDiagnosticsHandler tests the diagnostics service handler
 func TestDiagnosticsHandler_RunDiagnostics(t *testing.T) {
 	repo := newMockJobRepository()
-	handler := NewDiagnosticsHandler(repo)
+	cfg := &config.Config{}
+	logger := logrus.New()
+	handler := NewDiagnosticsHandler(repo, cfg, logger)
 
 	tests := []struct {
 		name    string
@@ -570,7 +573,9 @@ func TestDiagnosticsHandler_RunDiagnostics(t *testing.T) {
 
 func TestDiagnosticsHandler_GetDiagnosticsResult(t *testing.T) {
 	repo := newMockJobRepository()
-	handler := NewDiagnosticsHandler(repo)
+	cfg := &config.Config{}
+	logger := logrus.New()
+	handler := NewDiagnosticsHandler(repo, cfg, logger)
 
 	ctx := context.Background()
 
@@ -630,7 +635,9 @@ func TestDiagnosticsHandler_GetDiagnosticsResult(t *testing.T) {
 
 func TestDiagnosticsHandler_ListDiagnostics(t *testing.T) {
 	repo := newMockJobRepository()
-	handler := NewDiagnosticsHandler(repo)
+	cfg := &config.Config{}
+	logger := logrus.New()
+	handler := NewDiagnosticsHandler(repo, cfg, logger)
 
 	ctx := context.Background()
 
