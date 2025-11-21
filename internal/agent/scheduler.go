@@ -19,16 +19,21 @@ type Scheduler struct {
 	logger *logrus.Logger
 	mu     sync.Mutex
 	tasks  map[string]cron.EntryID
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // NewScheduler creates a new scheduler
 func NewScheduler(logger *logrus.Logger) *Scheduler {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Scheduler{
 		cron: cron.New(cron.WithParser(cron.NewParser(
 			cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
 		))),
 		logger: logger,
 		tasks:  make(map[string]cron.EntryID),
+		ctx:    ctx,
+		cancel: cancel,
 	}
 }
 
@@ -44,7 +49,11 @@ func (s *Scheduler) AddTask(name, schedule string, task TaskFunc) error {
 
 	// Wrap task function to handle context and logging
 	wrappedTask := func() {
-		ctx := context.Background()
+		// Create a timeout context for this task execution
+		// Use 30 minutes as a reasonable default for long-running tasks
+		ctx, cancel := context.WithTimeout(s.ctx, 30*time.Minute)
+		defer cancel()
+
 		start := time.Now()
 
 		s.logger.WithFields(logrus.Fields{
@@ -105,6 +114,9 @@ func (s *Scheduler) Start() {
 // Stop stops the scheduler and waits for running tasks to complete
 func (s *Scheduler) Stop() {
 	s.logger.Info("Stopping scheduler")
+	// Cancel the scheduler context to signal tasks to stop
+	s.cancel()
+	// Stop the cron scheduler and wait for running tasks
 	ctx := s.cron.Stop()
 	<-ctx.Done()
 	s.logger.Info("Scheduler stopped")

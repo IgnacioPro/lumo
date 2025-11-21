@@ -14,6 +14,7 @@ import (
 	"github.com/ignacio/lumo/internal/database/models"
 	"github.com/ignacio/lumo/internal/database/repository"
 	"github.com/ignacio/lumo/internal/diagnostics"
+	"github.com/ignacio/lumo/internal/diagnostics/checkers"
 	"github.com/ignacio/lumo/internal/ssh"
 	"github.com/sirupsen/logrus"
 )
@@ -127,8 +128,15 @@ func (h *DiagnosticsHandler) Run(w http.ResponseWriter, r *http.Request) {
 		"target": req.Target,
 	}).Info("Diagnostic job created")
 
-	// Execute diagnostics asynchronously
-	go h.executeDiagnostics(context.Background(), job, req)
+	// Execute diagnostics asynchronously with a timeout context
+	// Note: We use Background instead of request context since the goroutine
+	// outlives the HTTP request. A 30-minute timeout ensures long-running
+	// diagnostics can complete while preventing resource leaks.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	go func() {
+		defer cancel()
+		h.executeDiagnostics(ctx, job, req)
+	}()
 
 	// Return immediate response
 	resp := DiagnosticResponse{
@@ -258,14 +266,39 @@ func (h *DiagnosticsHandler) executeDiagnostics(ctx context.Context, job *models
 
 // registerCheckers registers all available diagnostic checkers
 func (h *DiagnosticsHandler) registerCheckers(runner *diagnostics.Runner) {
-	// Note: In a real implementation, you would import and register all checkers
-	// For now, this is a placeholder that shows the pattern
-	// Example:
-	// runner.RegisterChecker(checkers.NewCPUChecker())
-	// runner.RegisterChecker(checkers.NewMemoryChecker())
-	// etc.
+	// Get default thresholds
+	thresholds := diagnostics.DefaultThresholds()
 
-	h.logger.Debug("Checkers registered")
+	// Core system checkers
+	runner.RegisterChecker(checkers.NewCPUChecker(thresholds.CPU))
+	runner.RegisterChecker(checkers.NewMemoryChecker(thresholds.Memory))
+	runner.RegisterChecker(checkers.NewDiskChecker(thresholds.Disk))
+	runner.RegisterChecker(checkers.NewProcessChecker(thresholds.Process))
+	runner.RegisterChecker(checkers.NewServiceChecker([]string{})) // Empty list = check common services
+
+	// Network checker with config targets
+	networkTargets := h.config.Diagnostics.Network.Targets
+	runner.RegisterChecker(checkers.NewNetworkChecker(thresholds.Network, networkTargets))
+
+	// Security checkers
+	runner.RegisterChecker(checkers.NewPatchChecker())
+	runner.RegisterChecker(checkers.NewPortsChecker(h.config.Diagnostics.Security.PortCheck.WhitelistedPorts))
+	runner.RegisterChecker(checkers.NewSSHSecurityChecker())
+	runner.RegisterChecker(checkers.NewAuthFailuresChecker(
+		h.config.Diagnostics.Security.AuthFailureCheck.LookbackHours,
+		h.config.Diagnostics.Security.AuthFailureCheck.FailureThreshold,
+	))
+
+	// Specialized checkers
+	// Kubernetes checker (only if enabled)
+	if h.config.Diagnostics.Kubernetes.Enabled {
+		runner.RegisterChecker(checkers.NewKubernetesChecker(h.config.Diagnostics.Kubernetes, h.logger))
+	}
+
+	// Proxmox checker (always available but will skip if not on Proxmox)
+	runner.RegisterChecker(checkers.NewProxmoxChecker(true, true, true, true, true, true, true))
+
+	h.logger.Debug("All diagnostic checkers registered successfully")
 }
 
 // isLocalhost checks if the given hostname refers to the local machine
