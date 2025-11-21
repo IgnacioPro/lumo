@@ -1,7 +1,33 @@
 # Lumo Configuration File
 # Copy this file to ~/.lumo/config.yaml or ./config.yaml and customize as needed
 
+# ============================================================================
+# Environment Configuration
+# ============================================================================
+# Deployment environment: development, staging, or production
+#
+# Precedence (highest to lowest):
+#   1. LUMO_ENVIRONMENT environment variable (overrides all)
+#   2. environment field in this config file
+#   3. Auto-detection (TLS enabled, public binding, or Kubernetes)
+#
+# Production mode enforces security requirements:
+#   - JWT secret must be explicitly configured (fails to start if missing)
+#   - Stricter validation and logging
+#
+# Examples:
+#   environment: development  # Default, relaxed security checks
+#   environment: staging      # Pre-production testing
+#   environment: production   # Enforces all security requirements
+#
+# You can also set via environment variable (takes precedence):
+#   export LUMO_ENVIRONMENT=production
+#
+environment: development
+
+# ============================================================================
 # SSH Configuration
+# ============================================================================
 ssh:
   # Connection timeout for SSH operations
   timeout: 30s
@@ -128,6 +154,61 @@ api:
 
   # Maximum number of concurrent connections
   max_connections: 100
+
+  # JWT Configuration (Authentication & Authorization)
+  #
+  # JWT secret: MUST be set via environment variable in production
+  # NEVER commit secrets to version control
+  #
+  # Generate a secure secret with:
+  #   openssl rand -base64 32
+  #
+  # CRITICAL: Production deployments REQUIRE explicit JWT secret
+  #   - Server will FAIL TO START if running in production mode without JWT secret
+  #   - Multi-instance deployments (load balancers, K8s replicas) REQUIRE shared secret
+  #
+  # Development mode:
+  #   - Auto-generates temporary secret (resets on restart)
+  #   - Sessions will NOT persist across restarts
+  #   - Multi-instance deployments will NOT work
+  #
+  # Set via environment variable (REQUIRED for production):
+  #   export LUMO_API_JWT_SECRET="your-secret-here-minimum-32-chars"
+  #
+  # jwt_secret: ""            # DO NOT set here - use environment variable
+  # jwt_expiration: 24h       # Token expiration (default: 24 hours)
+  # jwt_issuer: "lumo-api"    # JWT issuer (default: lumo-api)
+
+  # Rate Limiting Configuration (Security & DoS Protection)
+  #
+  # Protects against:
+  #   - Brute force attacks (authentication attempts)
+  #   - API abuse (excessive requests)
+  #   - Denial of Service (DoS) attacks
+  #   - Resource exhaustion
+  #
+  # Two-tier rate limiting:
+  #   1. Per-IP: Applied to ALL requests (prevents IP-based attacks)
+  #   2. Per-User: Applied to authenticated endpoints (prevents account abuse)
+  #
+  # Enabled by default for security (recommended for production)
+  #
+  rate_limit_enabled: true
+  rate_limit_requests_per_min: 60    # Per-IP limit: 60 req/min (1 req/sec average)
+  rate_limit_requests_per_hour: 3600 # Per-user limit: 3600 req/hour (1 req/sec average)
+  rate_limit_burst_size: 10          # Allow short bursts (e.g., 10 rapid requests)
+  #
+  # Disable in development for easier testing:
+  #   export LUMO_API_RATE_LIMIT_ENABLED=false
+  #
+  # Adjust limits for high-traffic environments:
+  #   export LUMO_API_RATE_LIMIT_REQUESTS_PER_MIN=120
+  #   export LUMO_API_RATE_LIMIT_REQUESTS_PER_HOUR=7200
+  #
+  # When rate limit exceeded, API returns:
+  #   - HTTP 429 Too Many Requests
+  #   - Retry-After header (seconds to wait)
+  #   - X-RateLimit-Limit and X-RateLimit-Remaining headers
 
 # Diagnostics Configuration
 diagnostics:
@@ -292,9 +373,25 @@ database:
   # Password should ONLY be set via environment variable
   # LUMO_DATABASE_PASSWORD=lumo_dev
   ssl_mode: disable  # Options: disable, require, verify-ca, verify-full
-  max_connections: 25
-  max_idle: 5
-  conn_max_lifetime: 5m
+
+  # Connection Pool Settings (Tuned for 1000+ Agent Scale)
+  #
+  # Guidelines for different deployment sizes:
+  #   - Small (1-100 agents):         max_connections=25,  max_idle=5
+  #   - Medium (100-500 agents):      max_connections=50,  max_idle=12   (DEFAULT)
+  #   - Large (500-1000 agents):      max_connections=100, max_idle=25
+  #   - Extra Large (1000+ agents):   max_connections=200, max_idle=50
+  #
+  # IMPORTANT: PostgreSQL server must have max_connections >= your setting
+  #   - Default PostgreSQL max_connections=100
+  #   - For large deployments, edit postgresql.conf: max_connections = 200
+  #   - Consider using PgBouncer for connection pooling at scale
+  #
+  # See docs/database-tuning.md for detailed tuning guide
+  #
+  max_connections: 50    # Adaptive default for medium deployments (100-500 agents)
+  max_idle: 12           # 25% of max_connections (keep warm connections)
+  conn_max_lifetime: 30m # Increased from 5m to reduce connection churn
 
 # Cache Configuration (Phase 9.1)
 cache:
