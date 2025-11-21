@@ -161,9 +161,9 @@ ci-test:
 ## ci-build: Build both CLI and Agent binaries (used by GitHub CI)
 ci-build:
 	@echo "$(COLOR_BLUE)Building CLI binary...$(COLOR_RESET)"
-	$(GO) build -v ./cmd/lumo
+	$(GO) build -v $(LDFLAGS) ./cmd/lumo
 	@echo "$(COLOR_BLUE)Building Agent binary...$(COLOR_RESET)"
-	$(GO) build -v ./cmd/lumo-agent
+	$(GO) build -v $(LDFLAGS) ./cmd/lumo-agent
 	@echo "$(COLOR_GREEN)✓ Build complete$(COLOR_RESET)"
 
 ## ci: Run all CI checks (matches GitHub CI workflow)

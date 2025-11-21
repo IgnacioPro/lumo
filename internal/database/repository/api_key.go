@@ -263,7 +263,9 @@ func (r *APIKeyRepository) ValidateAndGet(ctx context.Context, plainKey string) 
 
 	// Update last used timestamp (fire and forget)
 	go func() {
-		_ = r.UpdateLastUsed(context.Background(), key.ID)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = r.UpdateLastUsed(ctx, key.ID)
 	}()
 
 	return key, nil

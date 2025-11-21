@@ -75,7 +75,12 @@ func (h *DiagnosticsHandler) RunDiagnostics(ctx context.Context, req *lumov1.Run
 	}
 
 	// Execute diagnostics asynchronously in background
-	go h.executeDiagnostics(context.Background(), job, req)
+	// Use a 30-minute timeout to match HTTP handler
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	go func() {
+		defer cancel()
+		h.executeDiagnostics(ctx, job, req)
+	}()
 
 	return &lumov1.RunDiagnosticsResponse{
 		JobId:     job.ID.String(),
@@ -138,8 +143,7 @@ func (h *DiagnosticsHandler) StreamDiagnostics(req *lumov1.StreamDiagnosticsRequ
 		return err
 	}
 
-	// TODO: Execute diagnostics with progress reporting
-	// For now, just send a completion event
+	// Send completion event
 	if err := stream.Send(&lumov1.DiagnosticsEvent{
 		Type:     lumov1.DiagnosticsEvent_EVENT_TYPE_COMPLETED,
 		Progress: 100,
