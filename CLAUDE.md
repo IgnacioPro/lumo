@@ -85,6 +85,9 @@ lumo/
 │   └── messaging/         # (Phase 11) Pub/sub: NATS, Kafka, RabbitMQ, Redis
 ├── deployments/
 │   ├── kubernetes/        # ✅ (Phase 9) DaemonSet, Deployment, RBAC, Helm
+│   │   ├── base/          # Base Kubernetes manifests
+│   │   ├── helm/          # Helm chart
+│   │   └── kind/          # ✅ Local testing with kind (Dockerfile, test scripts)
 │   └── systemd/           # ✅ (Phase 10) Service units, install scripts, packages
 ├── examples/              # ✅ 6 comprehensive examples (3,200+ LOC)
 │   ├── 01-local-diagnostics/
@@ -789,6 +792,14 @@ curl http://localhost:8080/api/v1/agents/stats \
 ```bash
 # Build Agent
 go build -o lumo-agent ./cmd/lumo-agent
+
+# Local Testing with kind (Kubernetes in Docker)
+cd deployments/kubernetes/kind
+./test-agent.sh                    # Complete end-to-end test
+# Or step-by-step:
+./setup-kind-cluster.sh            # Create 3-node cluster
+./build-and-load.sh                # Build and load image
+./deploy-to-kind.sh                # Deploy agent
 
 # Deploy to Kubernetes
 kubectl apply -f deployments/kubernetes/daemonset.yaml
