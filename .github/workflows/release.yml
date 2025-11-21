@@ -1,5 +1,8 @@
 name: Release
 
+# Temporarily disabled - using CircleCI instead
+# To re-enable, remove the "if: false" condition from all jobs below
+
 on:
   push:
     tags:
@@ -12,6 +15,7 @@ jobs:
   build-and-release:
     name: Build and Release
     runs-on: ubuntu-latest
+    if: false  # Disabled - using CircleCI instead
     strategy:
       matrix:
         include:
@@ -141,6 +145,7 @@ jobs:
     name: Generate Combined Checksums
     needs: build-and-release
     runs-on: ubuntu-latest
+    if: false  # Disabled - using CircleCI instead
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
