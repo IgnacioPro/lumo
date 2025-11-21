@@ -58,7 +58,7 @@ lumo/
 ├── configs/                           # Example configurations
 └── docker-compose.yaml                # PostgreSQL + Redis for development
 
-Total: 192 Go files + 62 test files | Coverage: 65% | Verified: 2025-11-21
+Total: 192 Go files + 70 test files | Coverage: 66.7% | Verified: 2025-11-21
 ```
 
 ---
@@ -159,7 +159,7 @@ Implementation: `internal/doctor/{doctor.go,checks.go}`, `cmd/lumo/doctor.go`
 
 ## Testing & CI
 
-**Coverage:** 65% (52 test files) | Table-driven tests, mock executors
+**Coverage:** 66.7% (70 test files) | Table-driven tests, mock executors
 **Run:** `go test ./...` | `make ci` (full local checks)
 
 **Makefile Targets:**
