@@ -7,9 +7,12 @@ import (
 )
 
 // CORS returns a CORS middleware with sensible defaults
-func CORS() func(http.Handler) http.Handler {
+func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
+	if len(allowedOrigins) == 0 {
+		allowedOrigins = []string{"*"}
+	}
 	return cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"}, // TODO: Configure this via config
+		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Key"},
 		ExposedHeaders:   []string{"Link"},

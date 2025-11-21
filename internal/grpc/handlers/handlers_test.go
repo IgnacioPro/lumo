@@ -3,10 +3,12 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -20,6 +22,7 @@ import (
 
 // Mock repository interfaces
 type mockJobRepository struct {
+	mu   sync.RWMutex
 	jobs map[uuid.UUID]*models.Job
 }
 
@@ -30,11 +33,15 @@ func newMockJobRepository() *mockJobRepository {
 }
 
 func (m *mockJobRepository) Create(ctx context.Context, job *models.Job) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.jobs[job.ID] = job
 	return nil
 }
 
 func (m *mockJobRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Job, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	job, ok := m.jobs[id]
 	if !ok {
 		return nil, sql.ErrNoRows
@@ -43,6 +50,8 @@ func (m *mockJobRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.
 }
 
 func (m *mockJobRepository) List(ctx context.Context, opts repository.ListOptions) ([]*models.Job, int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	jobs := make([]*models.Job, 0, len(m.jobs))
 	for _, job := range m.jobs {
 		jobs = append(jobs, job)
@@ -51,6 +60,8 @@ func (m *mockJobRepository) List(ctx context.Context, opts repository.ListOption
 }
 
 func (m *mockJobRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status models.JobStatus) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	job, ok := m.jobs[id]
 	if !ok {
 		return sql.ErrNoRows
@@ -60,6 +71,8 @@ func (m *mockJobRepository) UpdateStatus(ctx context.Context, id uuid.UUID, stat
 }
 
 func (m *mockJobRepository) UpdateResult(ctx context.Context, id uuid.UUID, result []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	job, ok := m.jobs[id]
 	if !ok {
 		return sql.ErrNoRows
@@ -69,6 +82,8 @@ func (m *mockJobRepository) UpdateResult(ctx context.Context, id uuid.UUID, resu
 }
 
 func (m *mockJobRepository) UpdateError(ctx context.Context, id uuid.UUID, errorMsg string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	job, ok := m.jobs[id]
 	if !ok {
 		return sql.ErrNoRows
@@ -78,6 +93,8 @@ func (m *mockJobRepository) UpdateError(ctx context.Context, id uuid.UUID, error
 }
 
 func (m *mockJobRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	delete(m.jobs, id)
 	return nil
 }
@@ -513,7 +530,9 @@ func TestAgentsHandler_GetAgentStats(t *testing.T) {
 // TestDiagnosticsHandler tests the diagnostics service handler
 func TestDiagnosticsHandler_RunDiagnostics(t *testing.T) {
 	repo := newMockJobRepository()
-	handler := NewDiagnosticsHandler(repo)
+	cfg := &config.Config{}
+	logger := logrus.New()
+	handler := NewDiagnosticsHandler(repo, cfg, logger)
 
 	tests := []struct {
 		name    string
@@ -570,7 +589,9 @@ func TestDiagnosticsHandler_RunDiagnostics(t *testing.T) {
 
 func TestDiagnosticsHandler_GetDiagnosticsResult(t *testing.T) {
 	repo := newMockJobRepository()
-	handler := NewDiagnosticsHandler(repo)
+	cfg := &config.Config{}
+	logger := logrus.New()
+	handler := NewDiagnosticsHandler(repo, cfg, logger)
 
 	ctx := context.Background()
 
@@ -630,7 +651,9 @@ func TestDiagnosticsHandler_GetDiagnosticsResult(t *testing.T) {
 
 func TestDiagnosticsHandler_ListDiagnostics(t *testing.T) {
 	repo := newMockJobRepository()
-	handler := NewDiagnosticsHandler(repo)
+	cfg := &config.Config{}
+	logger := logrus.New()
+	handler := NewDiagnosticsHandler(repo, cfg, logger)
 
 	ctx := context.Background()
 

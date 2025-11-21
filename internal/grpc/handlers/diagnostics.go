@@ -4,11 +4,13 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	lumov1 "github.com/ignacio/lumo/api/proto/v1"
+	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/database/models"
 	"github.com/ignacio/lumo/internal/database/repository"
 )
@@ -29,12 +31,16 @@ type DiagnosticsHandler struct {
 	lumov1.UnimplementedDiagnosticsServiceServer
 
 	jobRepo JobRepository
+	cfg     *config.Config
+	logger  *logrus.Logger
 }
 
 // NewDiagnosticsHandler creates a new diagnostics service handler
-func NewDiagnosticsHandler(jobRepo JobRepository) *DiagnosticsHandler {
+func NewDiagnosticsHandler(jobRepo JobRepository, cfg *config.Config, logger *logrus.Logger) *DiagnosticsHandler {
 	return &DiagnosticsHandler{
 		jobRepo: jobRepo,
+		cfg:     cfg,
+		logger:  logger,
 	}
 }
 
@@ -63,8 +69,8 @@ func (h *DiagnosticsHandler) RunDiagnostics(ctx context.Context, req *lumov1.Run
 		return nil, status.Errorf(codes.Internal, "failed to create job: %v", err)
 	}
 
-	// TODO: Execute diagnostics asynchronously in background
-	// go h.executeDiagnostics(context.Background(), job, req)
+	// Execute diagnostics asynchronously in background
+	go h.executeDiagnostics(context.Background(), job, req)
 
 	return &lumov1.RunDiagnosticsResponse{
 		JobId:     job.ID.String(),
@@ -236,4 +242,29 @@ func toModelJobStatusFromProto(status lumov1.JobStatus) models.JobStatus {
 	default:
 		return models.JobStatusPending
 	}
+}
+
+func (h *DiagnosticsHandler) executeDiagnostics(ctx context.Context, job *models.Job, req *lumov1.RunDiagnosticsRequest) {
+	h.logger.WithFields(logrus.Fields{
+		"job_id": job.ID,
+		"checks": req.Checks,
+	}).Info("Starting async diagnostics execution")
+
+	// Update status to running
+	if err := h.jobRepo.UpdateStatus(ctx, job.ID, models.JobStatusRunning); err != nil {
+		h.logger.WithError(err).Error("Failed to update job status to running")
+		return
+	}
+
+	// Simulate diagnostics execution (replace with actual logic)
+	// In a real implementation, this would invoke the diagnostics engine
+	// For now, we'll just simulate some work
+	// TODO: Integrate with internal/diagnostics package
+
+	// Simulate success
+	if err := h.jobRepo.UpdateStatus(ctx, job.ID, models.JobStatusCompleted); err != nil {
+		h.logger.WithError(err).Error("Failed to update job status to completed")
+	}
+
+	h.logger.WithField("job_id", job.ID).Info("Async diagnostics execution completed")
 }

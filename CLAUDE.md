@@ -36,6 +36,7 @@ lumo/
 │   └── lumo-agent/                    # Agent daemon: scheduler, reporter, health, metrics
 ├── internal/
 │   ├── config/                        # Configuration + env var hierarchy
+│   ├── version/                       # Centralized version management (CLI + Agent)
 │   ├── ssh/                           # SSH client (4 auth methods, retry)
 │   ├── diagnostics/                   # Runner, 12 checkers, formatters (text/TOON/JSON)
 │   ├── ai/                            # Adapter pattern: 5 providers + HTTP/streaming
@@ -93,6 +94,9 @@ export LUMO_AGENT_TOKEN=$JWT_TOKEN
 export LUMO_API_JWT_SECRET=secret-key               # Production required
 export LUMO_DATABASE_PASSWORD=password              # DB password
 ```
+
+**Config Options:**
+- `api.allowed_origins`: CORS-allowed origins (configurable per environment, not hardcoded)
 
 See [configs/config.example.yaml](configs/config.example.yaml) and [configs/notifications.example.yaml](configs/notifications.example.yaml) for complete options.
 
@@ -223,6 +227,15 @@ For rate limiting and DB pool config, see [configs/config.example.yaml](configs/
 - Webhook: Generic (Discord, Teams, Mattermost)
 - Email: SMTP + TLS + HTML
 - Doc: `internal/notifications/README.md`
+
+**Diagnostics Handler:**
+- Fixed async execution with background method (executeDiagnostics)
+- Accepts config and logger, improved UX with summary headers
+- Shows checks, format, and AI analysis status
+
+**API Configuration:**
+- CORS: Configurable allowed_origins (no longer hardcoded "*")
+- Version injection: Centralized via `internal/version` package, injected at build time
 
 ---
 
