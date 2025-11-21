@@ -545,75 +545,9 @@ type CheckInfo struct {
 
 // displayDiagnosticsSummary shows a summary of what checks will be run before execution
 func displayDiagnosticsSummary(runner *diagnostics.Runner, checksFilter []string, format string, enableAI bool, hostname string) {
-	// Get the list of checks that will actually run
-	registeredChecks := runner.GetRegisteredChecks()
-
-	// Group checks by category
-	categoryCounts := make(map[diagnostics.CheckCategory]int)
-
-	for _, checker := range registeredChecks {
-		categoryCounts[checker.Category()]++
-	}
-
-	// Display summary
+	// Display header
 	fmt.Println()
-	fmt.Println("╔═══════════════════════════════════════════════════════════════╗")
-	fmt.Printf("║  Running diagnostics on: %-33s║\n", hostname)
-	fmt.Println("╚═══════════════════════════════════════════════════════════════╝")
-	fmt.Println()
-
-	// Show filter info if specific checks were selected
-	if len(checksFilter) > 0 {
-		fmt.Printf("Checks Filter: %s\n", strings.Join(checksFilter, ", "))
-	} else {
-		fmt.Println("Checks: All available checks")
-	}
-
-	// Show category breakdown
-	fmt.Printf("Total Checks: %d\n", len(registeredChecks))
-
-	// Display categories with counts
-	if categoryCounts[diagnostics.CategoryCPU] > 0 ||
-		categoryCounts[diagnostics.CategoryMemory] > 0 ||
-		categoryCounts[diagnostics.CategoryDisk] > 0 ||
-		categoryCounts[diagnostics.CategoryProcess] > 0 ||
-		categoryCounts[diagnostics.CategoryService] > 0 ||
-		categoryCounts[diagnostics.CategoryNetwork] > 0 {
-		coreCount := categoryCounts[diagnostics.CategoryCPU] +
-			categoryCounts[diagnostics.CategoryMemory] +
-			categoryCounts[diagnostics.CategoryDisk] +
-			categoryCounts[diagnostics.CategoryProcess] +
-			categoryCounts[diagnostics.CategoryService] +
-			categoryCounts[diagnostics.CategoryNetwork]
-		if coreCount > 0 {
-			fmt.Printf("  • Core: %d\n", coreCount)
-		}
-	}
-
-	if categoryCounts[diagnostics.CategorySecurity] > 0 {
-		fmt.Printf("  • Security: %d\n", categoryCounts[diagnostics.CategorySecurity])
-	}
-
-	if categoryCounts[diagnostics.CategoryKubernetes] > 0 {
-		fmt.Printf("  • Kubernetes: %d\n", categoryCounts[diagnostics.CategoryKubernetes])
-	}
-
-	if categoryCounts[diagnostics.CategoryVirtualization] > 0 {
-		fmt.Printf("  • Virtualization: %d\n", categoryCounts[diagnostics.CategoryVirtualization])
-	}
-
-	// Show output format
-	fmt.Printf("Output Format: %s\n", format)
-
-	// Show AI analysis status
-	if enableAI {
-		fmt.Println("AI Analysis: enabled")
-	} else {
-		fmt.Println("AI Analysis: disabled")
-	}
-
-	fmt.Println()
-	fmt.Println("───────────────────────────────────────────────────────────────")
+	fmt.Printf("═══ System Diagnostics for %s ═══\n", hostname)
 	fmt.Println()
 }
 
