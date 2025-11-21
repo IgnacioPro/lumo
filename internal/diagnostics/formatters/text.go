@@ -3,7 +3,6 @@ package formatters
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/ignacio/lumo/internal/diagnostics"
 )
@@ -33,19 +32,14 @@ func (f *TextFormatter) FormatReport(report *diagnostics.Report) string {
 	// Results grouped by category
 	categories := f.groupResultsByCategory(report.Results)
 
-	for category, results := range categories {
-		sb.WriteString(f.formatCategoryHeader(category))
-		sb.WriteString("\n")
-
+	for _, results := range categories {
 		for _, result := range results {
 			sb.WriteString(f.formatResult(result))
-			sb.WriteString("\n")
 		}
-		sb.WriteString("\n")
 	}
 
-	// Summary
-	sb.WriteString(f.formatSummary(report))
+	// Summary - Removed to match design
+	// sb.WriteString(f.formatSummary(report))
 
 	return sb.String()
 }
@@ -57,17 +51,8 @@ func (f *TextFormatter) FormatResult(result *diagnostics.CheckResult) string {
 
 // formatHeader formats the report header
 func (f *TextFormatter) formatHeader(report *diagnostics.Report) string {
-	var sb strings.Builder
-
-	sb.WriteString("=" + strings.Repeat("=", 78) + "\n")
-	sb.WriteString("  LUMO DIAGNOSTIC REPORT\n")
-	sb.WriteString("=" + strings.Repeat("=", 78) + "\n")
-	sb.WriteString(fmt.Sprintf("  Timestamp: %s\n", report.Timestamp.Format(time.RFC3339)))
-	sb.WriteString(fmt.Sprintf("  Duration:  %v\n", report.Duration.Round(time.Millisecond)))
-	sb.WriteString(fmt.Sprintf("  Checks:    %d\n", report.Summary.TotalChecks))
-	sb.WriteString("=" + strings.Repeat("=", 78))
-
-	return sb.String()
+	// Header is handled by the main command now
+	return ""
 }
 
 // formatCategoryHeader formats a category section header
@@ -82,23 +67,33 @@ func (f *TextFormatter) formatResult(result *diagnostics.CheckResult) string {
 
 	// Status icon and name
 	icon := f.getSeverityIcon(result.Severity)
-	sb.WriteString(fmt.Sprintf("  %s %s", icon, result.Name))
 
-	// Status badge
-	if result.Status != diagnostics.StatusCompleted {
-		sb.WriteString(fmt.Sprintf(" [%s]", strings.ToUpper(string(result.Status))))
+	// Format: [✓] Check Name (STATUS)
+	// Status text logic: OK (Green), WARNING (Yellow), ERROR (Red)
+	statusText := "OK"
+	statusColor := colorGreen
+
+	if result.Severity == diagnostics.SeverityWarning {
+		statusText = "WARNING"
+		statusColor = colorYellow
+	} else if result.Severity == diagnostics.SeverityError || result.Severity == diagnostics.SeverityCritical {
+		statusText = "ERROR"
+		statusColor = colorRed
 	}
 
-	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("%s %s (%s)\n", icon, f.colorize(result.Name, statusColor), f.colorize(statusText, statusColor)))
 
 	// Message (indented)
 	if result.Message != "" {
-		sb.WriteString(fmt.Sprintf("     %s\n", result.Message))
+		lines := strings.Split(result.Message, "\n")
+		for _, line := range lines {
+			sb.WriteString(fmt.Sprintf("  %s\n", line))
+		}
 	}
 
 	// Verbose mode: show metrics
-	if f.verbose && len(result.Metrics) > 0 {
-		sb.WriteString("     Metrics:\n")
+	// Always show metrics if present, as per design
+	if len(result.Metrics) > 0 {
 		for _, metric := range result.Metrics {
 			sb.WriteString(f.formatMetric(metric))
 			sb.WriteString("\n")
@@ -107,45 +102,36 @@ func (f *TextFormatter) formatResult(result *diagnostics.CheckResult) string {
 
 	// Error message if present
 	if result.Error != "" {
-		sb.WriteString(f.colorize(fmt.Sprintf("     Error: %s\n", result.Error), colorRed))
+		sb.WriteString(f.colorize(fmt.Sprintf("  Error: %s\n", result.Error), colorRed))
 	}
 
-	// Execution time in verbose mode
-	if f.verbose {
-		sb.WriteString(fmt.Sprintf("     Duration: %v\n", result.Duration.Round(time.Millisecond)))
-	}
-
+	sb.WriteString("\n")
 	return sb.String()
 }
 
 // formatMetric formats a single metric
 func (f *TextFormatter) formatMetric(metric diagnostics.Metric) string {
-	status := "OK"
-	color := colorGreen
+	// Format:   Metric Name: Value Unit
+	// Example:   Load Average: 1.23, 1.45, 1.67 (8 cores)
 
-	// Check threshold
-	if metric.Threshold > 0 {
-		exceeded := false
-		if metric.ThresholdType == diagnostics.ThresholdTypeMax && metric.Value >= metric.Threshold {
-			exceeded = true
-		} else if metric.ThresholdType == diagnostics.ThresholdTypeMin && metric.Value <= metric.Threshold {
-			exceeded = true
-		}
-
-		if exceeded {
-			status = "WARN"
-			color = colorYellow
+	// Use %v to let Go format the float nicely (e.g. 15.3 instead of 15.30)
+	valueStr := fmt.Sprintf("%v", metric.Value)
+	if metric.Unit != "" {
+		// If unit starts with %, append it directly, otherwise space
+		if strings.HasPrefix(metric.Unit, "%") {
+			valueStr += metric.Unit
+		} else {
+			valueStr += " " + metric.Unit
 		}
 	}
 
-	valueStr := fmt.Sprintf("%.2f %s", metric.Value, metric.Unit)
-	if metric.Threshold > 0 {
-		thresholdStr := fmt.Sprintf("%.2f %s", metric.Threshold, metric.Unit)
-		return f.colorize(fmt.Sprintf("       - %s: %s (threshold: %s) [%s]",
-			metric.Name, valueStr, thresholdStr, status), color)
-	}
+	// Special handling for load average or multi-value metrics if they were passed as string in unit or value
+	// But based on struct, Value is float64.
+	// The image shows "Load Average: 1.23, 1.45, 1.67 (8 cores)" which implies the metric value might be formatted differently
+	// or the metric struct usage in the repro script is simplified.
+	// For now, we stick to the simple formatting but clean indentation.
 
-	return fmt.Sprintf("       - %s: %s", metric.Name, valueStr)
+	return fmt.Sprintf("  %s: %s", metric.Name, valueStr)
 }
 
 // formatSummary formats the report summary
@@ -217,17 +203,17 @@ func (f *TextFormatter) getOverallStatus(report *diagnostics.Report) string {
 func (f *TextFormatter) getSeverityIcon(severity diagnostics.Severity) string {
 	switch severity {
 	case diagnostics.SeverityOK:
-		return f.colorize("✓", colorGreen)
+		return f.colorize("[✓]", colorGreen)
 	case diagnostics.SeverityInfo:
-		return f.colorize("ℹ", colorBlue)
+		return f.colorize("[ℹ]", colorBlue)
 	case diagnostics.SeverityWarning:
-		return f.colorize("⚠", colorYellow)
+		return f.colorize("[!]", colorYellow)
 	case diagnostics.SeverityCritical:
-		return f.colorize("✗", colorRed)
+		return f.colorize("[✗]", colorRed)
 	case diagnostics.SeverityError:
-		return f.colorize("✗", colorRed)
+		return f.colorize("[✗]", colorRed)
 	default:
-		return "?"
+		return "[?]"
 	}
 }
 
