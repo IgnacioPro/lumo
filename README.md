@@ -4,6 +4,7 @@
 <p><strong>Intelligent SRE/DevOps Automation Agent</strong></p>
 
 [![CI](https://github.com/IgnacioPro/lumo/actions/workflows/ci.yml/badge.svg)](https://github.com/IgnacioPro/lumo/actions/workflows/ci.yml)
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/IgnacioPro/lumo/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/link/gh/IgnacioPro/lumo/tree/main)
 [![Go Version](https://img.shields.io/badge/Go-1.25.4-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Coverage](https://img.shields.io/badge/coverage-66.7%25-green.svg)](https://github.com/IgnacioPro/lumo)
