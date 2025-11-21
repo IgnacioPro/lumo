@@ -362,69 +362,63 @@ func runAIAnalysis(cfg *config.Config, report *diagnostics.Report, hostname stri
 func formatAIAnalysisText(analysis *ai.AnalysisResponse, color bool) string {
 	var sb strings.Builder
 
-	// Header with robot emoji
-	sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n\n")
-	sb.WriteString(fmt.Sprintf("🤖 AI Analysis (%s):\n\n", analysis.Provider))
+	// Header
+	sb.WriteString("╔════════════════════════════════════════════════════════════════════════════════╗\n")
+	sb.WriteString("║                           AI-POWERED ANALYSIS                                  ║\n")
+	sb.WriteString("╚════════════════════════════════════════════════════════════════════════════════╝\n\n")
 
-	// Summary text (clean, no box)
+	// Summary
+	sb.WriteString(fmt.Sprintf("📊 Overall Health: %s\n", formatHealthStatus(analysis.OverallHealth, color)))
+	sb.WriteString(fmt.Sprintf("🎯 Confidence: %.0f%%\n", analysis.Confidence*100))
+	sb.WriteString(fmt.Sprintf("🤖 Provider: %s (%s)\n", analysis.Provider, analysis.Model))
+	sb.WriteString(fmt.Sprintf("⏱️  Duration: %v\n", analysis.Duration))
+	if analysis.TokensUsed != nil {
+		sb.WriteString(fmt.Sprintf("💬 Tokens: %d\n", analysis.TokensUsed.TotalTokens))
+	}
+	sb.WriteString("\n")
+
+	// Summary text
+	sb.WriteString("📝 SUMMARY\n")
+	sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n")
 	sb.WriteString(analysis.Summary)
 	sb.WriteString("\n\n")
 
-	// Findings (if any, integrated into flow)
+	// Findings
 	if len(analysis.Findings) > 0 {
-		for _, finding := range analysis.Findings {
-			sb.WriteString(fmt.Sprintf("• %s: %s\n", finding.Title, finding.Description))
+		sb.WriteString(fmt.Sprintf("🔍 FINDINGS (%d)\n", len(analysis.Findings)))
+		sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n")
+		for i, finding := range analysis.Findings {
+			sb.WriteString(fmt.Sprintf("\n%d. [%s] %s\n", i+1, formatSeverity(finding.Severity, color), finding.Title))
+			sb.WriteString(fmt.Sprintf("   Category: %s\n", finding.Category))
+			sb.WriteString(fmt.Sprintf("   %s\n", finding.Description))
 		}
 		sb.WriteString("\n")
 	}
 
-	// Recommendations (if any, integrated into flow)
+	// Recommendations
 	if len(analysis.Recommendations) > 0 {
-		// We assume the summary often covers recommendations, but if there are specific structured ones:
-		// The image shows bullet points which might be part of the summary or recommendations.
-		// We'll append them if they aren't redundant.
-		// For now, let's assume the summary string contains the bulk of the text as seen in the image.
-	}
+		sb.WriteString(fmt.Sprintf("💡 RECOMMENDATIONS (%d)\n", len(analysis.Recommendations)))
+		sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n")
+		for i, rec := range analysis.Recommendations {
+			sb.WriteString(fmt.Sprintf("\n%d. [%s] %s\n", i+1, formatPriority(rec.Priority, color), rec.Title))
+			sb.WriteString(fmt.Sprintf("   Risk: %s\n", formatRisk(rec.Risk, color)))
+			sb.WriteString(fmt.Sprintf("   %s\n", rec.Description))
 
-	// Risk Level and Impact Footer
-	// Find the highest risk and impact from recommendations to display
-	risk := "Low"
-	impact := "Low"
-	riskColor := "\033[32m"   // Green
-	impactColor := "\033[32m" // Green
+			if len(rec.Commands) > 0 {
+				sb.WriteString("   Commands:\n")
+				for _, cmd := range rec.Commands {
+					sb.WriteString(fmt.Sprintf("     $ %s\n", cmd))
+				}
+			}
 
-	// Simple logic to determine overall risk/impact from recommendations
-	for _, rec := range analysis.Recommendations {
-		if rec.Risk == ai.RiskHigh || rec.Risk == ai.RiskCritical {
-			risk = "High"
-			riskColor = "\033[31m" // Red
-		} else if rec.Risk == ai.RiskModerate && risk != "High" {
-			risk = "Moderate"
-			riskColor = "\033[33m" // Yellow
+			if rec.EstimatedImpact != "" {
+				sb.WriteString(fmt.Sprintf("   Impact: %s\n", rec.EstimatedImpact))
+			}
 		}
-
-		if rec.EstimatedImpact == "High" || rec.EstimatedImpact == "Critical" {
-			impact = "High"
-			impactColor = "\033[31m"
-		} else if (rec.EstimatedImpact == "Moderate" || rec.EstimatedImpact == "Medium") && impact != "High" {
-			impact = "Moderate"
-			impactColor = "\033[33m"
-		}
+		sb.WriteString("\n")
 	}
 
-	// Override if color is disabled
-	if !color {
-		riskColor = ""
-		impactColor = ""
-	}
-	resetColor := "\033[0m"
-	if !color {
-		resetColor = ""
-	}
-
-	sb.WriteString(fmt.Sprintf("Risk Level: %s%s%s | Estimated Impact: %s%s%s\n",
-		riskColor, risk, resetColor,
-		impactColor, impact, resetColor))
+	sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n")
 
 	return sb.String()
 }
