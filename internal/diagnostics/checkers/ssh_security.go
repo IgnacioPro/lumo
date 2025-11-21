@@ -155,8 +155,17 @@ func (s *SSHSecurityChecker) checkSSHKeyPermissions(ctx context.Context, executo
 		fileName := fields[8]
 		filePath := fmt.Sprintf("%s/%s", sshDir, fileName)
 
-		// Skip . and .. entries
-		if fileName == "." || fileName == ".." {
+		// Check .ssh directory permissions first (before skipping)
+		if fileName == "." {
+			issue := s.checkSSHDirPermissions(permissions, sshDir)
+			if issue != nil {
+				issues = append(issues, *issue)
+			}
+			continue
+		}
+
+		// Skip .. entry
+		if fileName == ".." {
 			continue
 		}
 
@@ -171,14 +180,6 @@ func (s *SSHSecurityChecker) checkSSHKeyPermissions(ctx context.Context, executo
 		// Check public keys
 		if strings.HasSuffix(fileName, ".pub") {
 			issue := s.checkPublicKeyPermissions(permissions, filePath)
-			if issue != nil {
-				issues = append(issues, *issue)
-			}
-		}
-
-		// Check .ssh directory permissions
-		if fileName == "." {
-			issue := s.checkSSHDirPermissions(permissions, sshDir)
 			if issue != nil {
 				issues = append(issues, *issue)
 			}

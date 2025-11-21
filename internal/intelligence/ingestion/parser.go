@@ -19,7 +19,14 @@ const (
 // LogEntry represents a parsed log line
 type LogEntry struct {
 	Timestamp time.Time
-	Level     string                 // INFO, WARN, ERROR, DEBUG, CRITICAL
+	// Level represents the log severity level, normalized to one of:
+	// - "DEBUG": Detailed diagnostic information
+	// - "INFO": General informational messages
+	// - "WARN" or "WARNING": Warning messages
+	// - "ERROR": Error conditions
+	// - "CRITICAL" or "FATAL": Critical/fatal error conditions
+	// Parsers should normalize various log level formats to these standard values.
+	Level     string
 	Source    string                 // File path or logger name
 	Message   string                 // Primary log message
 	Fields    map[string]interface{} // Structured fields (from JSON logs)

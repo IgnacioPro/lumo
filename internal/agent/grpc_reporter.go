@@ -13,6 +13,7 @@ import (
 	lumov1 "github.com/ignacio/lumo/api/proto/v1"
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/grpc/client"
+	"github.com/ignacio/lumo/internal/version"
 )
 
 // GRPCReporter handles communication with the Lumo gRPC API server
@@ -92,11 +93,13 @@ func (r *GRPCReporter) RegisterAgent(ctx context.Context, req RegisterAgentReque
 
 	// Add Kubernetes metadata if available
 	if req.KubernetesMetadata != nil {
+		// Note: Pod labels could be populated from Kubernetes API if needed
+		// For now, we use the agent's general labels as K8s labels
 		grpcReq.Kubernetes = &lumov1.KubernetesMetadata{
 			Namespace: req.KubernetesMetadata.Namespace,
 			PodName:   req.KubernetesMetadata.PodName,
 			NodeName:  req.KubernetesMetadata.NodeName,
-			Labels:    make(map[string]string), // TODO: Add labels if needed
+			Labels:    labels, // Use agent labels (could be enhanced to query K8s API for pod labels)
 		}
 	}
 
@@ -255,7 +258,7 @@ func (r *GRPCReporter) GetAgentInfo() *lumov1.RegisterAgentRequest {
 		Hostname:     hostname,
 		Platform:     runtime.GOOS,
 		Architecture: runtime.GOARCH,
-		Version:      "0.11.0", // TODO: Get from build info
+		Version:      version.Version,
 		Capabilities: []string{
 			"cpu", "memory", "disk", "process",
 			"service", "network", "security",
