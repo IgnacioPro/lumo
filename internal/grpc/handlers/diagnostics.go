@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -13,6 +16,8 @@ import (
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/database/models"
 	"github.com/ignacio/lumo/internal/database/repository"
+	"github.com/ignacio/lumo/internal/diagnostics"
+	"github.com/ignacio/lumo/internal/diagnostics/checkers"
 )
 
 // JobRepository defines the interface for job data operations
@@ -106,14 +111,14 @@ func (h *DiagnosticsHandler) GetDiagnosticsResult(ctx context.Context, req *lumo
 		resp.CompletedAt = timestamppb.New(*job.CompletedAt)
 	}
 
-	// TODO: Parse and include result if job completed
-	// if job.Status == models.JobStatusCompleted && job.Result != nil {
-	//     result, err := h.unmarshalDiagnosticsResult(job.Result)
-	//     if err != nil {
-	//         return nil, status.Errorf(codes.Internal, "failed to parse result: %v", err)
-	//     }
-	//     resp.Result = result
-	// }
+	// Parse and include result if job completed
+	if job.Status == models.JobStatusCompleted && job.Result != nil {
+		result, err := h.unmarshalDiagnosticsResult(job.Result)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to parse result: %v", err)
+		}
+		resp.Result = result
+	}
 
 	if job.Error != nil && *job.Error != "" {
 		resp.Error = *job.Error
@@ -247,6 +252,7 @@ func toModelJobStatusFromProto(status lumov1.JobStatus) models.JobStatus {
 func (h *DiagnosticsHandler) executeDiagnostics(ctx context.Context, job *models.Job, req *lumov1.RunDiagnosticsRequest) {
 	h.logger.WithFields(logrus.Fields{
 		"job_id": job.ID,
+		"target": req.Target,
 		"checks": req.Checks,
 	}).Info("Starting async diagnostics execution")
 
@@ -256,15 +262,168 @@ func (h *DiagnosticsHandler) executeDiagnostics(ctx context.Context, job *models
 		return
 	}
 
-	// Simulate diagnostics execution (replace with actual logic)
-	// In a real implementation, this would invoke the diagnostics engine
-	// For now, we'll just simulate some work
-	// TODO: Integrate with internal/diagnostics package
+	// Execute diagnostics and handle result
+	if err := h.runDiagnosticsExecution(ctx, job, req); err != nil {
+		h.logger.WithError(err).Error("Diagnostics execution failed")
+		if updateErr := h.jobRepo.UpdateError(ctx, job.ID, err.Error()); updateErr != nil {
+			h.logger.WithError(updateErr).Error("Failed to update job error")
+		}
+		if statusErr := h.jobRepo.UpdateStatus(ctx, job.ID, models.JobStatusFailed); statusErr != nil {
+			h.logger.WithError(statusErr).Error("Failed to update job status to failed")
+		}
+		return
+	}
 
-	// Simulate success
+	// Mark as completed
 	if err := h.jobRepo.UpdateStatus(ctx, job.ID, models.JobStatusCompleted); err != nil {
 		h.logger.WithError(err).Error("Failed to update job status to completed")
 	}
 
 	h.logger.WithField("job_id", job.ID).Info("Async diagnostics execution completed")
+}
+
+func (h *DiagnosticsHandler) runDiagnosticsExecution(ctx context.Context, job *models.Job, req *lumov1.RunDiagnosticsRequest) error {
+	// Create command executor (always use local for now - SSH support can be added later)
+	executor := diagnostics.NewLocalExecutor()
+
+	// Create diagnostic runner
+	diagConfig := diagnostics.DefaultConfig()
+	if len(req.Checks) > 0 {
+		diagConfig.EnabledChecks = req.Checks
+	}
+
+	thresholds := diagnostics.DefaultThresholds()
+	runner := diagnostics.NewRunner(diagConfig, thresholds, executor, h.logger)
+
+	// Register checkers
+	checkersToRegister := []diagnostics.Checker{
+		// Core system checkers
+		checkers.NewCPUChecker(thresholds.CPU),
+		checkers.NewMemoryChecker(thresholds.Memory),
+		checkers.NewDiskChecker(thresholds.Disk),
+		checkers.NewProcessChecker(thresholds.Process),
+		checkers.NewServiceChecker([]string{}),
+		checkers.NewNetworkChecker(thresholds.Network, h.cfg.Diagnostics.Network.Targets),
+		// Security checkers
+		checkers.NewPatchChecker(),
+		checkers.NewPortsChecker(h.cfg.Diagnostics.Security.PortCheck.WhitelistedPorts),
+		checkers.NewSSHSecurityChecker(),
+		checkers.NewAuthFailuresChecker(
+			h.cfg.Diagnostics.Security.AuthFailureCheck.LookbackHours,
+			h.cfg.Diagnostics.Security.AuthFailureCheck.FailureThreshold,
+		),
+		// Proxmox checker (auto-skips if not installed)
+		checkers.NewProxmoxChecker(false, false, false, false, false, false, false),
+	}
+
+	// Add Kubernetes checker if enabled
+	if h.cfg.Diagnostics.Kubernetes.Enabled {
+		checkersToRegister = append(checkersToRegister, checkers.NewKubernetesChecker(h.cfg.Diagnostics.Kubernetes, h.logger))
+	}
+
+	runner.RegisterCheckers(checkersToRegister...)
+
+	// Run diagnostics with timeout
+	execCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+
+	report, err := runner.RunAll(execCtx)
+	if err != nil {
+		return fmt.Errorf("failed to run diagnostics: %w", err)
+	}
+
+	// Convert report to JSON and store in job result
+	resultJSON, err := json.Marshal(report)
+	if err != nil {
+		return fmt.Errorf("failed to marshal report: %w", err)
+	}
+
+	if err := h.jobRepo.UpdateResult(ctx, job.ID, resultJSON); err != nil {
+		return fmt.Errorf("failed to update job result: %w", err)
+	}
+
+	return nil
+}
+
+func (h *DiagnosticsHandler) unmarshalDiagnosticsResult(resultJSON []byte) (*lumov1.DiagnosticsResult, error) {
+	// Unmarshal JSON into diagnostics.Report
+	var report diagnostics.Report
+	if err := json.Unmarshal(resultJSON, &report); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal report: %w", err)
+	}
+
+	// Convert to proto message
+	protoResult := &lumov1.DiagnosticsResult{
+		Timestamp:  timestamppb.New(report.Timestamp),
+		DurationMs: report.Duration.Milliseconds(),
+		Summary: &lumov1.ReportSummary{
+			TotalChecks: int32(report.Summary.TotalChecks),
+			Passed:      int32(report.Summary.OKCount),
+			Failed:      int32(report.Summary.CriticalCount + report.Summary.ErrorCount),
+			Warnings:    int32(report.Summary.WarningCount),
+			Skipped:     0, // Not tracked in diagnostics.ReportSummary
+		},
+		Results: make([]*lumov1.CheckResult, len(report.Results)),
+	}
+
+	// Convert check results
+	for i, result := range report.Results {
+		protoCheckResult := &lumov1.CheckResult{
+			Name:       result.Name,
+			Category:   string(result.Category),
+			Status:     toProtoCheckStatus(result.Status),
+			Severity:   toProtoSeverity(result.Severity),
+			Message:    result.Message,
+			Timestamp:  timestamppb.New(result.Timestamp),
+			DurationMs: result.Duration.Milliseconds(),
+		}
+
+		if result.Error != "" {
+			protoCheckResult.Error = result.Error
+		}
+
+		// Convert metrics
+		protoCheckResult.Metrics = make([]*lumov1.Metric, len(result.Metrics))
+		for j, metric := range result.Metrics {
+			protoCheckResult.Metrics[j] = &lumov1.Metric{
+				Name:  metric.Name,
+				Value: metric.Value,
+				Unit:  metric.Unit,
+			}
+		}
+
+		protoResult.Results[i] = protoCheckResult
+	}
+
+	return protoResult, nil
+}
+
+func toProtoCheckStatus(status diagnostics.CheckStatus) lumov1.CheckStatus {
+	switch status {
+	case diagnostics.StatusCompleted:
+		return lumov1.CheckStatus_CHECK_STATUS_PASS
+	case diagnostics.StatusFailed:
+		return lumov1.CheckStatus_CHECK_STATUS_FAIL
+	case diagnostics.StatusSkipped:
+		return lumov1.CheckStatus_CHECK_STATUS_SKIP
+	case diagnostics.StatusTimeout:
+		return lumov1.CheckStatus_CHECK_STATUS_FAIL // Timeout is treated as a failure
+	default:
+		return lumov1.CheckStatus_CHECK_STATUS_UNSPECIFIED
+	}
+}
+
+func toProtoSeverity(severity diagnostics.Severity) lumov1.Severity {
+	switch severity {
+	case diagnostics.SeverityOK:
+		return lumov1.Severity_SEVERITY_INFO // OK maps to INFO
+	case diagnostics.SeverityInfo:
+		return lumov1.Severity_SEVERITY_INFO
+	case diagnostics.SeverityWarning:
+		return lumov1.Severity_SEVERITY_MEDIUM // Warning maps to MEDIUM
+	case diagnostics.SeverityCritical:
+		return lumov1.Severity_SEVERITY_CRITICAL
+	default:
+		return lumov1.Severity_SEVERITY_UNSPECIFIED
+	}
 }
