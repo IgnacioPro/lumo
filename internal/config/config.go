@@ -9,6 +9,7 @@ import (
 
 // Config represents the complete Lumo configuration
 type Config struct {
+	Environment   string              `mapstructure:"environment"`   // Deployment environment: development, staging, production
 	SSH           SSHConfig           `mapstructure:"ssh"`
 	AI            AIConfig            `mapstructure:"ai"`
 	Logging       LoggingConfig       `mapstructure:"logging"`
@@ -70,6 +71,12 @@ type APIConfig struct {
 	JWTSecret      string        `mapstructure:"jwt_secret"`     // JWT signing secret (prefer LUMO_API_JWT_SECRET env var)
 	JWTExpiration  time.Duration `mapstructure:"jwt_expiration"` // JWT token expiration (default: 24h)
 	JWTIssuer      string        `mapstructure:"jwt_issuer"`     // JWT issuer (default: lumo-api)
+
+	// Rate limiting settings
+	RateLimitEnabled         bool `mapstructure:"rate_limit_enabled"`           // Enable rate limiting
+	RateLimitRequestsPerMin  int  `mapstructure:"rate_limit_requests_per_min"`  // Per-IP rate limit (requests per minute)
+	RateLimitRequestsPerHour int  `mapstructure:"rate_limit_requests_per_hour"` // Per-user rate limit (requests per hour)
+	RateLimitBurstSize       int  `mapstructure:"rate_limit_burst_size"`        // Burst size for rate limiter
 }
 
 // DiagnosticsConfig contains diagnostic settings
@@ -227,6 +234,7 @@ type RAGConfig struct {
 // DefaultConfig returns a Config with sensible defaults
 func DefaultConfig() *Config {
 	return &Config{
+		Environment: "development", // Default to development (can be overridden by config file or LUMO_ENVIRONMENT env var)
 		SSH: SSHConfig{
 			Timeout:               30 * time.Second,
 			Port:                  22,
@@ -263,12 +271,16 @@ func DefaultConfig() *Config {
 			Output: "stdout",
 		},
 		API: APIConfig{
-			Port:           8080,
-			Host:           "0.0.0.0",
-			TLS:            false,
-			ReadTimeout:    15 * time.Second,
-			WriteTimeout:   15 * time.Second,
-			MaxConnections: 100,
+			Port:                     8080,
+			Host:                     "0.0.0.0",
+			TLS:                      false,
+			ReadTimeout:              15 * time.Second,
+			WriteTimeout:             15 * time.Second,
+			MaxConnections:           100,
+			RateLimitEnabled:         true,  // Enable by default for security
+			RateLimitRequestsPerMin:  60,    // 60 req/min per IP (1 req/sec average)
+			RateLimitRequestsPerHour: 3600,  // 3600 req/hour per user (1 req/sec average)
+			RateLimitBurstSize:       10,    // Allow bursts of 10 requests
 		},
 		Diagnostics: DiagnosticsConfig{
 			Network: NetworkConfig{
@@ -317,9 +329,9 @@ func DefaultConfig() *Config {
 			User:            "lumo",
 			Password:        "", // Set via LUMO_DATABASE_PASSWORD env var
 			SSLMode:         "disable",
-			MaxConnections:  25,
-			MaxIdle:         5,
-			ConnMaxLifetime: 5 * time.Minute,
+			MaxConnections:  50,              // Adaptive default for medium deployments (100-500 agents)
+			MaxIdle:         12,              // 25% of MaxConnections (keep warm connections)
+			ConnMaxLifetime: 30 * time.Minute, // Increased from 5m to reduce connection churn
 		},
 		Cache: CacheConfig{
 			Enabled:    false, // Disabled by default

@@ -16,12 +16,25 @@ import (
 func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager, logger *logrus.Logger) *chi.Mux {
 	r := chi.NewRouter()
 
+	// Initialize rate limiter
+	rateLimiter := apimiddleware.NewRateLimiter(
+		cfg.API.RateLimitEnabled,
+		cfg.API.RateLimitRequestsPerMin,
+		cfg.API.RateLimitRequestsPerHour,
+		cfg.API.RateLimitBurstSize,
+		logger,
+	)
+
 	// Global middleware
 	r.Use(apimiddleware.Recovery(logger))
 	r.Use(apimiddleware.Logger(logger))
 	r.Use(apimiddleware.CORS())
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+
+	// Per-IP rate limiting (applied to all requests)
+	r.Use(rateLimiter.PerIPMiddleware())
+
 	r.Use(middleware.Compress(5))
 
 	// Initialize repositories
@@ -60,6 +73,9 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 		r.Group(func(r chi.Router) {
 			// Support both API key and JWT authentication
 			r.Use(apimiddleware.APIKeyAuth(apiKeyRepo, logger))
+
+			// Per-user rate limiting (stricter than per-IP)
+			r.Use(rateLimiter.PerUserMiddleware())
 
 			// Diagnostic endpoints
 			r.Post("/diagnostics", diagnosticsHandler.Run)
