@@ -22,24 +22,24 @@ FULL_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
 # API configuration (optional - for testing with actual API)
 API_ENDPOINT="${LUMO_API_ENDPOINT:-http://lumo-api.lumo-system.svc.cluster.local:8080}"
 AGENT_TOKEN="${LUMO_AGENT_TOKEN:-test-token-for-kind}"
-AI_PROVIDER="${LUMO_AI_PROVIDER:-}"
-AI_API_KEY="${LUMO_AI_API_KEY:-}"
+AI_PROVIDER="${LUMO_AI_PROVIDER:-gemini}"
+AI_API_KEY="${LUMO_AI_API_KEY:-dummy-key-for-testing}"
 
 # Functions
 log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    echo -e "${BLUE}[INFO]${NC} $1" >&2
 }
 
 log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    echo -e "${GREEN}[SUCCESS]${NC} $1" >&2
 }
 
 log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo -e "${YELLOW}[WARNING]${NC} $1" >&2
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[ERROR]${NC} $1" >&2
 }
 
 check_prerequisites() {
@@ -106,6 +106,9 @@ create_secrets() {
         esac
     fi
 
+    # Delete existing secret to ensure update
+    kubectl delete secret lumo-agent-secret --namespace="${NAMESPACE}" --ignore-not-found
+
     # Create secret
     kubectl create secret generic lumo-agent-secret \
         --namespace="${NAMESPACE}" \
@@ -119,8 +122,8 @@ update_manifests() {
     log_info "Preparing manifests for kind..."
 
     # Create temp directory for modified manifests
+    # Create temp directory for modified manifests
     local temp_dir=$(mktemp -d)
-    trap "rm -rf ${temp_dir}" EXIT
 
     # Copy base manifests
     cp -r "$(dirname "$0")/../base/"*.yaml "${temp_dir}/"
@@ -136,6 +139,22 @@ update_manifests() {
             if ! grep -q "imagePullPolicy:" "$file"; then
                 sed -i.bak "/image: ${IMAGE_NAME}:${IMAGE_TAG}/a\        imagePullPolicy: Never" "$file"
             fi
+            
+            # Inject LUMO_AI_PROVIDER environment variable
+            # Find the line with "# Secrets from Secret" and add the env var before it
+            sed -i.bak "/# Secrets from Secret/i\\
+            # AI Provider\\
+            - name: LUMO_AI_PROVIDER\\
+              value: \"${AI_PROVIDER}\"\\
+" "$file"
+            
+            # Inject --config flag to tell agent to read from /etc/lumo/config.yaml
+            # Find imagePullPolicy and add args section after it
+            sed -i.bak "/imagePullPolicy:/a\\
+          args:\\
+            - --config=/etc/lumo/config.yaml\\
+" "$file"
+            
             rm -f "$file.bak"
         fi
     done
@@ -146,6 +165,23 @@ update_manifests() {
         rm -f "${temp_dir}/configmap.yaml.bak"
     fi
 
+    # Remove ServiceMonitor from service.yaml for kind (CRD not present)
+    if [ -f "${temp_dir}/service.yaml" ]; then
+        sed -i.bak '/# ServiceMonitor for Prometheus Operator/,$d' "${temp_dir}/service.yaml"
+        rm -f "${temp_dir}/service.yaml.bak"
+    fi
+
+    # Update AI provider in ConfigMap
+    if [ -f "${temp_dir}/configmap.yaml" ]; then
+        # Update the provider field in the config.yaml section
+        sed -i.bak "s|provider: \"\"|provider: \"${AI_PROVIDER}\"|g" "${temp_dir}/configmap.yaml"
+        # Add cache_path to agent section (after offline_mode line)
+        sed -i.bak "/offline_mode: true/a\\
+      cache_path: /var/cache/lumo\\
+" "${temp_dir}/configmap.yaml"
+        rm -f "${temp_dir}/configmap.yaml.bak"
+    fi
+
     echo "$temp_dir"
 }
 
@@ -153,6 +189,7 @@ deploy_manifests() {
     log_info "Deploying Lumo Agent to kind cluster..."
 
     local manifest_dir=$(update_manifests)
+    trap "rm -rf ${manifest_dir}" EXIT
 
     # Deploy in order
     local manifests=(
@@ -174,6 +211,11 @@ deploy_manifests() {
     done
 
     log_success "Manifests deployed"
+
+    # Force restart to pick up new secrets/config
+    log_info "Restarting pods to pick up configuration changes..."
+    kubectl rollout restart daemonset/lumo-agent-node -n "${NAMESPACE}"
+    kubectl rollout restart deployment/lumo-agent-cluster -n "${NAMESPACE}"
 }
 
 wait_for_pods() {
