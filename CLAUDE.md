@@ -1,7 +1,7 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-20 | **Version:** 1.0.7
-> **Status:** Phases 1-10 Complete ✅ | K8s + VM Deployment Ready 🚀 | CI Green ✅ | Usability Week 1 Complete ✅ | RAG System Live 🎯 | gRPC Foundation Ready 🔧
+> **Last Updated:** 2025-11-21 | **Version:** 1.0.7
+> **Status:** Phases 1-10 Complete ✅ | Phase 11a (gRPC) Complete ✅ | K8s + VM Deployment Ready 🚀 | CI Green ✅ | Usability Week 1 Complete ✅ | RAG System Live 🎯 | Notifications Live 📢
 
 **For detailed examples and tutorials, see [docs/getting-started.md](docs/getting-started.md)**
 
@@ -109,8 +109,8 @@ lumo/
 └── docker-compose.yaml              # ✅ PostgreSQL + Redis for development
 
 Total: 192 Go files + 62 test files (254 total) | Test Coverage: ~65%
-Recent additions: RAG system (+1,500 LOC), gRPC foundation (+2,000 LOC), Usability features (+5,000 LOC)
-Note: File counts verified 2025-11-20
+Recent additions: RAG system (+1,500 LOC), gRPC foundation (+2,000 LOC), Notifications (+1,200 LOC), Usability features (+5,000 LOC)
+Note: File counts verified 2025-11-21
 ```
 
 ---
@@ -668,27 +668,41 @@ systemctl enable --now lumo-agent
 
 ### ⏳ Planned - Advanced Features (Weeks 11-16)
 
-**Phase 11: gRPC + Messaging Integration** (Weeks 11-12) - **IN PROGRESS** (Foundation Complete 40%)
+**Phase 11: gRPC + Messaging Integration** (Weeks 11-12) - **PARTIALLY COMPLETE** (gRPC ✅ | Messaging ⏳)
+
+**Phase 11a: gRPC Foundation** - **100% COMPLETE** ✅
 - ✅ gRPC Protocol Buffer definitions (common, diagnostics, agents, health)
 - ✅ Generated Go code from proto files
 - ✅ gRPC server implementation with interceptors (logging, recovery, auth)
 - ✅ gRPC client with connection pooling
 - ✅ Service handlers (diagnostics, agents, health)
 - ✅ Makefile targets for proto generation
-- ⏳ mTLS implementation (planned)
-- ⏳ gRPC streaming for real-time diagnostics (planned)
+- ✅ mTLS implementation (server/mtls.go)
+- ✅ JWT authentication via interceptors
+- ✅ Integration tests and comprehensive documentation
+- **Deliverables:** `internal/grpc/{server,client,handlers,interceptors}/*.go` (12+ files)
+- **Status:** Merged Nov 20, 2025 | Ready for production use
+
+**Phase 11b: Messaging Integration** - **PENDING** ⏳
 - ⏳ Messaging publisher/subscriber (`internal/messaging`)
 - ⏳ Provider implementations: NATS, Kafka, RabbitMQ, Redis
-- ⏳ Topic-based routing (diagnostics, remediation, alerts, lifecycle)
-- **Deliverables:** `internal/grpc/{server,client,handlers,interceptors}/*.go`, `internal/messaging/{publisher,subscriber,providers/}.go`
+- ⏳ Topic-based routing (diagnostics, remediation, alerts, lifecycle, metrics)
+- ⏳ Agent integration with messaging (optional messaging publisher)
+- ⏳ Message serialization (JSON, Protocol Buffers)
+- ⏳ Dead-letter queue support for failed messages
+- ⏳ gRPC streaming for real-time diagnostics (depends on messaging layer)
+- **Deliverables:** `internal/messaging/{publisher,subscriber,providers/}.go`
+- **Dependencies:** NATS, Kafka, RabbitMQ client libraries (not yet in go.mod)
+- **Note:** Foundation ready, can be implemented as standalone PR
 
 **Phase 12: Security Hardening** (Weeks 13-14)
-- mTLS implementation and testing
-- Certificate rotation mechanisms
+- Certificate rotation mechanisms (mTLS already implemented in Phase 11a)
 - Security audit (OWASP Top 10, CWE)
-- Penetration testing (agent, API server)
+- Penetration testing (agent, API server, gRPC)
 - Secrets management integration (Vault, AWS Secrets Manager)
-- **Deliverables:** Security audit report, mTLS implementation, cert management scripts
+- TLS certificate management automation
+- Security documentation and best practices guide
+- **Deliverables:** Security audit report, cert rotation scripts, security runbooks
 
 **Phase 13: Production Readiness** (Weeks 15-16)
 - Performance optimization (profiling, benchmarking)
