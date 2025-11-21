@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 
 // Mock repository interfaces
 type mockJobRepository struct {
+	mu   sync.RWMutex
 	jobs map[uuid.UUID]*models.Job
 }
 
@@ -31,11 +33,15 @@ func newMockJobRepository() *mockJobRepository {
 }
 
 func (m *mockJobRepository) Create(ctx context.Context, job *models.Job) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.jobs[job.ID] = job
 	return nil
 }
 
 func (m *mockJobRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Job, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	job, ok := m.jobs[id]
 	if !ok {
 		return nil, sql.ErrNoRows
@@ -44,6 +50,8 @@ func (m *mockJobRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.
 }
 
 func (m *mockJobRepository) List(ctx context.Context, opts repository.ListOptions) ([]*models.Job, int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	jobs := make([]*models.Job, 0, len(m.jobs))
 	for _, job := range m.jobs {
 		jobs = append(jobs, job)
@@ -52,6 +60,8 @@ func (m *mockJobRepository) List(ctx context.Context, opts repository.ListOption
 }
 
 func (m *mockJobRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status models.JobStatus) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	job, ok := m.jobs[id]
 	if !ok {
 		return sql.ErrNoRows
@@ -61,6 +71,8 @@ func (m *mockJobRepository) UpdateStatus(ctx context.Context, id uuid.UUID, stat
 }
 
 func (m *mockJobRepository) UpdateResult(ctx context.Context, id uuid.UUID, result []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	job, ok := m.jobs[id]
 	if !ok {
 		return sql.ErrNoRows
@@ -70,6 +82,8 @@ func (m *mockJobRepository) UpdateResult(ctx context.Context, id uuid.UUID, resu
 }
 
 func (m *mockJobRepository) UpdateError(ctx context.Context, id uuid.UUID, errorMsg string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	job, ok := m.jobs[id]
 	if !ok {
 		return sql.ErrNoRows
@@ -79,6 +93,8 @@ func (m *mockJobRepository) UpdateError(ctx context.Context, id uuid.UUID, error
 }
 
 func (m *mockJobRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	delete(m.jobs, id)
 	return nil
 }
