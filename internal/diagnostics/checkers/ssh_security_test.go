@@ -723,8 +723,7 @@ drwxr-xr-x 5 user user 4096 Nov 17 09:00 ..
 	})
 
 	t.Run("insecure .ssh directory", func(t *testing.T) {
-		// Note: Current implementation has a bug - it skips "." entries before checking directory permissions
-		// So this test documents that the directory permission check doesn't currently work
+		// Directory has 755 permissions (drwxr-xr-x) but should be 700 (drwx------)
 		lsOutput := `total 16
 drwxr-xr-x 2 user user 4096 Nov 17 10:00 .
 drwxr-xr-x 5 user user 4096 Nov 17 09:00 ..
@@ -744,11 +743,18 @@ drwxr-xr-x 5 user user 4096 Nov 17 09:00 ..
 			t.Fatalf("checkSSHKeyPermissions() unexpected error: %v", err)
 		}
 
-		// BUG: Implementation skips "." entries before checking directory permissions (line 159-161 in ssh_security.go)
-		// So directory permission check at line 180-185 never executes
-		// This means no issue is found even though directory has 755 instead of 700
-		if len(issues) != 0 {
-			t.Errorf("checkSSHKeyPermissions() found %d issues, want 0 (due to implementation bug)", len(issues))
+		// Should find 1 issue: directory with incorrect permissions (755 instead of 700)
+		if len(issues) != 1 {
+			t.Errorf("checkSSHKeyPermissions() found %d issues, want 1", len(issues))
+		}
+
+		if len(issues) > 0 {
+			if issues[0].Severity != "warning" {
+				t.Errorf("checkSSHKeyPermissions() issue severity = %v, want warning", issues[0].Severity)
+			}
+			if !strings.Contains(issues[0].Issue, ".ssh directory") {
+				t.Errorf("checkSSHKeyPermissions() issue should mention .ssh directory, got: %v", issues[0].Issue)
+			}
 		}
 	})
 
