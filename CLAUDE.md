@@ -1,7 +1,7 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-21 | **Version:** 1.0.7
-> **Status:** Phases 1-10 Complete ✅ | Phase 11a (gRPC) Complete ✅ | K8s + VM Deployment Ready 🚀 | CI Green ✅ | Usability Week 1 Complete ✅ | RAG System Live 🎯 | Notifications Live 📢
+> **Last Updated:** 2025-11-21 | **Version:** 1.0.8
+> **Status:** Phases 1-10 Complete ✅ | Phase 11a (gRPC) Complete ✅ | Security Hardening (Pre-Phase 12) ✅ | K8s + VM Deployment Ready 🚀 | CI Green ✅ | Usability Week 1 Complete ✅ | RAG System Live 🎯 | Notifications Live 📢
 
 **For detailed examples and tutorials, see [docs/getting-started.md](docs/getting-started.md)**
 
@@ -328,17 +328,44 @@ make ci  # Runs all CI checks locally
 
 ## Security
 
-**Audit Status:** ✅ All CRITICAL issues resolved (see `REPORTS/security-*.md`)
+**Audit Status:** ✅ All CRITICAL issues resolved | Phase 11b security hardening complete
+
+**Core Security Features:**
+- ✅ JWT authentication with configurable expiration (default 24h) and issuer claims
+- ✅ Rate limiting: Per-IP (60 req/min) + Per-user (3,600 req/hour) with RFC 6585 compliance
+- ✅ Database connection pooling with health monitoring and saturation alerts
+- ✅ mTLS support for gRPC (Phase 11a)
+- ✅ API key authentication with scope-based authorization
+- ✅ Command injection protection: WorkingDir sanitization, shell metacharacter filtering
+- ✅ Host key verification enabled by default (SSH)
+- ✅ Secrets via environment variables only (never in config files)
 
 **Never Commit:** `config.yaml`, `*.pem`, `*.key`, `id_rsa*`, `.env*`
 
 **Credentials:**
 - API keys: Provider-specific env vars only (never in config files)
+- JWT Secret: `LUMO_API_JWT_SECRET` environment variable (required for production)
 - SSH: Key-based auth or secure prompting (no password flags)
-- Host key verification enabled by default
-- Command injection protection: WorkingDir sanitization, shell metacharacter filtering
+- Database: `LUMO_DATABASE_PASSWORD` environment variable
 
 **File Permissions:** `chmod 600` for all config, key, and cert files
+
+**Rate Limiting Configuration:**
+```yaml
+api:
+  rate_limit_enabled: true
+  rate_limit_requests_per_min: 60      # Per-IP limit
+  rate_limit_requests_per_hour: 3600   # Per-user limit
+  rate_limit_burst_size: 10
+```
+
+**Database Pool Tuning:**
+```yaml
+database:
+  max_connections: 25          # Total pool size
+  max_idle: 5                  # Max idle connections
+  conn_max_lifetime: 5m        # Connection reuse limit
+```
 
 ---
 
@@ -683,7 +710,30 @@ systemctl enable --now lumo-agent
 - **Deliverables:** `internal/grpc/{server,client,handlers,interceptors}/*.go` (12+ files)
 - **Status:** Merged Nov 20, 2025 | Ready for production use
 
-**Phase 11b: Messaging Integration** - **PENDING** ⏳
+**Phase 11b: Security Hardening (Pre-Phase 12)** - **100% COMPLETE** ✅
+- ✅ Rate limiting middleware (`internal/api/middleware/ratelimit.go`)
+  - Per-IP rate limiting (60 requests/min default)
+  - Per-user rate limiting (3,600 requests/hour default)
+  - Configurable via config: `rate_limit_enabled`, `rate_limit_requests_per_min`, `rate_limit_requests_per_hour`, `rate_limit_burst_size`
+  - Integrated with Chi router in `internal/api/router.go`
+  - Proper error responses with `Retry-After` headers (RFC 6585)
+- ✅ Database connection pooling tuning
+  - `MaxConnections`, `MaxIdle`, `ConnMaxLifetime` configuration in `DatabaseConfig`
+  - Pool health monitoring and saturation warnings in `internal/database/postgres.go`
+  - Dynamic pool limit adjustment via `SetConnectionPoolLimits()` API
+  - Statistics tracking (`GetPoolStats()`, `LogPoolStats()`)
+- ✅ JWT authentication (already in Phase 7, enhanced here)
+  - Token expiration configuration (`JWTExpiration`, default: 24h)
+  - Issuer claim (`JWTIssuer`, default: lumo-api)
+  - Integrated with API key auth in middleware chain
+- ✅ Configuration system enhancements
+  - Rate limiting parameters in `APIConfig`
+  - Database tuning parameters in `DatabaseConfig`
+  - Environment variable support for all security settings
+- **Deliverables:** 2 new files, 150+ LOC | Integrated with existing API server
+- **Status:** Merged Nov 21, 2025 | Production-ready
+
+**Phase 11c: Messaging Integration** - **PENDING** ⏳
 - ⏳ Messaging publisher/subscriber (`internal/messaging`)
 - ⏳ Provider implementations: NATS, Kafka, RabbitMQ, Redis
 - ⏳ Topic-based routing (diagnostics, remediation, alerts, lifecycle, metrics)
@@ -695,7 +745,7 @@ systemctl enable --now lumo-agent
 - **Dependencies:** NATS, Kafka, RabbitMQ client libraries (not yet in go.mod)
 - **Note:** Foundation ready, can be implemented as standalone PR
 
-**Phase 12: Security Hardening** (Weeks 13-14)
+**Phase 12: Advanced Security** (Weeks 13-14)
 - Certificate rotation mechanisms (mTLS already implemented in Phase 11a)
 - Security audit (OWASP Top 10, CWE)
 - Penetration testing (agent, API server, gRPC)
