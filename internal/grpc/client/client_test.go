@@ -19,8 +19,6 @@ import (
 
 const bufSize = 1024 * 1024
 
-var lis *bufconn.Listener
-
 // mockHealthServer implements a simple health service for testing
 type mockHealthServer struct {
 	lumov1.UnimplementedHealthServiceServer
@@ -102,8 +100,9 @@ func (s *mockDiagnosticsServer) GetDiagnosticsResult(ctx context.Context, req *l
 }
 
 // setupTestServer creates a test gRPC server with mock services
-func setupTestServer() (*grpc.Server, func()) {
-	lis = bufconn.Listen(bufSize)
+// Returns: server, dialer function, cleanup function
+func setupTestServer() (*grpc.Server, func(context.Context, string) (net.Conn, error), func()) {
+	lis := bufconn.Listen(bufSize)
 	s := grpc.NewServer()
 
 	lumov1.RegisterHealthServiceServer(s, &mockHealthServer{})
@@ -114,21 +113,21 @@ func setupTestServer() (*grpc.Server, func()) {
 		_ = s.Serve(lis)
 	}()
 
+	// Create a dialer that closes over the specific listener
+	bufDialer := func(context.Context, string) (net.Conn, error) {
+		return lis.Dial()
+	}
+
 	cleanup := func() {
 		s.Stop()
 		_ = lis.Close()
 	}
 
-	return s, cleanup
-}
-
-// bufDialer creates a dialer for in-memory connections
-func bufDialer(context.Context, string) (net.Conn, error) {
-	return lis.Dial()
+	return s, bufDialer, cleanup
 }
 
 func TestNewClient(t *testing.T) {
-	_, cleanup := setupTestServer()
+	_, bufDialer, cleanup := setupTestServer()
 	defer cleanup()
 
 	tests := []struct {
@@ -168,10 +167,10 @@ func TestNewClient(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Override dial options for testing
 			ctx := context.Background()
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+			//nolint:staticcheck // Deprecated API supported throughout 1.x
 			conn, err := grpc.DialContext(ctx, "bufnet",
 				grpc.WithContextDialer(bufDialer),
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+				//nolint:staticcheck // Deprecated API supported throughout 1.x
 				grpc.WithInsecure(),
 			)
 			require.NoError(t, err)
@@ -195,14 +194,14 @@ func TestNewClient(t *testing.T) {
 }
 
 func TestClient_Close(t *testing.T) {
-	_, cleanup := setupTestServer()
+	_, bufDialer, cleanup := setupTestServer()
 	defer cleanup()
 
 	ctx := context.Background()
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.DialContext(ctx, "bufnet",
 		grpc.WithContextDialer(bufDialer),
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+		//nolint:staticcheck // Deprecated API supported throughout 1.x
 		grpc.WithInsecure(),
 	)
 	require.NoError(t, err)
@@ -224,14 +223,14 @@ func TestClient_Close(t *testing.T) {
 }
 
 func TestClient_HealthCheck(t *testing.T) {
-	_, cleanup := setupTestServer()
+	_, bufDialer, cleanup := setupTestServer()
 	defer cleanup()
 
 	ctx := context.Background()
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.DialContext(ctx, "bufnet",
 		grpc.WithContextDialer(bufDialer),
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+		//nolint:staticcheck // Deprecated API supported throughout 1.x
 		grpc.WithInsecure(),
 	)
 	require.NoError(t, err)
@@ -250,14 +249,14 @@ func TestClient_HealthCheck(t *testing.T) {
 }
 
 func TestClient_Live(t *testing.T) {
-	_, cleanup := setupTestServer()
+	_, bufDialer, cleanup := setupTestServer()
 	defer cleanup()
 
 	ctx := context.Background()
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.DialContext(ctx, "bufnet",
 		grpc.WithContextDialer(bufDialer),
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+		//nolint:staticcheck // Deprecated API supported throughout 1.x
 		grpc.WithInsecure(),
 	)
 	require.NoError(t, err)
@@ -275,14 +274,14 @@ func TestClient_Live(t *testing.T) {
 }
 
 func TestClient_Ready(t *testing.T) {
-	_, cleanup := setupTestServer()
+	_, bufDialer, cleanup := setupTestServer()
 	defer cleanup()
 
 	ctx := context.Background()
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.DialContext(ctx, "bufnet",
 		grpc.WithContextDialer(bufDialer),
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+		//nolint:staticcheck // Deprecated API supported throughout 1.x
 		grpc.WithInsecure(),
 	)
 	require.NoError(t, err)
@@ -301,14 +300,14 @@ func TestClient_Ready(t *testing.T) {
 }
 
 func TestClient_Ping(t *testing.T) {
-	_, cleanup := setupTestServer()
+	_, bufDialer, cleanup := setupTestServer()
 	defer cleanup()
 
 	ctx := context.Background()
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.DialContext(ctx, "bufnet",
 		grpc.WithContextDialer(bufDialer),
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+		//nolint:staticcheck // Deprecated API supported throughout 1.x
 		grpc.WithInsecure(),
 	)
 	require.NoError(t, err)
@@ -324,14 +323,14 @@ func TestClient_Ping(t *testing.T) {
 }
 
 func TestClient_RegisterAgent(t *testing.T) {
-	_, cleanup := setupTestServer()
+	_, bufDialer, cleanup := setupTestServer()
 	defer cleanup()
 
 	ctx := context.Background()
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.DialContext(ctx, "bufnet",
 		grpc.WithContextDialer(bufDialer),
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+		//nolint:staticcheck // Deprecated API supported throughout 1.x
 		grpc.WithInsecure(),
 	)
 	require.NoError(t, err)
@@ -381,14 +380,14 @@ func TestClient_RegisterAgent(t *testing.T) {
 }
 
 func TestClient_SendHeartbeat(t *testing.T) {
-	_, cleanup := setupTestServer()
+	_, bufDialer, cleanup := setupTestServer()
 	defer cleanup()
 
 	ctx := context.Background()
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.DialContext(ctx, "bufnet",
 		grpc.WithContextDialer(bufDialer),
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+		//nolint:staticcheck // Deprecated API supported throughout 1.x
 		grpc.WithInsecure(),
 	)
 	require.NoError(t, err)
@@ -437,14 +436,14 @@ func TestClient_SendHeartbeat(t *testing.T) {
 }
 
 func TestClient_GetAgentStats(t *testing.T) {
-	_, cleanup := setupTestServer()
+	_, bufDialer, cleanup := setupTestServer()
 	defer cleanup()
 
 	ctx := context.Background()
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.DialContext(ctx, "bufnet",
 		grpc.WithContextDialer(bufDialer),
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+		//nolint:staticcheck // Deprecated API supported throughout 1.x
 		grpc.WithInsecure(),
 	)
 	require.NoError(t, err)
@@ -463,14 +462,14 @@ func TestClient_GetAgentStats(t *testing.T) {
 }
 
 func TestClient_RunDiagnostics(t *testing.T) {
-	_, cleanup := setupTestServer()
+	_, bufDialer, cleanup := setupTestServer()
 	defer cleanup()
 
 	ctx := context.Background()
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.DialContext(ctx, "bufnet",
 		grpc.WithContextDialer(bufDialer),
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+		//nolint:staticcheck // Deprecated API supported throughout 1.x
 		grpc.WithInsecure(),
 	)
 	require.NoError(t, err)
@@ -520,14 +519,14 @@ func TestClient_RunDiagnostics(t *testing.T) {
 }
 
 func TestClient_GetDiagnosticsResult(t *testing.T) {
-	_, cleanup := setupTestServer()
+	_, bufDialer, cleanup := setupTestServer()
 	defer cleanup()
 
 	ctx := context.Background()
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.DialContext(ctx, "bufnet",
 		grpc.WithContextDialer(bufDialer),
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+		//nolint:staticcheck // Deprecated API supported throughout 1.x
 		grpc.WithInsecure(),
 	)
 	require.NoError(t, err)
@@ -572,14 +571,14 @@ func TestClient_GetDiagnosticsResult(t *testing.T) {
 }
 
 func TestClient_WithAuth(t *testing.T) {
-	_, cleanup := setupTestServer()
+	_, bufDialer, cleanup := setupTestServer()
 	defer cleanup()
 
 	ctx := context.Background()
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.DialContext(ctx, "bufnet",
 		grpc.WithContextDialer(bufDialer),
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+		//nolint:staticcheck // Deprecated API supported throughout 1.x
 		grpc.WithInsecure(),
 	)
 	require.NoError(t, err)
@@ -617,14 +616,14 @@ func TestClient_WithAuth(t *testing.T) {
 }
 
 func TestClient_GetConnectionState(t *testing.T) {
-	_, cleanup := setupTestServer()
+	_, bufDialer, cleanup := setupTestServer()
 	defer cleanup()
 
 	ctx := context.Background()
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.DialContext(ctx, "bufnet",
 		grpc.WithContextDialer(bufDialer),
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+		//nolint:staticcheck // Deprecated API supported throughout 1.x
 		grpc.WithInsecure(),
 	)
 	require.NoError(t, err)
