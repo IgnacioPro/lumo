@@ -100,12 +100,6 @@ data:
       parallel: true
       max_workers: 4
       enabled_checks:
-        - cpu
-        - memory
-        - disk
-        - process
-        - service
-        - network
         - kubernetes
 
     agent:
@@ -115,12 +109,6 @@ data:
       token: ""  # Set via environment variable
       tls_enabled: true
       enabled_checks:
-        - cpu
-        - memory
-        - disk
-        - process
-        - service
-        - network
         - kubernetes
       report_format: toon
       offline_mode: true

@@ -175,6 +175,22 @@ update_manifests() {
     if [ -f "${temp_dir}/configmap.yaml" ]; then
         # Update the provider field in the config.yaml section
         sed -i.bak "s|provider: \"\"|provider: \"${AI_PROVIDER}\"|g" "${temp_dir}/configmap.yaml"
+        
+        # Configure Kubernetes-only checks for containerized agents
+        # Replace the enabled_checks list in diagnostics section
+        sed -i.bak '/diagnostics:/,/enabled_checks:/{
+            /enabled_checks:/,/^[[:space:]]*- kubernetes/{
+                /^[[:space:]]*- kubernetes/!d
+            }
+        }' "${temp_dir}/configmap.yaml"
+        
+        # Replace the enabled_checks list in agent section
+        sed -i.bak '/agent:/,/enabled_checks:/{
+            /enabled_checks:/,/^[[:space:]]*- kubernetes/{
+                /^[[:space:]]*- kubernetes/!d
+            }
+        }' "${temp_dir}/configmap.yaml"
+        
         # Add cache_path to agent section (after offline_mode line)
         sed -i.bak "/offline_mode: true/a\\
       cache_path: /var/cache/lumo\\
