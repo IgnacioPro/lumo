@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -52,7 +53,7 @@ func (r *Reporter) SetAgentID(agentID uuid.UUID) {
 }
 
 // RegisterAgent registers the agent with the API server
-func (r *Reporter) RegisterAgent(req RegisterAgentRequest) (*RegisterAgentResponse, error) {
+func (r *Reporter) RegisterAgent(ctx context.Context, req RegisterAgentRequest) (*RegisterAgentResponse, error) {
 	url := fmt.Sprintf("%s/api/v1/agents/register", r.cfg.APIEndpoint)
 
 	// Marshal request body
@@ -63,7 +64,7 @@ func (r *Reporter) RegisterAgent(req RegisterAgentRequest) (*RegisterAgentRespon
 
 	// Perform request with retry
 	var resp RegisterAgentResponse
-	err = r.doWithRetry("POST", url, body, &resp)
+	err = r.doWithRetry(ctx, "POST", url, body, &resp)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register agent: %w", err)
 	}
@@ -85,7 +86,7 @@ func (r *Reporter) RegisterAgent(req RegisterAgentRequest) (*RegisterAgentRespon
 }
 
 // SendHeartbeat sends a heartbeat to the API server
-func (r *Reporter) SendHeartbeat() error {
+func (r *Reporter) SendHeartbeat(ctx context.Context) error {
 	if r.agentID == uuid.Nil {
 		return fmt.Errorf("agent ID not set")
 	}
@@ -93,7 +94,7 @@ func (r *Reporter) SendHeartbeat() error {
 	url := fmt.Sprintf("%s/api/v1/agents/%s/heartbeat", r.cfg.APIEndpoint, r.agentID)
 
 	var resp map[string]interface{}
-	err := r.doWithRetry("PUT", url, nil, &resp)
+	err := r.doWithRetry(ctx, "PUT", url, nil, &resp)
 	if err != nil {
 		return fmt.Errorf("failed to send heartbeat: %w", err)
 	}
@@ -103,7 +104,7 @@ func (r *Reporter) SendHeartbeat() error {
 }
 
 // SubmitDiagnosticResult submits a diagnostic result to the API server
-func (r *Reporter) SubmitDiagnosticResult(result DiagnosticResult) error {
+func (r *Reporter) SubmitDiagnosticResult(ctx context.Context, result DiagnosticResult) error {
 	url := fmt.Sprintf("%s/api/v1/diagnostics", r.cfg.APIEndpoint)
 
 	// Marshal result
@@ -114,7 +115,7 @@ func (r *Reporter) SubmitDiagnosticResult(result DiagnosticResult) error {
 
 	// Submit with retry
 	var resp map[string]interface{}
-	err = r.doWithRetry("POST", url, body, &resp)
+	err = r.doWithRetry(ctx, "POST", url, body, &resp)
 	if err != nil {
 		return fmt.Errorf("failed to submit diagnostic result: %w", err)
 	}
@@ -128,7 +129,7 @@ func (r *Reporter) SubmitDiagnosticResult(result DiagnosticResult) error {
 }
 
 // doWithRetry performs an HTTP request with exponential backoff retry
-func (r *Reporter) doWithRetry(method, url string, body []byte, respData interface{}) error {
+func (r *Reporter) doWithRetry(ctx context.Context, method, url string, body []byte, respData interface{}) error {
 	var lastErr error
 	baseDelay := r.cfg.RetryBaseDelay
 	maxAttempts := r.cfg.RetryMaxAttempts
@@ -140,7 +141,7 @@ func (r *Reporter) doWithRetry(method, url string, body []byte, respData interfa
 			bodyReader = bytes.NewReader(body)
 		}
 
-		req, err := http.NewRequest(method, url, bodyReader)
+		req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
 		if err != nil {
 			return fmt.Errorf("failed to create request: %w", err)
 		}
@@ -254,10 +255,10 @@ type DiagnosticResult struct {
 }
 
 // IsAvailable checks if the API server is reachable
-func (r *Reporter) IsAvailable() bool {
+func (r *Reporter) IsAvailable(ctx context.Context) bool {
 	url := fmt.Sprintf("%s/api/v1/health", r.cfg.APIEndpoint)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return false
 	}

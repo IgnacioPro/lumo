@@ -185,8 +185,10 @@ func (a *Agent) register() error {
 		}
 	}
 
-	// Register with API
-	resp, err := a.reporter.RegisterAgent(req)
+	// Register with API with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	resp, err := a.reporter.RegisterAgent(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -215,7 +217,7 @@ func (a *Agent) heartbeatLoop(ctx context.Context) {
 		case <-a.stopCh:
 			return
 		case <-ticker.C:
-			if err := a.reporter.SendHeartbeat(); err != nil {
+			if err := a.reporter.SendHeartbeat(ctx); err != nil {
 				a.logger.WithError(err).Warn("Failed to send heartbeat")
 				a.metrics.RecordHeartbeat(false)
 				a.metrics.UpdateAPIAvailability(false)
@@ -352,14 +354,14 @@ func (a *Agent) runDiagnostics(ctx context.Context) error {
 	a.metrics.RecordDiagnostic("success", time.Since(start), "all")
 
 	// Try to submit results to API
-	if a.reporter.IsAvailable() {
+	if a.reporter.IsAvailable(ctx) {
 		diagnosticResult := DiagnosticResult{
 			Target: "localhost",
 			Checks: a.cfg.Agent.EnabledChecks,
 			Format: a.cfg.Agent.ReportFormat,
 		}
 
-		if err := a.reporter.SubmitDiagnosticResult(diagnosticResult); err != nil {
+		if err := a.reporter.SubmitDiagnosticResult(ctx, diagnosticResult); err != nil {
 			a.logger.WithError(err).Warn("Failed to submit diagnostic results")
 			// Cache results for later submission
 			if err := a.cache.Set(fmt.Sprintf("diagnostic-%d", time.Now().Unix()), report); err != nil {

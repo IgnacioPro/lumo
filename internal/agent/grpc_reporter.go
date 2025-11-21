@@ -61,7 +61,7 @@ func (r *GRPCReporter) SetAgentID(agentID uuid.UUID) {
 }
 
 // RegisterAgent registers the agent with the gRPC API server
-func (r *GRPCReporter) RegisterAgent(req RegisterAgentRequest) (*RegisterAgentResponse, error) {
+func (r *GRPCReporter) RegisterAgent(ctx context.Context, req RegisterAgentRequest) (*RegisterAgentResponse, error) {
 	// Get hostname if not provided
 	hostname := req.Hostname
 	if hostname == "" {
@@ -101,14 +101,14 @@ func (r *GRPCReporter) RegisterAgent(req RegisterAgentRequest) (*RegisterAgentRe
 	}
 
 	// Perform registration with retry
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	var resp *lumov1.RegisterAgentResponse
 	var lastErr error
 
 	for attempt := 0; attempt < r.cfg.RetryMaxAttempts; attempt++ {
-		resp, lastErr = r.client.RegisterAgent(ctx, grpcReq)
+		resp, lastErr = r.client.RegisterAgent(ctxWithTimeout, grpcReq)
 		if lastErr == nil {
 			break
 		}
@@ -149,12 +149,12 @@ func (r *GRPCReporter) RegisterAgent(req RegisterAgentRequest) (*RegisterAgentRe
 }
 
 // SendHeartbeat sends a heartbeat to the gRPC API server
-func (r *GRPCReporter) SendHeartbeat() error {
+func (r *GRPCReporter) SendHeartbeat(ctx context.Context) error {
 	if r.agentID == uuid.Nil {
 		return fmt.Errorf("agent ID not set")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	// Build health status
@@ -164,7 +164,7 @@ func (r *GRPCReporter) SendHeartbeat() error {
 
 	var lastErr error
 	for attempt := 0; attempt < r.cfg.RetryMaxAttempts; attempt++ {
-		_, lastErr = r.client.SendHeartbeat(ctx, r.agentID.String(), health)
+		_, lastErr = r.client.SendHeartbeat(ctxWithTimeout, r.agentID.String(), health)
 		if lastErr == nil {
 			r.logger.Debug("Heartbeat sent successfully via gRPC")
 			return nil
@@ -185,8 +185,8 @@ func (r *GRPCReporter) SendHeartbeat() error {
 }
 
 // SubmitDiagnosticResult submits a diagnostic result to the gRPC API server
-func (r *GRPCReporter) SubmitDiagnosticResult(result DiagnosticResult) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func (r *GRPCReporter) SubmitDiagnosticResult(ctx context.Context, result DiagnosticResult) error {
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	// Convert output format
@@ -212,7 +212,7 @@ func (r *GRPCReporter) SubmitDiagnosticResult(result DiagnosticResult) error {
 
 	var lastErr error
 	for attempt := 0; attempt < r.cfg.RetryMaxAttempts; attempt++ {
-		resp, err := r.client.RunDiagnostics(ctx, grpcReq)
+		resp, err := r.client.RunDiagnostics(ctxWithTimeout, grpcReq)
 		if err == nil {
 			r.logger.WithFields(logrus.Fields{
 				"job_id": resp.JobId,
@@ -238,11 +238,11 @@ func (r *GRPCReporter) SubmitDiagnosticResult(result DiagnosticResult) error {
 }
 
 // IsAvailable checks if the gRPC API server is reachable
-func (r *GRPCReporter) IsAvailable() bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+func (r *GRPCReporter) IsAvailable(ctx context.Context) bool {
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	_, err := r.client.Live(ctx)
+	_, err := r.client.Live(ctxWithTimeout)
 	return err == nil
 }
 
@@ -264,9 +264,7 @@ func (r *GRPCReporter) GetAgentInfo() *lumov1.RegisterAgentRequest {
 }
 
 // StreamDiagnostics streams diagnostic events in real-time
-func (r *GRPCReporter) StreamDiagnostics(target string, checks []string, handler func(*lumov1.DiagnosticsEvent) error) error {
-	ctx := context.Background()
-
+func (r *GRPCReporter) StreamDiagnostics(ctx context.Context, target string, checks []string, handler func(*lumov1.DiagnosticsEvent) error) error {
 	req := &lumov1.StreamDiagnosticsRequest{
 		Target: target,
 		Checks: checks,
@@ -276,19 +274,19 @@ func (r *GRPCReporter) StreamDiagnostics(target string, checks []string, handler
 }
 
 // GetDiagnosticsResult retrieves a diagnostic job result
-func (r *GRPCReporter) GetDiagnosticsResult(jobID string) (*lumov1.GetDiagnosticsResultResponse, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func (r *GRPCReporter) GetDiagnosticsResult(ctx context.Context, jobID string) (*lumov1.GetDiagnosticsResultResponse, error) {
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	return r.client.GetDiagnosticsResult(ctx, jobID)
+	return r.client.GetDiagnosticsResult(ctxWithTimeout, jobID)
 }
 
 // ListDiagnostics lists diagnostic jobs
-func (r *GRPCReporter) ListDiagnostics(limit, offset int32) (*lumov1.ListDiagnosticsResponse, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func (r *GRPCReporter) ListDiagnostics(ctx context.Context, limit, offset int32) (*lumov1.ListDiagnosticsResponse, error) {
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	return r.client.ListDiagnostics(ctx, &lumov1.ListDiagnosticsRequest{
+	return r.client.ListDiagnostics(ctxWithTimeout, &lumov1.ListDiagnosticsRequest{
 		Limit:  limit,
 		Offset: offset,
 	})
