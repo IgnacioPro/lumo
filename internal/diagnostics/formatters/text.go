@@ -73,10 +73,11 @@ func (f *TextFormatter) formatResult(result *diagnostics.CheckResult) string {
 	statusText := "OK"
 	statusColor := colorGreen
 
-	if result.Severity == diagnostics.SeverityWarning {
+	switch result.Severity {
+	case diagnostics.SeverityWarning:
 		statusText = "WARNING"
 		statusColor = colorYellow
-	} else if result.Severity == diagnostics.SeverityError || result.Severity == diagnostics.SeverityCritical {
+	case diagnostics.SeverityError, diagnostics.SeverityCritical:
 		statusText = "ERROR"
 		statusColor = colorRed
 	}
@@ -111,11 +112,11 @@ func (f *TextFormatter) formatResult(result *diagnostics.CheckResult) string {
 
 // formatMetric formats a single metric
 func (f *TextFormatter) formatMetric(metric diagnostics.Metric) string {
-	// Format:   Metric Name: Value Unit
-	// Example:   Load Average: 1.23, 1.45, 1.67 (8 cores)
+	// Format:   Metric Name: Value Unit [threshold info] [status]
+	// Example:   CPU Usage: 50.00 percent
 
-	// Use %v to let Go format the float nicely (e.g. 15.3 instead of 15.30)
-	valueStr := fmt.Sprintf("%v", metric.Value)
+	// Format value with 2 decimal places
+	valueStr := fmt.Sprintf("%.2f", metric.Value)
 	if metric.Unit != "" {
 		// If unit starts with %, append it directly, otherwise space
 		if strings.HasPrefix(metric.Unit, "%") {
@@ -125,13 +126,30 @@ func (f *TextFormatter) formatMetric(metric diagnostics.Metric) string {
 		}
 	}
 
-	// Special handling for load average or multi-value metrics if they were passed as string in unit or value
-	// But based on struct, Value is float64.
-	// The image shows "Load Average: 1.23, 1.45, 1.67 (8 cores)" which implies the metric value might be formatted differently
-	// or the metric struct usage in the repro script is simplified.
-	// For now, we stick to the simple formatting but clean indentation.
+	result := fmt.Sprintf("  %s: %s", metric.Name, valueStr)
 
-	return fmt.Sprintf("  %s: %s", metric.Name, valueStr)
+	// Add threshold information if present
+	if metric.Threshold > 0 {
+		result += fmt.Sprintf(" (threshold: %.2f)", metric.Threshold)
+
+		// Determine if threshold is exceeded
+		var exceeded bool
+		switch metric.ThresholdType {
+		case diagnostics.ThresholdTypeMax:
+			exceeded = metric.Value > metric.Threshold
+		case diagnostics.ThresholdTypeMin:
+			exceeded = metric.Value < metric.Threshold
+		}
+
+		// Add status indicator
+		if exceeded {
+			result += " [WARN]"
+		} else {
+			result += " [OK]"
+		}
+	}
+
+	return result
 }
 
 // formatSummary formats the report summary
