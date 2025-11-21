@@ -24,6 +24,7 @@ type AgentRepository interface {
 	UpdateStatus(ctx context.Context, id uuid.UUID, status models.AgentStatus) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	CountByStatus(ctx context.Context) (map[models.AgentStatus]int, error)
+	CountByPlatform(ctx context.Context) (map[string]int, error)
 	MarkStaleAgentsOffline(ctx context.Context, threshold time.Duration) (int64, error)
 }
 
@@ -179,6 +180,12 @@ func (h *AgentsHandler) GetAgentStats(ctx context.Context, req *lumov1.GetAgentS
 		return nil, status.Errorf(codes.Internal, "failed to get agent stats: %v", err)
 	}
 
+	// Get counts by platform
+	platformCounts, err := h.agentRepo.CountByPlatform(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get platform stats: %v", err)
+	}
+
 	// Calculate totals
 	totalAgents := 0
 	onlineAgents := statusCounts[models.AgentStatusOnline]
@@ -189,12 +196,18 @@ func (h *AgentsHandler) GetAgentStats(ctx context.Context, req *lumov1.GetAgentS
 		totalAgents += count
 	}
 
+	// Convert platform counts to map[string]int32
+	platformStats := make(map[string]int32)
+	for platform, count := range platformCounts {
+		platformStats[platform] = int32(count)
+	}
+
 	return &lumov1.GetAgentStatsResponse{
 		TotalAgents:   int32(totalAgents),
 		OnlineAgents:  int32(onlineAgents),
 		OfflineAgents: int32(offlineAgents),
 		ErrorAgents:   int32(errorAgents),
-		ByPlatform:    make(map[string]int32), // TODO: Add platform stats
+		ByPlatform:    platformStats,
 	}, nil
 }
 
@@ -215,17 +228,17 @@ func toProtoAgent(agent *models.Agent) *lumov1.Agent {
 	}
 
 	return &lumov1.Agent{
-		Id:               agent.ID.String(),
-		Name:             agent.Name,
-		Hostname:         agent.Hostname,
-		IpAddress:        ipAddress,
-		Platform:         string(agent.Platform),
-		Architecture:     agent.Architecture,
-		Version:          agent.Version,
-		Status:           string(agent.Status),
-		Capabilities:     agent.Capabilities,
-		Labels:           labels,
-		LastHeartbeatAt:  timestamppb.New(agent.LastHeartbeatAt),
-		RegisteredAt:     timestamppb.New(agent.RegisteredAt),
+		Id:              agent.ID.String(),
+		Name:            agent.Name,
+		Hostname:        agent.Hostname,
+		IpAddress:       ipAddress,
+		Platform:        string(agent.Platform),
+		Architecture:    agent.Architecture,
+		Version:         agent.Version,
+		Status:          string(agent.Status),
+		Capabilities:    agent.Capabilities,
+		Labels:          labels,
+		LastHeartbeatAt: timestamppb.New(agent.LastHeartbeatAt),
+		RegisteredAt:    timestamppb.New(agent.RegisteredAt),
 	}
 }

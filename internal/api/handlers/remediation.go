@@ -47,7 +47,7 @@ func NewRemediationHandler(jobRepo JobRepository, cfg *config.Config, logger *lo
 // RemediationRequest represents a remediation request
 type RemediationRequest struct {
 	Target         string   `json:"target"`
-	Actions        []string `json:"actions,omitempty"` // Specific action IDs to execute
+	Actions        []string `json:"actions,omitempty"`      // Specific action IDs to execute
 	AutoApprove    bool     `json:"auto_approve,omitempty"` // DEPRECATED: Ignored for security reasons (prevents approval bypass)
 	SkipCategories []string `json:"skip_categories,omitempty"`
 	DryRun         bool     `json:"dry_run,omitempty"`
@@ -123,7 +123,12 @@ func (h *RemediationHandler) Run(w http.ResponseWriter, r *http.Request) {
 	}).Info("Remediation job created")
 
 	// Execute remediation asynchronously
-	go h.executeRemediation(context.Background(), job, &req)
+	// Use a long timeout (1 hour) to allow for complex remediation tasks
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Hour)
+	go func() {
+		defer cancel()
+		h.executeRemediation(ctx, job, &req)
+	}()
 
 	// Return immediate response
 	resp := RemediationResponse{

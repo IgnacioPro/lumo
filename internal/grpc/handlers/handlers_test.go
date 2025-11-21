@@ -190,6 +190,14 @@ func (m *mockAgentRepository) CountByStatus(ctx context.Context) (map[models.Age
 	return counts, nil
 }
 
+func (m *mockAgentRepository) CountByPlatform(ctx context.Context) (map[string]int, error) {
+	counts := make(map[string]int)
+	for _, agent := range m.agents {
+		counts[string(agent.Platform)]++
+	}
+	return counts, nil
+}
+
 // TestHealthHandler tests the health service handler
 func TestHealthHandler_Check(t *testing.T) {
 	cfg := &config.Config{}
