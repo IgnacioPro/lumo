@@ -1,5 +1,8 @@
 name: CI
 
+# Temporarily disabled - using CircleCI instead
+# To re-enable, remove the "if: false" condition from all jobs below
+
 on:
   push:
     branches: [ main, master, develop ]
@@ -22,6 +25,7 @@ jobs:
   test:
     name: Test & Build
     runs-on: self-hosted
+    if: false  # Disabled - using CircleCI instead
 
     steps:
     - name: Checkout code
@@ -60,7 +64,7 @@ jobs:
   build-cross-platform:
     name: Build (Cross-Platform)
     # Only run cross-platform builds on main/master or PRs to main/master
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.base_ref == 'main' || github.base_ref == 'master'
+    if: false  # Disabled - using CircleCI instead
     runs-on: self-hosted
     strategy:
       matrix:
