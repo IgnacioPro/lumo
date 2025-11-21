@@ -39,12 +39,36 @@ func NewServer(cfg *config.Config, db *database.DB, logger *logrus.Logger) (*Ser
 		// Try environment variable
 		jwtSecret = os.Getenv("LUMO_API_JWT_SECRET")
 	}
+
+	// Detect production environment
+	isProduction := detectProductionMode(cfg)
+
 	if jwtSecret == "" {
-		logger.Warn("No JWT secret configured - JWT authentication will be disabled")
-		// Generate a temporary secret for development (NOT for production!)
-		tempSecret, _ := auth.GenerateSecureSecret(32)
+		if isProduction {
+			// FAIL FAST in production - never use temporary secrets
+			return nil, fmt.Errorf("CRITICAL: JWT secret not configured in production. Set LUMO_API_JWT_SECRET environment variable or config.api.jwt_secret")
+		}
+
+		// Development mode: generate temporary secret with clear warnings
+		logger.Warn("⚠️  NO JWT SECRET - Generating temporary secret for DEVELOPMENT ONLY")
+		tempSecret, err := auth.GenerateSecureSecret(32)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate temporary JWT secret: %w", err)
+		}
 		jwtSecret = tempSecret
-		logger.Warn("Generated temporary JWT secret for development - DO NOT use in production!")
+		logger.Warn("⚠️  TEMPORARY JWT SECRET - Multi-instance deployments will NOT work")
+		logger.Warn("⚠️  Sessions will RESET on server restart")
+		logger.Warn("⚠️  Set LUMO_API_JWT_SECRET before deploying to production")
+	} else {
+		// Secret is configured - validate length
+		if len(jwtSecret) < 32 {
+			return nil, fmt.Errorf("JWT secret too short (minimum 32 characters, got %d)", len(jwtSecret))
+		}
+		if isProduction {
+			logger.Info("JWT secret configured ✓ (production mode)")
+		} else {
+			logger.Info("JWT secret configured ✓ (development mode)")
+		}
 	}
 
 	jwtExpiration := cfg.API.JWTExpiration
@@ -144,4 +168,38 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.logger.Info("Shutting down server...")
 	return s.httpServer.Shutdown(ctx)
+}
+
+// detectProductionMode determines if the server is running in production
+// Precedence: LUMO_ENVIRONMENT env var > config.Environment > auto-detection heuristics
+func detectProductionMode(cfg *config.Config) bool {
+	// Method 1: Check explicit LUMO_ENVIRONMENT variable (highest priority)
+	if env := os.Getenv("LUMO_ENVIRONMENT"); env != "" {
+		return env == "production" || env == "prod"
+	}
+
+	// Method 2: Check config.Environment field (second priority)
+	if cfg.Environment != "" {
+		return cfg.Environment == "production" || cfg.Environment == "prod"
+	}
+
+	// Method 3: Auto-detection heuristics (lowest priority)
+
+	// Check if TLS is enabled (production typically uses TLS)
+	if cfg.API.TLS {
+		return true
+	}
+
+	// Check if binding to public interface (not localhost)
+	if cfg.API.Host != "localhost" && cfg.API.Host != "127.0.0.1" && cfg.API.Host != "::1" && cfg.API.Host != "" {
+		return true
+	}
+
+	// Check Kubernetes environment
+	if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
+		return true
+	}
+
+	// Default: assume development if no indicators
+	return false
 }
