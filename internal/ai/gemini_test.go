@@ -241,9 +241,13 @@ func TestGeminiProvider_Health(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Verify it's a POST request to generateContent endpoint
+				if r.Method != http.MethodPost {
+					t.Errorf("Expected POST request, got %s", r.Method)
+				}
 				w.WriteHeader(tt.statusCode)
 				if tt.statusCode == http.StatusOK {
-					_, _ = w.Write([]byte(`{"name": "models/gemini-pro"}`))
+					_, _ = w.Write([]byte(`{"candidates": [{"content": {"parts": [{"text": "pong"}]}}]}`))
 				}
 			}))
 			defer server.Close()

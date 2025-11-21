@@ -75,22 +75,46 @@ func NewGeminiProvider(config *ProviderConfig, log *logrus.Logger) (*GeminiProvi
 
 // Health checks if the Gemini API is accessible.
 func (p *GeminiProvider) Health(ctx context.Context) error {
-	// Gemini health check: GET model info
+	// Gemini health check: send a minimal generateContent request
+	// This is more reliable than trying to GET model info (which returns 404)
 	adapter := p.adapter.(*geminiAdapter)
-	url := fmt.Sprintf("%s/%s?key=%s", adapter.GetEndpoint(), adapter.config.Model, adapter.config.APIKey)
+
+	// GetEndpoint() already returns the full URL with model and API key
+	url := adapter.GetEndpoint()
+
+	// Minimal test request
+	testReq := map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"parts": []map[string]string{
+					{"text": "ping"},
+				},
+			},
+		},
+		"generationConfig": map[string]interface{}{
+			"maxOutputTokens": 1,
+		},
+	}
 
 	resp, err := p.httpClient.Do(ctx, RequestOptions{
-		Method:       "GET",
+		Method:       "POST",
 		URL:          url,
-		Headers:      nil,
+		Body:         testReq,
+		Headers:      map[string]string{"Content-Type": "application/json"},
 		ProviderName: p.Name(),
 	})
 
-	// Accept both 200 (model info) and 404 (expected for GET on generateContent endpoint)
-	if err == nil {
-		if len(resp.Body) > 0 {
-			return nil
+	if err != nil {
+		return &Error{
+			Op:        "health_check",
+			Provider:  p.Name(),
+			Err:       err,
+			Retryable: true,
 		}
+	}
+
+	// Check for valid response
+	if len(resp.Body) == 0 {
 		return &Error{
 			Op:        "health_check",
 			Provider:  p.Name(),
@@ -99,17 +123,7 @@ func (p *GeminiProvider) Health(ctx context.Context) error {
 		}
 	}
 
-	// Check if it's just a 404 (which is OK for Gemini)
-	if strings.Contains(err.Error(), "404") {
-		return nil
-	}
-
-	return &Error{
-		Op:        "health_check",
-		Provider:  p.Name(),
-		Err:       err,
-		Retryable: true,
-	}
+	return nil
 }
 
 // AnalyzeStream analyzes with streaming response.
