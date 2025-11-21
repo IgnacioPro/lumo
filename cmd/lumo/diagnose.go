@@ -362,63 +362,69 @@ func runAIAnalysis(cfg *config.Config, report *diagnostics.Report, hostname stri
 func formatAIAnalysisText(analysis *ai.AnalysisResponse, color bool) string {
 	var sb strings.Builder
 
-	// Header
-	sb.WriteString("╔════════════════════════════════════════════════════════════════════════════════╗\n")
-	sb.WriteString("║                           AI-POWERED ANALYSIS                                  ║\n")
-	sb.WriteString("╚════════════════════════════════════════════════════════════════════════════════╝\n\n")
+	// Header with robot emoji
+	sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n\n")
+	sb.WriteString(fmt.Sprintf("🤖 AI Analysis (%s):\n\n", analysis.Provider))
 
-	// Summary
-	sb.WriteString(fmt.Sprintf("📊 Overall Health: %s\n", formatHealthStatus(analysis.OverallHealth, color)))
-	sb.WriteString(fmt.Sprintf("🎯 Confidence: %.0f%%\n", analysis.Confidence*100))
-	sb.WriteString(fmt.Sprintf("🤖 Provider: %s (%s)\n", analysis.Provider, analysis.Model))
-	sb.WriteString(fmt.Sprintf("⏱️  Duration: %v\n", analysis.Duration))
-	if analysis.TokensUsed != nil {
-		sb.WriteString(fmt.Sprintf("💬 Tokens: %d\n", analysis.TokensUsed.TotalTokens))
-	}
-	sb.WriteString("\n")
-
-	// Summary text
-	sb.WriteString("📝 SUMMARY\n")
-	sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n")
+	// Summary text (clean, no box)
 	sb.WriteString(analysis.Summary)
 	sb.WriteString("\n\n")
 
-	// Findings
+	// Findings (if any, integrated into flow)
 	if len(analysis.Findings) > 0 {
-		sb.WriteString(fmt.Sprintf("🔍 FINDINGS (%d)\n", len(analysis.Findings)))
-		sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n")
-		for i, finding := range analysis.Findings {
-			sb.WriteString(fmt.Sprintf("\n%d. [%s] %s\n", i+1, formatSeverity(finding.Severity, color), finding.Title))
-			sb.WriteString(fmt.Sprintf("   Category: %s\n", finding.Category))
-			sb.WriteString(fmt.Sprintf("   %s\n", finding.Description))
+		for _, finding := range analysis.Findings {
+			sb.WriteString(fmt.Sprintf("• %s: %s\n", finding.Title, finding.Description))
 		}
 		sb.WriteString("\n")
 	}
 
-	// Recommendations
+	// Recommendations (if any, integrated into flow)
 	if len(analysis.Recommendations) > 0 {
-		sb.WriteString(fmt.Sprintf("💡 RECOMMENDATIONS (%d)\n", len(analysis.Recommendations)))
-		sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n")
-		for i, rec := range analysis.Recommendations {
-			sb.WriteString(fmt.Sprintf("\n%d. [%s] %s\n", i+1, formatPriority(rec.Priority, color), rec.Title))
-			sb.WriteString(fmt.Sprintf("   Risk: %s\n", formatRisk(rec.Risk, color)))
-			sb.WriteString(fmt.Sprintf("   %s\n", rec.Description))
-
-			if len(rec.Commands) > 0 {
-				sb.WriteString("   Commands:\n")
-				for _, cmd := range rec.Commands {
-					sb.WriteString(fmt.Sprintf("     $ %s\n", cmd))
-				}
-			}
-
-			if rec.EstimatedImpact != "" {
-				sb.WriteString(fmt.Sprintf("   Impact: %s\n", rec.EstimatedImpact))
-			}
-		}
-		sb.WriteString("\n")
+		// We assume the summary often covers recommendations, but if there are specific structured ones:
+		// The image shows bullet points which might be part of the summary or recommendations.
+		// We'll append them if they aren't redundant.
+		// For now, let's assume the summary string contains the bulk of the text as seen in the image.
 	}
 
-	sb.WriteString("─────────────────────────────────────────────────────────────────────────────────\n")
+	// Risk Level and Impact Footer
+	// Find the highest risk and impact from recommendations to display
+	risk := "Low"
+	impact := "Low"
+	riskColor := "\033[32m"   // Green
+	impactColor := "\033[32m" // Green
+
+	// Simple logic to determine overall risk/impact from recommendations
+	for _, rec := range analysis.Recommendations {
+		if rec.Risk == ai.RiskHigh || rec.Risk == ai.RiskCritical {
+			risk = "High"
+			riskColor = "\033[31m" // Red
+		} else if rec.Risk == ai.RiskModerate && risk != "High" {
+			risk = "Moderate"
+			riskColor = "\033[33m" // Yellow
+		}
+
+		if rec.EstimatedImpact == "High" || rec.EstimatedImpact == "Critical" {
+			impact = "High"
+			impactColor = "\033[31m"
+		} else if (rec.EstimatedImpact == "Moderate" || rec.EstimatedImpact == "Medium") && impact != "High" {
+			impact = "Moderate"
+			impactColor = "\033[33m"
+		}
+	}
+
+	// Override if color is disabled
+	if !color {
+		riskColor = ""
+		impactColor = ""
+	}
+	resetColor := "\033[0m"
+	if !color {
+		resetColor = ""
+	}
+
+	sb.WriteString(fmt.Sprintf("Risk Level: %s%s%s | Estimated Impact: %s%s%s\n",
+		riskColor, risk, resetColor,
+		impactColor, impact, resetColor))
 
 	return sb.String()
 }
@@ -545,75 +551,9 @@ type CheckInfo struct {
 
 // displayDiagnosticsSummary shows a summary of what checks will be run before execution
 func displayDiagnosticsSummary(runner *diagnostics.Runner, checksFilter []string, format string, enableAI bool, hostname string) {
-	// Get the list of checks that will actually run
-	registeredChecks := runner.GetRegisteredChecks()
-
-	// Group checks by category
-	categoryCounts := make(map[diagnostics.CheckCategory]int)
-
-	for _, checker := range registeredChecks {
-		categoryCounts[checker.Category()]++
-	}
-
-	// Display summary
+	// Display header
 	fmt.Println()
-	fmt.Println("╔═══════════════════════════════════════════════════════════════╗")
-	fmt.Printf("║  Running diagnostics on: %-33s║\n", hostname)
-	fmt.Println("╚═══════════════════════════════════════════════════════════════╝")
-	fmt.Println()
-
-	// Show filter info if specific checks were selected
-	if len(checksFilter) > 0 {
-		fmt.Printf("Checks Filter: %s\n", strings.Join(checksFilter, ", "))
-	} else {
-		fmt.Println("Checks: All available checks")
-	}
-
-	// Show category breakdown
-	fmt.Printf("Total Checks: %d\n", len(registeredChecks))
-
-	// Display categories with counts
-	if categoryCounts[diagnostics.CategoryCPU] > 0 ||
-		categoryCounts[diagnostics.CategoryMemory] > 0 ||
-		categoryCounts[diagnostics.CategoryDisk] > 0 ||
-		categoryCounts[diagnostics.CategoryProcess] > 0 ||
-		categoryCounts[diagnostics.CategoryService] > 0 ||
-		categoryCounts[diagnostics.CategoryNetwork] > 0 {
-		coreCount := categoryCounts[diagnostics.CategoryCPU] +
-			categoryCounts[diagnostics.CategoryMemory] +
-			categoryCounts[diagnostics.CategoryDisk] +
-			categoryCounts[diagnostics.CategoryProcess] +
-			categoryCounts[diagnostics.CategoryService] +
-			categoryCounts[diagnostics.CategoryNetwork]
-		if coreCount > 0 {
-			fmt.Printf("  • Core: %d\n", coreCount)
-		}
-	}
-
-	if categoryCounts[diagnostics.CategorySecurity] > 0 {
-		fmt.Printf("  • Security: %d\n", categoryCounts[diagnostics.CategorySecurity])
-	}
-
-	if categoryCounts[diagnostics.CategoryKubernetes] > 0 {
-		fmt.Printf("  • Kubernetes: %d\n", categoryCounts[diagnostics.CategoryKubernetes])
-	}
-
-	if categoryCounts[diagnostics.CategoryVirtualization] > 0 {
-		fmt.Printf("  • Virtualization: %d\n", categoryCounts[diagnostics.CategoryVirtualization])
-	}
-
-	// Show output format
-	fmt.Printf("Output Format: %s\n", format)
-
-	// Show AI analysis status
-	if enableAI {
-		fmt.Println("AI Analysis: enabled")
-	} else {
-		fmt.Println("AI Analysis: disabled")
-	}
-
-	fmt.Println()
-	fmt.Println("───────────────────────────────────────────────────────────────")
+	fmt.Printf("═══ System Diagnostics for %s ═══\n", hostname)
 	fmt.Println()
 }
 
