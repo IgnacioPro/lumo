@@ -8,6 +8,9 @@ import (
 
 	"github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 // TaskFunc is a function that runs on a schedule
@@ -54,6 +57,16 @@ func (s *Scheduler) AddTask(name, schedule string, task TaskFunc) error {
 		ctx, cancel := context.WithTimeout(s.ctx, 30*time.Minute)
 		defer cancel()
 
+		// Create tracing span for scheduled task
+		tracer := otel.Tracer("lumo.agent.scheduler")
+		ctx, span := tracer.Start(ctx, "ScheduledTask")
+		defer span.End()
+
+		span.SetAttributes(
+			attribute.String("task.name", name),
+			attribute.String("task.schedule", schedule),
+		)
+
 		start := time.Now()
 
 		s.logger.WithFields(logrus.Fields{
@@ -61,11 +74,15 @@ func (s *Scheduler) AddTask(name, schedule string, task TaskFunc) error {
 		}).Debug("Running scheduled task")
 
 		if err := task(ctx); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, fmt.Sprintf("Scheduled task failed: %v", err))
 			s.logger.WithError(err).WithFields(logrus.Fields{
 				"task":     name,
 				"duration": time.Since(start),
 			}).Error("Scheduled task failed")
 		} else {
+			span.SetAttributes(attribute.String("task.duration", time.Since(start).String()))
+			span.SetStatus(codes.Ok, "Scheduled task completed successfully")
 			s.logger.WithFields(logrus.Fields{
 				"task":     name,
 				"duration": time.Since(start),

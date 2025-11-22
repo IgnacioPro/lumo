@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 // CheckCategory represents the category of a diagnostic check
@@ -152,13 +155,28 @@ func (r *Runner) RegisterCheckers(checkers ...Checker) {
 
 // RunAll executes all registered checks and returns a report
 func (r *Runner) RunAll(ctx context.Context) (*Report, error) {
+	// Create tracing span
+	tracer := otel.Tracer("lumo.diagnostics")
+	ctx, span := tracer.Start(ctx, "RunAll")
+	defer span.End()
+
 	r.mu.RLock()
 	checksToRun := r.getChecksToRun()
 	r.mu.RUnlock()
 
 	if len(checksToRun) == 0 {
-		return nil, fmt.Errorf("no checks registered")
+		err := fmt.Errorf("no checks registered")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "No checks registered")
+		return nil, err
 	}
+
+	// Set span attributes
+	span.SetAttributes(
+		attribute.Int("diagnostics.checks_to_run", len(checksToRun)),
+		attribute.Bool("diagnostics.parallel", r.config.Parallel),
+		attribute.Int("diagnostics.max_concurrent", r.config.MaxConcurrent),
+	)
 
 	r.logger.Infof("Running %d diagnostic checks (parallel: %v)", len(checksToRun), r.config.Parallel)
 
@@ -180,6 +198,17 @@ func (r *Runner) RunAll(ctx context.Context) (*Report, error) {
 		Results:   results,
 		Summary:   generateSummary(results),
 	}
+
+	// Add summary to span attributes
+	span.SetAttributes(
+		attribute.Int("diagnostics.total_checks", report.Summary.TotalChecks),
+		attribute.Int("diagnostics.ok_count", report.Summary.OKCount),
+		attribute.Int("diagnostics.warning_count", report.Summary.WarningCount),
+		attribute.Int("diagnostics.critical_count", report.Summary.CriticalCount),
+		attribute.Int("diagnostics.error_count", report.Summary.ErrorCount),
+		attribute.String("diagnostics.duration", duration.String()),
+	)
+	span.SetStatus(codes.Ok, "Diagnostics completed successfully")
 
 	r.logger.Infof("Diagnostics completed in %v: %d checks, %d OK, %d warnings, %d critical, %d errors",
 		duration,
@@ -245,6 +274,18 @@ func (r *Runner) runParallel(ctx context.Context, checks []Checker) []*CheckResu
 
 // runSingleCheck executes a single check with timeout and retry logic
 func (r *Runner) runSingleCheck(ctx context.Context, checker Checker) *CheckResult {
+	// Create tracing span for individual check
+	tracer := otel.Tracer("lumo.diagnostics")
+	ctx, span := tracer.Start(ctx, "runSingleCheck")
+	defer span.End()
+
+	// Set check metadata in span
+	span.SetAttributes(
+		attribute.String("check.name", checker.Name()),
+		attribute.String("check.category", string(checker.Category())),
+		attribute.Bool("check.requires_root", checker.RequiresRoot()),
+	)
+
 	// Create check-specific context with timeout
 	checkCtx, cancel := context.WithTimeout(ctx, r.config.CheckTimeout)
 	defer cancel()
@@ -293,6 +334,19 @@ func (r *Runner) runSingleCheck(ctx context.Context, checker Checker) *CheckResu
 	// Evaluate thresholds and set severity
 	if result.Status == StatusCompleted && result.Severity == "" {
 		result.Severity = r.evaluateSeverity(result)
+	}
+
+	// Update span with check result
+	span.SetAttributes(
+		attribute.String("check.status", string(result.Status)),
+		attribute.String("check.severity", string(result.Severity)),
+		attribute.String("check.duration", result.Duration.String()),
+	)
+
+	if result.Status == StatusFailed || result.Severity == SeverityError {
+		span.SetStatus(codes.Error, fmt.Sprintf("Check failed: %s", result.Message))
+	} else {
+		span.SetStatus(codes.Ok, "Check completed")
 	}
 
 	r.logger.Debugf("Check %s completed with severity: %s", checker.Name(), result.Severity)

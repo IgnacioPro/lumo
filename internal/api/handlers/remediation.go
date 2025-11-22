@@ -18,6 +18,9 @@ import (
 	"github.com/ignacio/lumo/internal/remediation"
 	"github.com/ignacio/lumo/internal/ssh"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 // JobRepository defines the interface for job storage operations
@@ -180,6 +183,19 @@ func (h *RemediationHandler) executeRemediation(ctx context.Context, job *models
 
 // performRemediation executes the actual remediation logic
 func (h *RemediationHandler) performRemediation(ctx context.Context, req *RemediationRequest) (map[string]interface{}, error) {
+	// Create tracing span
+	tracer := otel.Tracer("lumo.api.handlers")
+	ctx, span := tracer.Start(ctx, "performRemediation")
+	defer span.End()
+
+	// Set span attributes
+	span.SetAttributes(
+		attribute.String("remediation.target", req.Target),
+		attribute.Bool("remediation.dry_run", req.DryRun),
+		attribute.Int("remediation.actions_count", len(req.Actions)),
+		attribute.Int("remediation.skip_categories_count", len(req.SkipCategories)),
+	)
+
 	// Parse host argument
 	var username, hostname string
 	if strings.Contains(req.Target, "@") {
@@ -196,6 +212,7 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 
 	// Check if localhost
 	isLocal := isLocalhost(hostname)
+	span.SetAttributes(attribute.Bool("remediation.is_localhost", isLocal))
 
 	// Create command executor
 	var executor diagnostics.CommandExecutor
@@ -215,6 +232,8 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 
 		sshClient, err := ssh.NewClient(sshClientConfig, h.logger)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "Failed to create SSH client")
 			return nil, fmt.Errorf("failed to create SSH client: %w", err)
 		}
 
@@ -224,6 +243,8 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 			port = 22
 		}
 		if err := sshClient.Connect(hostname, port, username); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "Failed to connect via SSH")
 			return nil, fmt.Errorf("failed to connect: %w", err)
 		}
 
@@ -252,10 +273,15 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 	// Run diagnostics
 	diagReport, err := runner.RunAll(ctx)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to run diagnostics")
 		return nil, fmt.Errorf("failed to run diagnostics: %w", err)
 	}
 	if len(diagReport.Results) == 0 {
-		return nil, fmt.Errorf("no diagnostic results available")
+		err := fmt.Errorf("no diagnostic results available")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "No diagnostic results available")
+		return nil, err
 	}
 
 	// Create remediation registry
@@ -265,6 +291,8 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 	suggester := remediation.NewSuggester(registry, h.logger)
 	plan, err := suggester.SuggestFromReport(diagReport)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to generate remediation plan")
 		return nil, fmt.Errorf("failed to generate remediation plan: %w", err)
 	}
 
@@ -308,8 +336,23 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 	// Execute plan
 	execReport, err := remediationExecutor.ExecutePlan(ctx, plan)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to execute remediation plan")
 		return nil, fmt.Errorf("failed to execute remediation plan: %w", err)
 	}
+
+	// Set span attributes with execution results
+	span.SetAttributes(
+		attribute.Int("remediation.total_actions", execReport.TotalActions),
+		attribute.Int("remediation.executed", execReport.Executed),
+		attribute.Int("remediation.succeeded", execReport.Succeeded),
+		attribute.Int("remediation.failed", execReport.Failed),
+		attribute.Int("remediation.skipped", execReport.Skipped),
+		attribute.Int("remediation.rejected", execReport.Rejected),
+		attribute.Int("remediation.rolled_back", execReport.RolledBack),
+		attribute.String("remediation.duration", execReport.Duration.String()),
+	)
+	span.SetStatus(codes.Ok, "Remediation completed successfully")
 
 	// Format response
 	result := map[string]interface{}{
