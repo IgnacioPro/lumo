@@ -26,15 +26,28 @@ jobs:
       - run:
           name: Check if code files changed
           command: |
+            set -e
+
             # Get list of changed files
             if [ "$CIRCLE_BRANCH" = "main" ] || [ "$CIRCLE_BRANCH" = "master" ]; then
               # On main/master, check last commit
               CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
             else
-              # On feature branches, compare to main
-              git fetch origin main:main || git fetch origin master:master || true
-              BASE_BRANCH=$(git rev-parse --verify main 2>/dev/null && echo "main" || echo "master")
-              CHANGED_FILES=$(git diff --name-only origin/$BASE_BRANCH...HEAD)
+              # On feature branches, compare to main/master
+              echo "Fetching origin/main..."
+              git fetch origin main 2>&1 || echo "main branch not found, trying master..."
+
+              if git rev-parse --verify origin/main >/dev/null 2>&1; then
+                BASE_BRANCH="origin/main"
+              elif git rev-parse --verify origin/master >/dev/null 2>&1; then
+                BASE_BRANCH="origin/master"
+              else
+                echo "ERROR: Could not find main or master branch"
+                exit 1
+              fi
+
+              echo "Comparing against $BASE_BRANCH..."
+              CHANGED_FILES=$(git diff --name-only $BASE_BRANCH...HEAD)
             fi
 
             echo "Changed files:"
