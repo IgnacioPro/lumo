@@ -62,9 +62,9 @@ build_image() {
     # Change to project root (3 levels up from kind/)
     cd "$(dirname "$0")/../../.."
 
-    # Build image with Dockerfile from kind/ directory
+    # Build image with Dockerfile.agent from root
     docker build \
-        -f deployments/kubernetes/kind/Dockerfile \
+        -f Dockerfile.agent \
         -t "${FULL_IMAGE}" \
         --progress=plain \
         .
