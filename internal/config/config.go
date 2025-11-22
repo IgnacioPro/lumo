@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -329,7 +330,7 @@ func DefaultConfig() *Config {
 			Port:            5432,
 			Name:            "lumo",
 			User:            "lumo",
-			Password:        "", // Set via LUMO_DATABASE_PASSWORD env var
+			Password:        "lumo_dev", // Set via LUMO_DATABASE_PASSWORD env var
 			SSLMode:         "disable",
 			MaxConnections:  50,               // Adaptive default for medium deployments (100-500 agents)
 			MaxIdle:         12,               // 25% of MaxConnections (keep warm connections)
@@ -391,6 +392,18 @@ func DefaultConfig() *Config {
 // Load reads the configuration from viper and returns a Config struct
 func Load() (*Config, error) {
 	cfg := DefaultConfig()
+
+	// Configure environment variable handling
+	viper.SetEnvPrefix("LUMO")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.AutomaticEnv()
+
+	// Explicitly bind keys to ensure AutomaticEnv works for them
+	// This is necessary because we're using a struct for defaults, not viper.SetDefault
+	viper.SetDefault("api.rate_limit_enabled", true)
+	viper.SetDefault("api.rate_limit_requests_per_min", 60)
+	viper.SetDefault("api.rate_limit_requests_per_hour", 3600)
+	viper.SetDefault("api.rate_limit_burst_size", 10)
 
 	if err := viper.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)

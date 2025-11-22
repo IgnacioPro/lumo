@@ -1,6 +1,8 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/ignacio/lumo/internal/api/auth"
@@ -10,6 +12,7 @@ import (
 	"github.com/ignacio/lumo/internal/database"
 	"github.com/ignacio/lumo/internal/database/repository"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // NewRouter creates and configures the HTTP router
@@ -27,6 +30,9 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 
 	// Global middleware
 	r.Use(apimiddleware.Recovery(logger))
+	r.Use(func(next http.Handler) http.Handler {
+		return otelhttp.NewHandler(next, "lumo-api")
+	})
 	r.Use(apimiddleware.Logger(logger))
 	r.Use(apimiddleware.CORS(cfg.API.AllowedOrigins))
 	r.Use(middleware.RequestID)
