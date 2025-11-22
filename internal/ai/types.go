@@ -30,6 +30,10 @@ type Provider interface {
 
 	// Health checks if the provider is available and configured correctly.
 	Health(ctx context.Context) error
+
+	// Ask sends a natural language prompt to the AI and returns the response text.
+	// This is used for general-purpose queries like the "ask" command.
+	Ask(ctx context.Context, prompt string) (string, error)
 }
 
 // AnalysisRequest contains diagnostic results and context for AI analysis.
