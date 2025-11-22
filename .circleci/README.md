@@ -16,17 +16,19 @@ The CircleCI pipeline provides continuous integration and testing for Lumo, runn
 
 To stay within free tier limits (6,000 credits/month), this config implements:
 
-1. **Branch filtering**: Only runs on `main`/`master` (not all branches) - saves ~90% of credits
+1. **PR-only builds**: "Only build pull requests" setting - runs on PRs + main/master, skips feature branch pushes - saves ~90% of credits
 2. **Dependency caching**: Go modules and tools cached - saves ~40% per run
 3. **Resource sizing**: Uses `small` resource class - saves 50% credits per job
 4. **Merged workflows**: Cross-platform builds require main build - prevents duplicate runs
 5. **Reduced frequency**: Weekly integration tests instead of daily - saves 85% on scheduled runs
 
+**IMPORTANT**: You MUST enable "Only build pull requests" in CircleCI Project Settings → Advanced for optimization #1 to work!
+
 ## Workflows
 
 ### 1. Main CI Workflow (`ci`)
 
-Runs **ONLY on main/master branches** (not feature branches):
+Runs on **pull requests + main/master** (requires "Only build pull requests" setting enabled):
 
 ```
 lint-and-security (cached)
@@ -43,12 +45,15 @@ build (requires lint + test, cached)
        ├─── Build CLI
        └─── Build Agent
        │
-       └─── Cross-platform builds (4 parallel jobs)
+       └─── Cross-platform builds (4 parallel jobs, main/master only)
             ├─── Linux: amd64, arm64
             └─── Darwin: amd64, arm64
 ```
 
-**Triggers**: Push to main/master only (saves ~90% credits vs all branches)
+**Triggers**:
+- Pull requests (all validation, no cross-platform builds)
+- Pushes to main/master (full pipeline including cross-platform builds)
+- **Skips**: Random feature branch pushes (not PRs)
 
 ### 2. Weekly Integration Test (`weekly`)
 
@@ -79,7 +84,20 @@ make ci-build   # Build both binaries
 3. Click "Set Up Project" for the `lumo` repository
 4. CircleCI will automatically detect the `.circleci/config.yml` file
 
-### 2. Environment Variables (Optional)
+### 2. Enable "Only build pull requests" (CRITICAL)
+
+**This is required to avoid burning credits on every feature branch push!**
+
+1. Go to **Project Settings** → **Advanced**
+2. Enable **"Only build pull requests"** checkbox
+3. This ensures CI runs on:
+   - Pushes to main/master
+   - Pull requests from any branch
+   - **BUT NOT** random pushes to feature branches
+
+Without this setting, EVERY push to ANY branch will trigger CI and burn credits.
+
+### 3. Environment Variables (Optional)
 
 No environment variables are required for basic CI. However, you may want to add:
 
@@ -88,7 +106,7 @@ No environment variables are required for basic CI. However, you may want to add
 
 Set these in: **Project Settings → Environment Variables**
 
-### 3. Status Badge
+### 4. Status Badge
 
 Add to README.md:
 
@@ -133,6 +151,12 @@ Jobs run in parallel where possible:
 
 ### Credit Usage (Free Tier: 6,000/month)
 
+**Per pull request** (~90-100 credits):
+- lint-and-security: ~30 credits (small, cached)
+- test: ~30 credits (small, cached)
+- build: ~30 credits (small, cached)
+- Cross-platform builds: skipped on PRs
+
 **Per main branch push** (~150-200 credits):
 - lint-and-security: ~30 credits (small, cached)
 - test: ~30 credits (small, cached)
@@ -141,9 +165,10 @@ Jobs run in parallel where possible:
 
 **Weekly integration**: ~50 credits/week = ~200 credits/month
 
-**Expected monthly usage**: ~1,500-2,000 credits (well within free tier)
-- Assumes ~10 pushes to main/month
-- Weekly integration tests
+**Expected monthly usage**: ~1,500-2,500 credits (well within free tier)
+- Assumes ~10 PRs/month (~1,000 credits)
+- Assumes ~5 pushes to main/month (~900 credits)
+- Weekly integration tests (~200 credits)
 - All with caching enabled
 
 **Previous usage**: ~6,000+ credits (was running on ALL branches + daily integration)
@@ -218,11 +243,11 @@ If credits are still too high:
 **Resource Class**: `small` (saves 50% credits vs `medium`)
 
 **Optimizations Applied**:
-- Branch filtering (main/master only)
+- PR-only builds setting (PRs + main/master, skips feature branches)
 - Dependency caching (Go modules + tools)
 - Merged workflows (prevents duplicate runs)
 - Reduced scheduled tests (weekly vs daily)
-- Smaller resource class
+- Smaller resource class (small vs medium)
 
 When updating Go version, update in:
 1. `.circleci/config.yml` (executor image)

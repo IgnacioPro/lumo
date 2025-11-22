@@ -146,31 +146,17 @@ jobs:
 workflows:
   version: 2
 
-  # Main CI workflow - ONLY runs on main branch (not all branches)
-  # This saves 90% of credits by skipping feature branches
+  # Main CI workflow - runs on main branch and PRs
+  # NOTE: Enable "Only build pull requests" in CircleCI Project Settings
+  # This ensures PRs are tested while skipping random feature branch pushes
   ci:
     jobs:
-      - lint-and-security:
-          filters:
-            branches:
-              only:
-                - main
-                - master
-      - test:
-          filters:
-            branches:
-              only:
-                - main
-                - master
+      - lint-and-security
+      - test
       - build:
           requires:
             - lint-and-security
             - test
-          filters:
-            branches:
-              only:
-                - main
-                - master
       # Cross-platform builds merged into main workflow
       # Only runs after main build succeeds
       - build-cross-platform:
