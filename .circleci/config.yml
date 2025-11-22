@@ -1,5 +1,15 @@
 version: 2.1
 
+# Use path-filtering orb for conditional CI execution
+orbs:
+  path-filtering: circleci/path-filtering@1.1.0
+
+# Pipeline parameters for conditional execution
+parameters:
+  run-ci:
+    type: boolean
+    default: false
+
 # Define reusable executors
 executors:
   go-executor:
@@ -115,27 +125,32 @@ jobs:
 workflows:
   version: 2
 
-  # Main CI workflow - runs on all branches
-  ci:
+  # Setup workflow - determines if CI should run based on changed files
+  setup:
+    when:
+      not: << pipeline.parameters.run-ci >>
     jobs:
-      - lint-and-security:
-          filters:
-            branches:
-              only: /.*/
-      - test:
-          filters:
-            branches:
-              only: /.*/
+      - path-filtering/filter:
+          name: check-updated-files
+          mapping: |
+            (.*\.go|go\.mod|go\.sum|Makefile|\.circleci/.*|deployments/.*/.*\.yaml|configs/.*\.yaml) run-ci true
+          base-revision: main
+          config-path: .circleci/config.yml
+
+  # Main CI workflow - runs only when code/config files change
+  ci:
+    when: << pipeline.parameters.run-ci >>
+    jobs:
+      - lint-and-security
+      - test
       - build:
           requires:
             - lint-and-security
             - test
-          filters:
-            branches:
-              only: /.*/
 
-  # Cross-platform builds - only on main/master branches
+  # Cross-platform builds - only on main/master branches with code changes
   build-all-platforms:
+    when: << pipeline.parameters.run-ci >>
     jobs:
       - build-cross-platform:
           name: build-linux-amd64
