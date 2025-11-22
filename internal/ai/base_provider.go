@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ignacio/lumo/internal/reliability"
 	"github.com/sirupsen/logrus"
 )
 
@@ -37,9 +38,10 @@ type ProviderAdapter interface {
 // It handles prompt building, response parsing, and metadata management,
 // delegating provider-specific operations to the ProviderAdapter.
 type BaseProvider struct {
-	adapter    ProviderAdapter
-	httpClient *HTTPClient
-	log        *logrus.Logger
+	adapter        ProviderAdapter
+	httpClient     *HTTPClient
+	log            *logrus.Logger
+	circuitBreaker *reliability.CircuitBreaker
 }
 
 // NewBaseProvider creates a new base provider with the given adapter.
@@ -47,9 +49,10 @@ func NewBaseProvider(adapter ProviderAdapter, log *logrus.Logger) *BaseProvider 
 	config := adapter.GetConfig()
 
 	return &BaseProvider{
-		adapter:    adapter,
-		httpClient: NewHTTPClient(config.Timeout, log),
-		log:        log,
+		adapter:        adapter,
+		httpClient:     NewHTTPClient(config.Timeout, log),
+		log:            log,
+		circuitBreaker: reliability.NewCircuitBreaker(adapter.Name()),
 	}
 }
 
@@ -67,6 +70,19 @@ func (p *BaseProvider) Name() string {
 // This method implements the common analysis workflow, delegating
 // provider-specific operations to the adapter.
 func (p *BaseProvider) Analyze(ctx context.Context, req *AnalysisRequest) (*AnalysisResponse, error) {
+	// Wrap execution in circuit breaker
+	result, err := p.circuitBreaker.Execute(func() (interface{}, error) {
+		return p.analyzeInternal(ctx, req)
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return result.(*AnalysisResponse), nil
+}
+
+func (p *BaseProvider) analyzeInternal(ctx context.Context, req *AnalysisRequest) (*AnalysisResponse, error) {
 	start := time.Now()
 
 	// Build prompts (common logic)
@@ -164,6 +180,9 @@ func (p *BaseProvider) Analyze(ctx context.Context, req *AnalysisRequest) (*Anal
 // AnalyzeStream analyzes with streaming response.
 // Returns a channel that receives chunks of the analysis as they arrive.
 func (p *BaseProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest) (<-chan StreamChunk, error) {
+	// Circuit breaker only protects the initial request setup, not the stream itself
+	// as streaming errors are handled differently
+
 	// Build prompts (common logic)
 	pb := NewPromptBuilder()
 	if len(req.Focus) > 0 {
@@ -230,6 +249,14 @@ func (p *BaseProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest) 
 // Health checks if the AI provider is accessible.
 // Default implementation sends a minimal request. Providers can override this.
 func (p *BaseProvider) Health(ctx context.Context) error {
+	// Wrap execution in circuit breaker
+	_, err := p.circuitBreaker.Execute(func() (interface{}, error) {
+		return nil, p.healthInternal(ctx)
+	})
+	return err
+}
+
+func (p *BaseProvider) healthInternal(ctx context.Context) error {
 	// Simple health check: build minimal request
 	minimalReq, err := p.adapter.BuildRequest("You are a helpful assistant.", "Respond with 'OK'", false)
 	if err != nil {
