@@ -1,0 +1,26 @@
+# Build stage
+FROM golang:1.24-alpine AS builder
+ARG VERSION=dev
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s -X github.com/ignacio/lumo/internal/version.Version=${VERSION}" -o lumo-agent ./cmd/lumo-agent
+
+# Final stage
+FROM alpine:latest
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apk --no-cache add ca-certificates tzdata
+
+# Create non-root user
+RUN addgroup -g 1000 lumo && \
+    adduser -D -u 1000 -G lumo lumo
+
+COPY --from=builder /app/lumo-agent /usr/local/bin/lumo-agent
+RUN chmod +x /usr/local/bin/lumo-agent
+
+USER lumo
+EXPOSE 8080 9090
+ENTRYPOINT ["/usr/local/bin/lumo-agent"]
