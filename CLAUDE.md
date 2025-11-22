@@ -57,6 +57,8 @@ lumo/
 ├── examples/                          # 6 end-to-end examples (3,200+ LOC)
 ├── docs/                              # Getting started, competitive analysis, ROI, investor materials
 ├── configs/                           # Example configurations
+├── Dockerfile                         # Multi-stage alpine build for lumo CLI
+├── Dockerfile.agent                   # Security-hardened build for lumo-agent (non-root)
 └── docker-compose.yaml                # PostgreSQL + Redis for development
 
 Total: 192 Go files + 70 test files | Coverage: 66.7% | Verified: 2025-11-21
@@ -276,6 +278,12 @@ systemctl enable --now lumo-agent
 ```
 
 See [deployments/kubernetes/README.md](deployments/kubernetes/README.md) and [deployments/systemd/README.md](deployments/systemd/README.md) for complete guides.
+
+**Docker Configuration (Nov 22, 2025):**
+- Consolidated Dockerfiles to project root for improved CI/CD practices
+- `Dockerfile`: Multi-stage alpine build for lumo CLI (minimal final image)
+- `Dockerfile.agent`: Security-hardened build for lumo-agent (non-root user, minimal permissions)
+- Build tools reference root-level files (e.g., `deployments/kubernetes/kind/build-and-load.sh`)
 
 ---
 
