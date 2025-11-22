@@ -2,7 +2,7 @@ version: 2.1
 
 # Use path-filtering orb for conditional CI execution
 orbs:
-  path-filtering: circleci/path-filtering@1.1.0
+  path-filtering: circleci/path-filtering@1.2.0
 
 # Pipeline parameters for conditional execution
 parameters:
