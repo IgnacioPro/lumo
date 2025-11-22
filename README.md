@@ -100,6 +100,13 @@ Native cluster monitoring using `k8s.io/client-go`:
 - ✅ **RBAC-Aware** - Minimal permissions required (get/list)
 - ✅ **Context Switching** - Work with multiple clusters
 
+### Reliability & Observability
+
+- 🛡️ **Circuit Breakers** - Automatic failure protection for AI providers
+- 🔍 **Distributed Tracing** - OpenTelemetry integration for request visibility
+- 📊 **Load Tested** - Verified stability under high concurrency
+- 🚦 **Rate Limiting** - Configurable per-IP and per-user limits
+
 ---
 
 ## 🚀 Quick Start

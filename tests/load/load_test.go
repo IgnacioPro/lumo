@@ -3,23 +3,91 @@ package load
 import (
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/ignacio/lumo/internal/api"
+	"github.com/ignacio/lumo/internal/api/auth"
+	"github.com/ignacio/lumo/internal/config"
+	"github.com/ignacio/lumo/internal/database"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// setupTestServer creates a real router with a real DB connection (if available)
+// and returns a test server.
+func setupTestServer(t *testing.T) (*httptest.Server, func()) {
+	// Load configuration
+	cfg := config.DefaultConfig()
+
+	// Configure for testing
+	cfg.Logging.Level = "error"                              // Reduce noise
+	cfg.API.JWTSecret = "test-secret-for-load-testing-12345" // Required for JWT Manager
+
+	// Disable rate limiting for load testing stability, or set very high
+	// The user wants to test rate limiting, but for a "pass/fail" load test
+	// that expects 0 errors, we usually want to ensure we don't hit limits.
+	// We'll set high limits to test DB performance primarily.
+	cfg.API.RateLimitEnabled = false
+
+	// Initialize logger
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+
+	// Initialize database
+	// We use the default config (localhost:5432, user=lumo, pass=lumo_dev)
+	// This requires Postgres to be running.
+	postgresConfig := &database.PostgresConfig{
+		Host:            cfg.Database.Host,
+		Port:            cfg.Database.Port,
+		Name:            cfg.Database.Name,
+		User:            cfg.Database.User,
+		Password:        cfg.Database.Password,
+		SSLMode:         cfg.Database.SSLMode,
+		MaxConnections:  cfg.Database.MaxConnections,
+		MaxIdle:         cfg.Database.MaxIdle,
+		ConnMaxLifetime: cfg.Database.ConnMaxLifetime,
+	}
+
+	db, err := database.NewPostgresDB(postgresConfig, logger)
+	if err != nil {
+		t.Skipf("Skipping load test: failed to connect to database: %v", err)
+		return nil, nil
+	}
+
+	// Initialize JWT manager
+	jwtManager, err := auth.NewJWTManager(cfg.API.JWTSecret, cfg.API.JWTExpiration, cfg.API.JWTIssuer)
+	if err != nil {
+		t.Fatalf("Failed to create JWT manager: %v", err)
+	}
+
+	// Create router
+	router := api.NewRouter(db, cfg, jwtManager, logger)
+
+	// Create test server
+	ts := httptest.NewServer(router)
+
+	cleanup := func() {
+		ts.Close()
+		db.Close()
+	}
+
+	return ts, cleanup
+}
 
 // TestLoadHealthCheck performs a basic load test on the health check endpoint
 func TestLoadHealthCheck(t *testing.T) {
-	// Skip if not running in integration mode or if server URL is not set
-	// For now, we assume the server is running locally on port 8080 for this test
-	// In a real CI environment, we would start the server or have it running
+	// Setup server
+	ts, cleanup := setupTestServer(t)
+	if ts == nil {
+		return // Skipped
+	}
+	defer cleanup()
 
-	// This test is designed to be run manually or in a specific CI stage
-	// t.Skip("Skipping load test in normal test run")
-
-	baseURL := "http://127.0.0.1:8080/api/v1"
+	baseURL := ts.URL + "/api/v1"
 	concurrency := 50
 	requestsPerWorker := 20
 
@@ -31,14 +99,6 @@ func TestLoadHealthCheck(t *testing.T) {
 		},
 	}
 
-	// Check if server is reachable first
-	resp, err := client.Get(baseURL + "/health")
-	if err != nil {
-		t.Skipf("Server not reachable at %s, skipping load test: %v", baseURL, err)
-		return
-	}
-	resp.Body.Close()
-
 	start := time.Now()
 	var wg sync.WaitGroup
 	wg.Add(concurrency)
@@ -46,7 +106,7 @@ func TestLoadHealthCheck(t *testing.T) {
 	errorCount := 0
 	var errorMu sync.Mutex
 
-	fmt.Printf("Starting load test: %d workers, %d requests each...\n", concurrency, requestsPerWorker)
+	fmt.Printf("Starting load test against %s: %d workers, %d requests each...\n", baseURL, concurrency, requestsPerWorker)
 
 	for i := 0; i < concurrency; i++ {
 		go func() {
@@ -85,4 +145,65 @@ func TestLoadHealthCheck(t *testing.T) {
 	fmt.Printf("RPS: %.2f\n", float64(totalRequests)/duration.Seconds())
 
 	assert.Equal(t, 0, errorCount, "Expected 0 errors during load test")
+}
+
+// TestRateLimiting verifies that rate limiting actually kicks in under heavy load
+// This addresses the user's request to test rate limiting.
+func TestRateLimiting(t *testing.T) {
+	// Manually setup server with strict rate limits
+	cfg := config.DefaultConfig()
+	cfg.Logging.Level = "error"
+	cfg.API.JWTSecret = "test-secret-for-load-testing-12345"
+	cfg.API.RateLimitEnabled = true
+	cfg.API.RateLimitRequestsPerMin = 10 // Very low limit
+	cfg.API.RateLimitBurstSize = 5
+
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+
+	postgresConfig := &database.PostgresConfig{
+		Host:            cfg.Database.Host,
+		Port:            cfg.Database.Port,
+		Name:            cfg.Database.Name,
+		User:            cfg.Database.User,
+		Password:        cfg.Database.Password,
+		SSLMode:         cfg.Database.SSLMode,
+		MaxConnections:  cfg.Database.MaxConnections,
+		MaxIdle:         cfg.Database.MaxIdle,
+		ConnMaxLifetime: cfg.Database.ConnMaxLifetime,
+	}
+
+	db, err := database.NewPostgresDB(postgresConfig, logger)
+	if err != nil {
+		t.Skipf("Skipping rate limit test: failed to connect to database: %v", err)
+		return
+	}
+	defer db.Close()
+
+	jwtManager, err := auth.NewJWTManager(cfg.API.JWTSecret, cfg.API.JWTExpiration, cfg.API.JWTIssuer)
+	require.NoError(t, err)
+
+	router := api.NewRouter(db, cfg, jwtManager, logger)
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	client := ts.Client()
+
+	// Send enough requests to trigger rate limit
+	// Burst is 5, limit is 10/min.
+	// Sending 20 requests quickly should trigger 429.
+
+	hitRateLimit := false
+	for i := 0; i < 20; i++ {
+		resp, err := client.Get(ts.URL + "/api/v1/health")
+		require.NoError(t, err)
+		resp.Body.Close()
+
+		if resp.StatusCode == http.StatusTooManyRequests {
+			hitRateLimit = true
+			break
+		}
+	}
+
+	assert.True(t, hitRateLimit, "Expected to hit rate limit (429) but did not")
 }
