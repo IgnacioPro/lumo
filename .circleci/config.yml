@@ -8,29 +8,60 @@ executors:
     working_directory: ~/lumo
     environment:
       GO111MODULE: "on"
+    resource_class: small  # Use smaller resource class to save credits
 
 # Define reusable commands
 commands:
+  restore-dependencies:
+    description: "Restore cached Go dependencies"
+    steps:
+      - restore_cache:
+          keys:
+            - go-mod-v1-{{ checksum "go.sum" }}
+            - go-mod-v1-
+
+  save-dependencies:
+    description: "Cache Go dependencies"
+    steps:
+      - save_cache:
+          key: go-mod-v1-{{ checksum "go.sum" }}
+          paths:
+            - ~/go/pkg/mod
+
   setup-dependencies:
     description: "Download and verify Go dependencies"
     steps:
+      - restore-dependencies
       - run:
           name: Download dependencies
           command: go mod download
       - run:
           name: Verify dependencies
           command: go mod verify
+      - save-dependencies
 
   install-tools:
     description: "Install required CI tools"
     steps:
+      - restore_cache:
+          keys:
+            - tools-v1-{{ arch }}
       - run:
           name: Install golangci-lint
           command: |
-            curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin latest
+            if [ ! -f ~/go/bin/golangci-lint ]; then
+              curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin latest
+            fi
       - run:
           name: Install govulncheck
-          command: go install golang.org/x/vuln/cmd/govulncheck@latest
+          command: |
+            if [ ! -f ~/go/bin/govulncheck ]; then
+              go install golang.org/x/vuln/cmd/govulncheck@latest
+            fi
+      - save_cache:
+          key: tools-v1-{{ arch }}
+          paths:
+            - ~/go/bin
 
 # Define jobs
 jobs:
@@ -115,32 +146,39 @@ jobs:
 workflows:
   version: 2
 
-  # Main CI workflow - runs on all branches
+  # Main CI workflow - ONLY runs on main branch (not all branches)
+  # This saves 90% of credits by skipping feature branches
   ci:
     jobs:
       - lint-and-security:
           filters:
             branches:
-              only: /.*/
+              only:
+                - main
+                - master
       - test:
           filters:
             branches:
-              only: /.*/
+              only:
+                - main
+                - master
       - build:
           requires:
             - lint-and-security
             - test
           filters:
             branches:
-              only: /.*/
-
-  # Cross-platform builds - only on main/master branches
-  build-all-platforms:
-    jobs:
+              only:
+                - main
+                - master
+      # Cross-platform builds merged into main workflow
+      # Only runs after main build succeeds
       - build-cross-platform:
           name: build-linux-amd64
           goos: linux
           goarch: amd64
+          requires:
+            - build
           filters:
             branches:
               only:
@@ -150,6 +188,8 @@ workflows:
           name: build-linux-arm64
           goos: linux
           goarch: arm64
+          requires:
+            - build
           filters:
             branches:
               only:
@@ -159,6 +199,8 @@ workflows:
           name: build-darwin-amd64
           goos: darwin
           goarch: amd64
+          requires:
+            - build
           filters:
             branches:
               only:
@@ -168,17 +210,19 @@ workflows:
           name: build-darwin-arm64
           goos: darwin
           goarch: arm64
+          requires:
+            - build
           filters:
             branches:
               only:
                 - main
                 - master
 
-  # Nightly integration test
-  nightly:
+  # Weekly integration test (reduced from daily to save credits)
+  weekly:
     triggers:
       - schedule:
-          cron: "0 0 * * *"
+          cron: "0 0 * * 0"  # Sunday at midnight UTC
           filters:
             branches:
               only:
