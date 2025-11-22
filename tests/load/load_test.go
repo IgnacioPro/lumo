@@ -72,7 +72,7 @@ func setupTestServer(t *testing.T) (*httptest.Server, func()) {
 
 	cleanup := func() {
 		ts.Close()
-		db.Close()
+		_ = db.Close()
 	}
 
 	return ts, cleanup
@@ -122,7 +122,7 @@ func TestLoadHealthCheck(t *testing.T) {
 					errorMu.Unlock()
 					continue
 				}
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				if resp.StatusCode != http.StatusOK {
 					errorMu.Lock()
 					if errorCount == 0 {
@@ -178,7 +178,7 @@ func TestRateLimiting(t *testing.T) {
 		t.Skipf("Skipping rate limit test: failed to connect to database: %v", err)
 		return
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	jwtManager, err := auth.NewJWTManager(cfg.API.JWTSecret, cfg.API.JWTExpiration, cfg.API.JWTIssuer)
 	require.NoError(t, err)
@@ -197,7 +197,7 @@ func TestRateLimiting(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		resp, err := client.Get(ts.URL + "/api/v1/health")
 		require.NoError(t, err)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if resp.StatusCode == http.StatusTooManyRequests {
 			hitRateLimit = true
