@@ -297,3 +297,55 @@ func (p *BaseProvider) healthInternal(ctx context.Context) error {
 
 	return nil
 }
+
+// Ask sends a natural language prompt to the AI and returns the response text.
+func (p *BaseProvider) Ask(ctx context.Context, prompt string) (string, error) {
+	// Wrap execution in circuit breaker
+	result, err := p.circuitBreaker.Execute(func() (interface{}, error) {
+		return p.askInternal(ctx, prompt)
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	return result.(string), nil
+}
+
+func (p *BaseProvider) askInternal(ctx context.Context, prompt string) (string, error) {
+	// Build provider-specific request
+	// For Ask, we treat the prompt as a user message with a generic system prompt
+	systemPrompt := "You are a helpful assistant for the Lumo CLI."
+	apiReq, err := p.adapter.BuildRequest(systemPrompt, prompt, false)
+	if err != nil {
+		return "", &Error{
+			Op:       "build_request",
+			Provider: p.Name(),
+			Err:      err,
+		}
+	}
+
+	// Execute HTTP request
+	resp, err := p.httpClient.Do(ctx, RequestOptions{
+		Method:       "POST",
+		URL:          p.adapter.GetEndpoint(),
+		Body:         apiReq,
+		Headers:      p.adapter.BuildHeaders(),
+		ProviderName: p.Name(),
+	})
+	if err != nil {
+		return "", err // Error already wrapped by HTTPClient
+	}
+
+	// Parse provider-specific response
+	content, _, err := p.adapter.ParseResponse(resp.Body)
+	if err != nil {
+		return "", &Error{
+			Op:       "parse_response",
+			Provider: p.Name(),
+			Err:      err,
+		}
+	}
+
+	return content, nil
+}
