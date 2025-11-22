@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-21 | **Version:** 1.0.8 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | All Core Systems Live 🚀
+> **Last Updated:** 2025-11-22 | **Version:** 1.0.9 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 In Progress ⏳ | All Core Systems Live 🚀
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -49,7 +49,8 @@ lumo/
 │   ├── grpc/                          # gRPC server/client, handlers, interceptors, mTLS
 │   ├── intelligence/                  # RAG: vectorstore, embeddings, ingestion
 │   ├── doctor/                        # Health check system (6 checks)
-│   └── messaging/                     # Pub/sub framework (pending: NATS, Kafka, RabbitMQ, Redis)
+│   ├── messaging/                     # Pub/sub framework (pending: NATS, Kafka, RabbitMQ, Redis)
+│   └── observability/                 # OpenTelemetry tracing, structured observability
 ├── deployments/
 │   ├── kubernetes/                    # DaemonSet, Deployment, RBAC, Helm, kind
 │   └── systemd/                       # Service unit, install scripts, RPM/DEB packaging
@@ -73,6 +74,7 @@ Total: 192 Go files + 70 test files | Coverage: 66.7% | Verified: 2025-11-21
 **RAG:** chromem-go (local vector store), OpenAI embeddings
 **Kubernetes:** k8s.io/client-go (native, no kubectl)
 **Agent:** robfig/cron/v3 (scheduling), Prometheus client (metrics)
+**Observability:** OpenTelemetry (tracing), Prometheus (metrics), structured logging
 **Notifications:** 4 providers (Slack, Telegram, Webhook, Email)
 
 ---
@@ -237,6 +239,12 @@ For rate limiting and DB pool config, see [configs/config.example.yaml](configs/
 - CORS: Configurable allowed_origins (no longer hardcoded "*")
 - Version injection: Centralized via `internal/version` package, injected at build time
 
+**Observability (Phase 12):**
+- OpenTelemetry tracing: `internal/observability/tracing.go` - Distributed trace collection
+- Enhanced metrics: Full Prometheus instrumentation for diagnostics, heartbeats, cache, API availability
+- Production readiness: Critical packages now tested (cache, database, doctor all 100%)
+- Diagnostic API: Checker registration now fully implemented (fixed from placeholder stub)
+
 ---
 
 ## Agent Architecture
@@ -303,10 +311,19 @@ See [deployments/kubernetes/README.md](deployments/kubernetes/README.md) and [de
 - Topic-based routing, agent integration, dead-letter queues
 - Note: Foundation ready, can be implemented as standalone PR
 
-### Future (Phases 12+)
+### Current (Phase 12)
 
-**Phase 12:** Advanced Security - Certificate rotation, security audit, Vault integration
-**Phase 13:** Production Readiness - Grafana dashboards, Prometheus alerts, load testing
+**Phase 12: Production Readiness - Phase 2** - IN PROGRESS ⏳ (Nov 22, 2025)
+- OpenTelemetry distributed tracing system with span creation
+- Enhanced Prometheus metrics for comprehensive monitoring
+- Critical test coverage: cache, database, doctor packages (now 100% tested)
+- Diagnostic checker registration implementation (was placeholder, now full)
+- Location: `internal/observability/tracing.go`, enhanced `internal/agent/metrics.go`
+- Status: High-priority issues being addressed (diagnostics API fixed, critical packages tested)
+
+### Future (Phases 13+)
+
+**Phase 13:** Advanced Production Features - Circuit breakers, load testing, operational runbooks
 **Phase 14:** Advanced Reporting - Multiple formats, historical data, trend analysis
 **Phase 15:** Testing & Quality - Target 80% coverage, integration tests, chaos engineering
 **Phase 16:** Advanced Features - Multi-cluster, anomaly detection, policy-as-code
