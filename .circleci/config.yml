@@ -30,6 +30,16 @@ jobs:
 
             # Get list of changed files
             if [ "$CIRCLE_BRANCH" = "main" ] || [ "$CIRCLE_BRANCH" = "master" ]; then
+              # On main/master, check if this is a merge commit from a PR
+              COMMIT_MSG=$(git log -1 --format=%s)
+              if echo "$COMMIT_MSG" | grep -qE '^Merge pull request|^Merge branch'; then
+                echo "Merge commit detected: $COMMIT_MSG"
+                echo "This PR already passed CI - skipping redundant tests"
+                RUN_CI=false
+                echo "{\"run-ci\": false}" > /tmp/pipeline-parameters.json
+                cat /tmp/pipeline-parameters.json
+                circleci-agent step halt
+              fi
               # On main/master, check last commit
               CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
             else
