@@ -13,6 +13,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 // Reporter handles communication with the Lumo API server
@@ -54,11 +57,27 @@ func (r *Reporter) SetAgentID(agentID uuid.UUID) {
 
 // RegisterAgent registers the agent with the API server
 func (r *Reporter) RegisterAgent(ctx context.Context, req RegisterAgentRequest) (*RegisterAgentResponse, error) {
+	// Create tracing span
+	tracer := otel.Tracer("lumo.agent")
+	ctx, span := tracer.Start(ctx, "RegisterAgent")
+	defer span.End()
+
+	// Set span attributes
+	span.SetAttributes(
+		attribute.String("agent.name", req.Name),
+		attribute.String("agent.hostname", req.Hostname),
+		attribute.String("agent.platform", req.Platform),
+		attribute.String("agent.architecture", req.Architecture),
+		attribute.String("agent.version", req.Version),
+	)
+
 	url := fmt.Sprintf("%s/api/v1/agents/register", r.cfg.APIEndpoint)
 
 	// Marshal request body
 	body, err := json.Marshal(req)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to marshal registration request")
 		return nil, fmt.Errorf("failed to marshal registration request: %w", err)
 	}
 
@@ -66,6 +85,8 @@ func (r *Reporter) RegisterAgent(ctx context.Context, req RegisterAgentRequest) 
 	var resp RegisterAgentResponse
 	err = r.doWithRetry(ctx, "POST", url, body, &resp)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to register agent")
 		return nil, fmt.Errorf("failed to register agent: %w", err)
 	}
 
@@ -78,38 +99,70 @@ func (r *Reporter) RegisterAgent(ctx context.Context, req RegisterAgentRequest) 
 	// Parse and store agent ID
 	agentID, err := uuid.Parse(resp.AgentID)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Invalid agent ID returned")
 		return nil, fmt.Errorf("invalid agent ID returned: %w", err)
 	}
 	r.agentID = agentID
+
+	span.SetAttributes(attribute.String("agent.id", agentID.String()))
+	span.SetStatus(codes.Ok, "Agent registered successfully")
 
 	return &resp, nil
 }
 
 // SendHeartbeat sends a heartbeat to the API server
 func (r *Reporter) SendHeartbeat(ctx context.Context) error {
+	// Create tracing span
+	tracer := otel.Tracer("lumo.agent")
+	ctx, span := tracer.Start(ctx, "SendHeartbeat")
+	defer span.End()
+
 	if r.agentID == uuid.Nil {
-		return fmt.Errorf("agent ID not set")
+		err := fmt.Errorf("agent ID not set")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Agent ID not set")
+		return err
 	}
+
+	span.SetAttributes(attribute.String("agent.id", r.agentID.String()))
 
 	url := fmt.Sprintf("%s/api/v1/agents/%s/heartbeat", r.cfg.APIEndpoint, r.agentID)
 
 	var resp map[string]interface{}
 	err := r.doWithRetry(ctx, "PUT", url, nil, &resp)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to send heartbeat")
 		return fmt.Errorf("failed to send heartbeat: %w", err)
 	}
 
+	span.SetStatus(codes.Ok, "Heartbeat sent successfully")
 	r.logger.Debug("Heartbeat sent successfully")
 	return nil
 }
 
 // SubmitDiagnosticResult submits a diagnostic result to the API server
 func (r *Reporter) SubmitDiagnosticResult(ctx context.Context, result DiagnosticResult) error {
+	// Create tracing span
+	tracer := otel.Tracer("lumo.agent")
+	ctx, span := tracer.Start(ctx, "SubmitDiagnosticResult")
+	defer span.End()
+
+	// Set span attributes
+	span.SetAttributes(
+		attribute.String("diagnostic.target", result.Target),
+		attribute.Int("diagnostic.checks_count", len(result.Checks)),
+		attribute.Bool("diagnostic.analyze", result.Analyze),
+	)
+
 	url := fmt.Sprintf("%s/api/v1/diagnostics", r.cfg.APIEndpoint)
 
 	// Marshal result
 	body, err := json.Marshal(result)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to marshal diagnostic result")
 		return fmt.Errorf("failed to marshal diagnostic result: %w", err)
 	}
 
@@ -117,9 +170,12 @@ func (r *Reporter) SubmitDiagnosticResult(ctx context.Context, result Diagnostic
 	var resp map[string]interface{}
 	err = r.doWithRetry(ctx, "POST", url, body, &resp)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to submit diagnostic result")
 		return fmt.Errorf("failed to submit diagnostic result: %w", err)
 	}
 
+	span.SetStatus(codes.Ok, "Diagnostic result submitted successfully")
 	r.logger.WithFields(logrus.Fields{
 		"target": result.Target,
 		"checks": len(result.Checks),

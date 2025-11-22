@@ -17,6 +17,9 @@ import (
 	"github.com/ignacio/lumo/internal/diagnostics/checkers"
 	"github.com/ignacio/lumo/internal/ssh"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 // DiagnosticsHandler handles diagnostic requests
@@ -151,9 +154,25 @@ func (h *DiagnosticsHandler) Run(w http.ResponseWriter, r *http.Request) {
 
 // executeDiagnostics runs the diagnostic checks asynchronously
 func (h *DiagnosticsHandler) executeDiagnostics(ctx context.Context, job *models.Job, req DiagnosticRequest) {
+	// Create tracing span for diagnostic execution
+	tracer := otel.Tracer("lumo.api.handlers")
+	ctx, span := tracer.Start(ctx, "executeDiagnostics")
+	defer span.End()
+
+	// Set span attributes
+	span.SetAttributes(
+		attribute.String("job.id", job.ID.String()),
+		attribute.String("job.target", req.Target),
+		attribute.Bool("job.analyze", req.Analyze),
+		attribute.String("job.format", req.Format),
+		attribute.Bool("job.dry_run", req.DryRun),
+	)
+
 	// Update job status to running
 	if err := h.jobRepo.UpdateStatus(ctx, job.ID, models.JobStatusRunning); err != nil {
 		h.logger.WithError(err).Error("Failed to update job status to running")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to update job status")
 		return
 	}
 
@@ -229,6 +248,8 @@ func (h *DiagnosticsHandler) executeDiagnostics(ctx context.Context, job *models
 	report, err := runner.RunAll(ctx)
 	if err != nil {
 		h.logger.WithError(err).Error("Diagnostic execution failed")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Diagnostic execution failed")
 		if updateErr := h.jobRepo.UpdateError(ctx, job.ID, fmt.Sprintf("Execution failed: %v", err)); updateErr != nil {
 			h.logger.WithError(updateErr).Error("Failed to update job error status")
 		}
@@ -254,8 +275,21 @@ func (h *DiagnosticsHandler) executeDiagnostics(ctx context.Context, job *models
 	// Update status to completed
 	if err := h.jobRepo.UpdateStatus(ctx, job.ID, models.JobStatusCompleted); err != nil {
 		h.logger.WithError(err).Error("Failed to update job status to completed")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to update job status to completed")
 		return
 	}
+
+	// Set span attributes for successful completion
+	span.SetAttributes(
+		attribute.Int("diagnostics.total_checks", report.Summary.TotalChecks),
+		attribute.Int("diagnostics.ok_count", report.Summary.OKCount),
+		attribute.Int("diagnostics.warning_count", report.Summary.WarningCount),
+		attribute.Int("diagnostics.critical_count", report.Summary.CriticalCount),
+		attribute.Int("diagnostics.error_count", report.Summary.ErrorCount),
+		attribute.String("diagnostics.duration", report.Duration.String()),
+	)
+	span.SetStatus(codes.Ok, "Diagnostic execution completed successfully")
 
 	h.logger.WithFields(logrus.Fields{
 		"job_id":       job.ID,

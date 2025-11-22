@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-22 | **Version:** 1.0.9 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 In Progress ⏳ | All Core Systems Live 🚀
+> **Last Updated:** 2025-11-22 | **Version:** 1.0.9 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | All Core Systems Live 🚀
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -239,11 +239,13 @@ For rate limiting and DB pool config, see [configs/config.example.yaml](configs/
 - CORS: Configurable allowed_origins (no longer hardcoded "*")
 - Version injection: Centralized via `internal/version` package, injected at build time
 
-**Observability (Phase 12):**
-- OpenTelemetry tracing: `internal/observability/tracing.go` - Distributed trace collection
+**Observability (Phase 12 - Complete ✅):**
+- OpenTelemetry tracing: `internal/observability/tracing.go` - Distributed trace collection with span creation
+- Tracing spans in critical paths: API handlers, diagnostics runner, agent operations, scheduler tasks
+- Span attributes: Job IDs, targets, metrics, durations, execution results
 - Enhanced metrics: Full Prometheus instrumentation for diagnostics, heartbeats, cache, API availability
 - Production readiness: Critical packages now tested (cache, database, doctor all 100%)
-- Diagnostic API: Checker registration now fully implemented (fixed from placeholder stub)
+- Diagnostic API: Checker registration fully implemented
 
 ---
 
@@ -311,15 +313,21 @@ See [deployments/kubernetes/README.md](deployments/kubernetes/README.md) and [de
 - Topic-based routing, agent integration, dead-letter queues
 - Note: Foundation ready, can be implemented as standalone PR
 
-### Current (Phase 12)
+### Completed (Phase 12)
 
-**Phase 12: Production Readiness - Phase 2** - IN PROGRESS ⏳ (Nov 22, 2025)
-- OpenTelemetry distributed tracing system with span creation
+**Phase 12: Production Readiness - Phase 2** - COMPLETE ✅ (Nov 22, 2025)
+- OpenTelemetry distributed tracing with full span creation in critical paths
+- Tracing instrumentation added to:
+  - API handlers (diagnostics, remediation) - `internal/api/handlers/`
+  - Diagnostic runner and individual checks - `internal/diagnostics/diagnostics.go`
+  - Agent reporter (register, heartbeat, submit) - `internal/agent/reporter.go`
+  - Agent scheduler task execution - `internal/agent/scheduler.go`
+- Comprehensive span attributes for observability (job IDs, targets, metrics, durations)
+- Error recording and status tracking in all critical operations
 - Enhanced Prometheus metrics for comprehensive monitoring
 - Critical test coverage: cache, database, doctor packages (now 100% tested)
-- Diagnostic checker registration implementation (was placeholder, now full)
-- Location: `internal/observability/tracing.go`, enhanced `internal/agent/metrics.go`
-- Status: High-priority issues being addressed (diagnostics API fixed, critical packages tested)
+- Diagnostic checker registration fully implemented
+- All tests passing with tracing enabled
 
 ### Future (Phases 13+)
 
