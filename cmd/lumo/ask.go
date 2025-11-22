@@ -150,7 +150,10 @@ Response: ERROR: I can only help with Lumo CLI commands.
 	if !autoYes {
 		fmt.Print("Execute this command? [Y/n] ")
 		reader := bufio.NewReader(os.Stdin)
-		input, _ := reader.ReadString('\n')
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read user input: %w", err)
+		}
 		input = strings.TrimSpace(strings.ToLower(input))
 
 		if input != "y" && input != "yes" && input != "" {
