@@ -1,14 +1,20 @@
 version: 2.1
 
-# Use path-filtering orb for conditional CI execution
+# Enable dynamic configuration
+setup: true
+
+# Use continuation orb for conditional CI execution
 orbs:
-  path-filtering: circleci/path-filtering@1.2.0
+  continuation: circleci/continuation@1.0.0
 
 # Pipeline parameters for conditional execution
 parameters:
   run-ci:
     type: boolean
     default: false
+  run-setup:
+    type: boolean
+    default: true
 
 # Define reusable executors
 executors:
@@ -121,21 +127,49 @@ jobs:
           name: Run full CI suite
           command: make ci
 
+  # Check changed files to determine if CI should run
+  check-files:
+    executor: go-executor
+    steps:
+      - checkout
+      - run:
+          name: Check if code files changed
+          command: |
+            # Get list of changed files
+            if [ "$CIRCLE_BRANCH" = "main" ] || [ "$CIRCLE_BRANCH" = "master" ]; then
+              # On main/master, check last commit
+              CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
+            else
+              # On feature branches, compare to main
+              git fetch origin main:main || git fetch origin master:master || true
+              BASE_BRANCH=$(git rev-parse --verify main 2>/dev/null && echo "main" || echo "master")
+              CHANGED_FILES=$(git diff --name-only origin/$BASE_BRANCH...HEAD)
+            fi
+
+            echo "Changed files:"
+            echo "$CHANGED_FILES"
+
+            # Check if any code/config files changed
+            if echo "$CHANGED_FILES" | grep -qE '\.(go|mod|sum)$|^Makefile$|^\.circleci/|^deployments/.*\.yaml$|^configs/.*\.yaml$'; then
+              echo "Code or config files changed - CI will run"
+              echo 'export RUN_CI=true' >> $BASH_ENV
+            else
+              echo "Only documentation files changed - CI will be skipped"
+              echo 'export RUN_CI=false' >> $BASH_ENV
+            fi
+      - continuation/continue:
+          configuration_path: .circleci/config.yml
+          parameters: '{"run-ci": ${RUN_CI}, "run-setup": false}'
+
 # Define workflows
 workflows:
   version: 2
 
   # Setup workflow - determines if CI should run based on changed files
   setup:
-    when:
-      not: << pipeline.parameters.run-ci >>
+    when: << pipeline.parameters.run-setup >>
     jobs:
-      - path-filtering/filter:
-          name: check-updated-files
-          mapping: |
-            (.*\.go|go\.mod|go\.sum|Makefile|\.circleci/.*|deployments/.*/.*\.yaml|configs/.*\.yaml) run-ci true
-          base-revision: main
-          config-path: .circleci/config.yml
+      - check-files
 
   # Main CI workflow - runs only when code/config files change
   ci:
