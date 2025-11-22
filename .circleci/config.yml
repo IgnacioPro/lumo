@@ -1,5 +1,12 @@
 version: 2.1
 
+# Enable dynamic configuration
+setup: true
+
+# Use continuation orb for conditional CI execution
+orbs:
+  continuation: circleci/continuation@1.0.0
+
 # Define reusable executors
 executors:
   go-executor:
@@ -9,180 +16,61 @@ executors:
     environment:
       GO111MODULE: "on"
 
-# Define reusable commands
-commands:
-  setup-dependencies:
-    description: "Download and verify Go dependencies"
-    steps:
-      - run:
-          name: Download dependencies
-          command: go mod download
-      - run:
-          name: Verify dependencies
-          command: go mod verify
-
-  install-tools:
-    description: "Install required CI tools"
-    steps:
-      - run:
-          name: Install golangci-lint
-          command: |
-            curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin latest
-      - run:
-          name: Install govulncheck
-          command: go install golang.org/x/vuln/cmd/govulncheck@latest
-
 # Define jobs
 jobs:
-  lint-and-security:
+  # Check changed files to determine if CI should run
+  check-files:
     executor: go-executor
     steps:
       - checkout
-      - setup-dependencies
-      - install-tools
       - run:
-          name: Run golangci-lint
-          command: golangci-lint run --timeout=5m
-      - run:
-          name: Run vulnerability check
-          command: govulncheck ./...
-
-  test:
-    executor: go-executor
-    steps:
-      - checkout
-      - setup-dependencies
-      - run:
-          name: Run tests with race detector
-          command: make ci-test
-      - store_test_results:
-          path: /tmp/test-results
-      - store_artifacts:
-          path: /tmp/test-results
-
-  build:
-    executor: go-executor
-    steps:
-      - checkout
-      - setup-dependencies
-      - run:
-          name: Build CLI and Agent binaries
-          command: make ci-build
-      - persist_to_workspace:
-          root: .
-          paths:
-            - lumo
-            - lumo-agent
-
-  # Cross-platform builds (only on main/master)
-  build-cross-platform:
-    executor: go-executor
-    parameters:
-      goos:
-        type: string
-      goarch:
-        type: string
-    steps:
-      - checkout
-      - setup-dependencies
-      - run:
-          name: Build for << parameters.goos >>/<< parameters.goarch >>
-          environment:
-            GOOS: << parameters.goos >>
-            GOARCH: << parameters.goarch >>
+          name: Check if code files changed
           command: |
-            echo "Building for ${GOOS}/${GOARCH}..."
-            go build -v -o lumo-${GOOS}-${GOARCH} ./cmd/lumo
-            go build -v -o lumo-agent-${GOOS}-${GOARCH} ./cmd/lumo-agent
-            ls -lh lumo-* lumo-agent-*
-      - store_artifacts:
-          path: lumo-<< parameters.goos >>-<< parameters.goarch >>
-      - store_artifacts:
-          path: lumo-agent-<< parameters.goos >>-<< parameters.goarch >>
+            set -e
 
-  # Integration test (optional - runs full CI suite)
-  integration:
-    executor: go-executor
-    steps:
-      - checkout
-      - setup-dependencies
-      - install-tools
-      - run:
-          name: Run full CI suite
-          command: make ci
+            # Get list of changed files
+            if [ "$CIRCLE_BRANCH" = "main" ] || [ "$CIRCLE_BRANCH" = "master" ]; then
+              # On main/master, check last commit
+              CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
+            else
+              # On feature branches, compare to main/master
+              echo "Fetching origin/main..."
+              git fetch origin main 2>&1 || echo "main branch not found, trying master..."
+
+              if git rev-parse --verify origin/main >/dev/null 2>&1; then
+                BASE_BRANCH="origin/main"
+              elif git rev-parse --verify origin/master >/dev/null 2>&1; then
+                BASE_BRANCH="origin/master"
+              else
+                echo "ERROR: Could not find main or master branch"
+                exit 1
+              fi
+
+              echo "Comparing against $BASE_BRANCH..."
+              CHANGED_FILES=$(git diff --name-only $BASE_BRANCH...HEAD)
+            fi
+
+            echo "Changed files:"
+            echo "$CHANGED_FILES"
+
+            # Check if any code/config files changed
+            if echo "$CHANGED_FILES" | grep -qE '\.(go|mod|sum)$|^Makefile$|^\.circleci/|^deployments/.*\.yaml$|^configs/.*\.yaml$'; then
+              echo "Code or config files changed - CI will run"
+              RUN_CI=true
+            else
+              echo "Only documentation files changed - CI will be skipped"
+              RUN_CI=false
+            fi
+
+            # Continue to main config with parameter
+            echo "{\"run-ci\": $RUN_CI}" > /tmp/pipeline-parameters.json
+            cat /tmp/pipeline-parameters.json
+      - continuation/continue:
+          configuration_path: .circleci/continue-config.yml
+          parameters: /tmp/pipeline-parameters.json
 
 # Define workflows
 workflows:
-  version: 2
-
-  # Main CI workflow - runs on all branches
-  ci:
+  setup:
     jobs:
-      - lint-and-security:
-          filters:
-            branches:
-              only: /.*/
-      - test:
-          filters:
-            branches:
-              only: /.*/
-      - build:
-          requires:
-            - lint-and-security
-            - test
-          filters:
-            branches:
-              only: /.*/
-
-  # Cross-platform builds - only on main/master branches
-  build-all-platforms:
-    jobs:
-      - build-cross-platform:
-          name: build-linux-amd64
-          goos: linux
-          goarch: amd64
-          filters:
-            branches:
-              only:
-                - main
-                - master
-      - build-cross-platform:
-          name: build-linux-arm64
-          goos: linux
-          goarch: arm64
-          filters:
-            branches:
-              only:
-                - main
-                - master
-      - build-cross-platform:
-          name: build-darwin-amd64
-          goos: darwin
-          goarch: amd64
-          filters:
-            branches:
-              only:
-                - main
-                - master
-      - build-cross-platform:
-          name: build-darwin-arm64
-          goos: darwin
-          goarch: arm64
-          filters:
-            branches:
-              only:
-                - main
-                - master
-
-  # Nightly integration test
-  nightly:
-    triggers:
-      - schedule:
-          cron: "0 0 * * *"
-          filters:
-            branches:
-              only:
-                - main
-                - master
-    jobs:
-      - integration
+      - check-files
