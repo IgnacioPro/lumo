@@ -4,52 +4,57 @@ This directory contains the CircleCI configuration for the Lumo project.
 
 ## Overview
 
-The CircleCI pipeline provides continuous integration and testing for Lumo, running in parallel with GitHub Actions. It provides:
+The CircleCI pipeline provides continuous integration and testing for Lumo, running in parallel with GitHub Actions. **Optimized for free tier usage** with caching, branch filtering, and reduced build frequency.
 
-- **Linting & Security Checks**: golangci-lint and govulncheck
+- **Linting & Security Checks**: golangci-lint and govulncheck (cached)
 - **Testing**: Go tests with race detection
 - **Building**: CLI and Agent binaries
 - **Cross-Platform Builds**: Linux and macOS for amd64/arm64 (main/master only)
-- **Nightly Integration Tests**: Full CI suite runs daily
+- **Weekly Integration Tests**: Full CI suite runs Sundays (reduced from daily)
+
+### Cost Optimizations
+
+To stay within free tier limits (6,000 credits/month), this config implements:
+
+1. **Branch filtering**: Only runs on `main`/`master` (not all branches) - saves ~90% of credits
+2. **Dependency caching**: Go modules and tools cached - saves ~40% per run
+3. **Resource sizing**: Uses `small` resource class - saves 50% credits per job
+4. **Merged workflows**: Cross-platform builds require main build - prevents duplicate runs
+5. **Reduced frequency**: Weekly integration tests instead of daily - saves 85% on scheduled runs
 
 ## Workflows
 
 ### 1. Main CI Workflow (`ci`)
 
-Runs on **all branches** for every push:
+Runs **ONLY on main/master branches** (not feature branches):
 
 ```
-lint-and-security
+lint-and-security (cached)
        │
        ├─── golangci-lint
        └─── govulncheck
 
-test
+test (cached)
        │
        └─── go test -race
 
-build (requires lint + test)
+build (requires lint + test, cached)
        │
        ├─── Build CLI
        └─── Build Agent
+       │
+       └─── Cross-platform builds (4 parallel jobs)
+            ├─── Linux: amd64, arm64
+            └─── Darwin: amd64, arm64
 ```
 
-**Triggers**: Push to any branch
+**Triggers**: Push to main/master only (saves ~90% credits vs all branches)
 
-### 2. Cross-Platform Builds (`build-all-platforms`)
+### 2. Weekly Integration Test (`weekly`)
 
-Runs only on **main/master branches**:
+Runs full CI suite (`make ci`) every Sunday at midnight UTC.
 
-- Linux: amd64, arm64
-- Darwin (macOS): amd64, arm64
-
-**Triggers**: Push to main/master branches only
-
-### 3. Nightly Integration Test (`nightly`)
-
-Runs full CI suite (`make ci`) every night at midnight UTC.
-
-**Triggers**: Cron schedule `0 0 * * *` on main/master
+**Triggers**: Cron schedule `0 0 * * 0` on main/master (reduced from daily)
 
 ## Local Development
 
@@ -101,9 +106,16 @@ Uses official CircleCI Go image:
 
 ### Caching
 
-CircleCI automatically caches:
-- Go module downloads
-- Build cache
+Aggressive caching to reduce build times and credits:
+- **Go modules**: Cached by `go.sum` checksum (~40% savings)
+- **Build tools**: golangci-lint, govulncheck cached by architecture
+- **Build cache**: Go build cache automatically preserved
+
+Cache keys:
+- `go-mod-v1-{{ checksum "go.sum" }}` - Go dependencies
+- `tools-v1-{{ arch }}` - golangci-lint, govulncheck
+
+**Tip**: Bump version (`v1` → `v2`) in cache keys to invalidate all caches
 
 ### Artifacts
 
@@ -117,7 +129,24 @@ Build artifacts are stored for:
 
 Jobs run in parallel where possible:
 - `lint-and-security` and `test` run concurrently
-- Cross-platform builds run in parallel (4 jobs)
+- Cross-platform builds run in parallel (4 jobs) after main build succeeds
+
+### Credit Usage (Free Tier: 6,000/month)
+
+**Per main branch push** (~150-200 credits):
+- lint-and-security: ~30 credits (small, cached)
+- test: ~30 credits (small, cached)
+- build: ~30 credits (small, cached)
+- Cross-platform builds: ~60-80 credits (4 × small)
+
+**Weekly integration**: ~50 credits/week = ~200 credits/month
+
+**Expected monthly usage**: ~1,500-2,000 credits (well within free tier)
+- Assumes ~10 pushes to main/month
+- Weekly integration tests
+- All with caching enabled
+
+**Previous usage**: ~6,000+ credits (was running on ALL branches + daily integration)
 
 ## Comparison with GitHub Actions
 
@@ -171,12 +200,29 @@ GOPROXY=https://proxy.golang.org,direct
 - [Lumo Makefile Targets](../Makefile)
 - [GitHub Actions Comparison](.github/workflows/ci.yml)
 
+## Monitoring Credit Usage
+
+Check your credit consumption: **Project Settings → Plan → Usage**
+
+If credits are still too high:
+1. Reduce cross-platform builds (keep only linux-amd64 + darwin-arm64)
+2. Disable weekly integration test
+3. Use GitHub Actions exclusively (it has path filtering built-in)
+
 ## Maintenance
 
 **Config File**: `.circleci/config.yml`
-**Last Updated**: 2025-11-21
+**Last Updated**: 2025-11-22 (optimized for free tier)
 **CircleCI Config Version**: 2.1
 **Go Version**: 1.25.4
+**Resource Class**: `small` (saves 50% credits vs `medium`)
+
+**Optimizations Applied**:
+- Branch filtering (main/master only)
+- Dependency caching (Go modules + tools)
+- Merged workflows (prevents duplicate runs)
+- Reduced scheduled tests (weekly vs daily)
+- Smaller resource class
 
 When updating Go version, update in:
 1. `.circleci/config.yml` (executor image)
