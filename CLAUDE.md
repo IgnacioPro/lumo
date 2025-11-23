@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-22 | **Version:** 1.0.9 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | All Core Systems Live 🚀
+> **Last Updated:** 2025-11-23 | **Version:** 1.0.9 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | All Core Systems Live 🚀
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -57,6 +57,7 @@ lumo/
 │   └── systemd/                       # Service unit, install scripts, RPM/DEB packaging
 ├── examples/                          # 6 end-to-end examples (3,200+ LOC)
 ├── docs/                              # Getting started, competitive analysis, ROI, investor materials
+├── website/                           # Next.js 16 landing page with TypeScript + Tailwind (ESLint 9 configured)
 ├── configs/                           # Example configurations
 ├── Dockerfile                         # Multi-stage alpine build for lumo CLI
 ├── Dockerfile.agent                   # Security-hardened build for lumo-agent (non-root)
@@ -353,6 +354,18 @@ See [deployments/kubernetes/README.md](deployments/kubernetes/README.md) and [de
 **Localhost Auto-detection:** `diagnose` detects localhost patterns (`localhost`, `127.0.0.1`, `::1`, `0.0.0.0`) and runs directly (no SSH overhead)
 
 **TOON Format:** Token-Oriented Object Notation - LLM-optimized reducing tokens by 30-60% vs JSON. Usage: `--format toon` or automatic with `--analyze`. Implementation: `formatters.NewToonFormatter()` via gotoon library
+
+---
+
+## Website Infrastructure
+
+**Landing Page:** Next.js 16 + TypeScript + Tailwind CSS (in `/website/`)
+
+**Tooling Setup (Nov 23, 2025):**
+- ESLint 9 flat config: `website/eslint.config.mjs` with TypeScript, React, React Hooks, and accessibility plugins
+- Package scripts: `npm run lint`, `npm run lint:fix`, `npm run type-check`
+- All checks passing: lint, type-check, build
+- Linting infrastructure for landing page components (Hero, Value Proposition, Features, Terminal demo)
 
 ---
 
