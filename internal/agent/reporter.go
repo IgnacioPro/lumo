@@ -241,8 +241,17 @@ func (r *Reporter) doWithRetry(ctx context.Context, method, url string, body []b
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			// Success - unmarshal response
 			if respData != nil {
-				if err := json.Unmarshal(respBody, respData); err != nil {
-					return fmt.Errorf("failed to unmarshal response: %w", err)
+				// API wraps responses in {success: bool, data: T}
+				var apiResp struct {
+					Success bool            `json:"success"`
+					Data    json.RawMessage `json:"data"`
+				}
+				if err := json.Unmarshal(respBody, &apiResp); err != nil {
+					return fmt.Errorf("failed to unmarshal API response wrapper: %w", err)
+				}
+				// Unmarshal the actual data
+				if err := json.Unmarshal(apiResp.Data, respData); err != nil {
+					return fmt.Errorf("failed to unmarshal response data: %w", err)
 				}
 			}
 			return nil

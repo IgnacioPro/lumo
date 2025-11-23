@@ -106,7 +106,10 @@ spec:
                   key: agent.tls-enabled
 
             - name: LUMO_AGENT_ENABLED_CHECKS
-              value: "kubernetes"  # Cluster deployment focuses on K8s monitoring
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-agent-config
+                  key: agent.enabled-checks
 
             - name: LUMO_AGENT_REPORT_FORMAT
               valueFrom:
