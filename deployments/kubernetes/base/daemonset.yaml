@@ -199,21 +199,24 @@ spec:
                   key: openrouter-api-key
                   optional: true
 
-            # Node information
-            - name: NODE_NAME
+            # Kubernetes metadata (mapped to LUMO_ prefix for viper)
+            - name: LUMO_AGENT_KUBERNETES_NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
 
-            - name: POD_NAME
+            - name: LUMO_AGENT_KUBERNETES_POD_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
 
-            - name: POD_NAMESPACE
+            - name: LUMO_AGENT_KUBERNETES_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            
+            - name: LUMO_AGENT_KUBERNETES_CLUSTER
+              value: "kind-lumo-test"
 
             - name: POD_IP
               valueFrom:

@@ -111,7 +111,13 @@ func (h *AgentsHandler) Register(w http.ResponseWriter, r *http.Request) {
 			labels = make(map[string]interface{})
 		}
 		existingAgent.Labels = models.JSONB(labels)
-		existingAgent.KubernetesMetadata = req.KubernetesMetadata
+
+		// Sanitize Kubernetes metadata - set to nil if all fields are empty
+		k8sMetadata := req.KubernetesMetadata
+		if k8sMetadata != nil && k8sMetadata.Cluster == "" && k8sMetadata.Namespace == "" && k8sMetadata.NodeName == "" && k8sMetadata.PodName == "" {
+			k8sMetadata = nil
+		}
+		existingAgent.KubernetesMetadata = k8sMetadata
 
 		if err := h.agentRepo.Update(r.Context(), existingAgent); err != nil {
 			h.logger.WithError(err).Error("Failed to update existing agent")
@@ -142,6 +148,12 @@ func (h *AgentsHandler) Register(w http.ResponseWriter, r *http.Request) {
 		labels = make(map[string]interface{})
 	}
 
+	// Sanitize Kubernetes metadata - set to nil if all fields are empty
+	k8sMetadata := req.KubernetesMetadata
+	if k8sMetadata != nil && k8sMetadata.Cluster == "" && k8sMetadata.Namespace == "" && k8sMetadata.NodeName == "" && k8sMetadata.PodName == "" {
+		k8sMetadata = nil
+	}
+
 	// Create new agent
 	agent := &models.Agent{
 		Name:               req.Name,
@@ -152,7 +164,7 @@ func (h *AgentsHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Status:             models.AgentStatusOnline,
 		Capabilities:       req.Capabilities,
 		Labels:             models.JSONB(labels),
-		KubernetesMetadata: req.KubernetesMetadata,
+		KubernetesMetadata: k8sMetadata,
 	}
 
 	if req.IPAddress != "" {
