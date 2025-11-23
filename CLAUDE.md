@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-23 | **Version:** 1.0.10 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Phase 15 In Progress 🔄 | All Core Systems Live 🚀
+> **Last Updated:** 2025-11-23 | **Version:** 1.0.11 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Phase 15 In Progress 🔄 | **Full Stack K8s Deployment Working** 🚀
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -89,15 +89,21 @@ Total: 192 Go files + 70 test files | Coverage: 66.7% | Verified: 2025-11-21
 **Loading:** `cfg, err := config.Load()` (searches hierarchy, auto-validates)
 **Security:** API keys ONLY via env vars (LUMO_*_API_KEY), never in config files
 
+**Viper Bindings (Nov 23, 2025):** Explicit `viper.SetDefault()` calls added for database, AI, and agent config to enable environment variable reading in K8s deployments. Required because we use struct defaults instead of viper.SetDefault for all fields.
+
 **Key Environment Variables:**
 ```bash
 export LUMO_AI_PROVIDER=anthropic                    # anthropic|openai|ollama|gemini|openrouter
+export LUMO_AI_ENABLED=false                         # Disable AI for testing
 export LUMO_ANTHROPIC_API_KEY=sk-ant-...            # Provider-specific keys
 export LUMO_RAG_ENABLED=true
 export LUMO_AGENT_MODE=hybrid                       # scheduled|on-demand|continuous|hybrid
 export LUMO_AGENT_API_ENDPOINT=https://lumo-api...
 export LUMO_AGENT_TOKEN=$JWT_TOKEN
+export LUMO_AGENT_CACHE_PATH=/var/cache/lumo        # Agent cache directory
 export LUMO_API_JWT_SECRET=secret-key               # Production required
+export LUMO_DATABASE_HOST=postgres                  # Database host (K8s service name)
+export LUMO_DATABASE_PORT=5432                      # Database port
 export LUMO_DATABASE_PASSWORD=password              # DB password
 ```
 
@@ -277,8 +283,12 @@ For rate limiting and DB pool config, see [configs/config.example.yaml](configs/
 
 **Deployment:**
 ```bash
-# K8s
-kubectl apply -f deployments/kubernetes/daemonset.yaml
+# K8s - Full Stack (Recommended for testing)
+cd deployments/kubernetes/kind
+./test-agent.sh  # Complete stack: DB + API + Agents + Tests
+
+# K8s - Production
+kubectl apply -f deployments/kubernetes/base/daemonset.yaml
 helm install lumo-agent deployments/kubernetes/helm/lumo-agent
 
 # VM
@@ -286,7 +296,7 @@ helm install lumo-agent deployments/kubernetes/helm/lumo-agent
 systemctl enable --now lumo-agent
 ```
 
-See [deployments/kubernetes/README.md](deployments/kubernetes/README.md) and [deployments/systemd/README.md](deployments/systemd/README.md) for complete guides.
+See [deployments/kubernetes/README.md](deployments/kubernetes/README.md), [deployments/kubernetes/kind/FULL_STACK_DEPLOYMENT.md](deployments/kubernetes/kind/FULL_STACK_DEPLOYMENT.md), and [deployments/systemd/README.md](deployments/systemd/README.md) for complete guides.
 
 **Docker Configuration (Nov 22, 2025):**
 - Consolidated Dockerfiles to project root for improved CI/CD practices
