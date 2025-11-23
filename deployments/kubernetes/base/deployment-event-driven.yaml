@@ -1,0 +1,262 @@
+---
+# Lumo Agent Deployment (Event-Driven Mode)
+# Cluster-wide Kubernetes event monitoring with real-time reactivity
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lumo-agent-event-driven
+  namespace: lumo-system
+  labels:
+    app.kubernetes.io/name: lumo-agent
+    app.kubernetes.io/component: event-monitor
+    app.kubernetes.io/mode: event-driven
+    app.kubernetes.io/part-of: lumo
+spec:
+  replicas: 2  # HA with 2 replicas for redundancy
+  selector:
+    matchLabels:
+      app: lumo-agent
+      mode: event-driven
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: lumo-agent
+        mode: event-driven
+        app.kubernetes.io/name: lumo-agent
+        app.kubernetes.io/component: event-monitor
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: lumo-agent
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Anti-affinity: spread replicas across nodes
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: lumo-agent
+                    mode: event-driven
+                topologyKey: kubernetes.io/hostname
+
+      containers:
+        - name: agent
+          image: lumo-agent:latest
+          imagePullPolicy: IfNotPresent
+
+          env:
+            # Agent mode
+            - name: LUMO_AGENT_MODE
+              value: "event-driven"
+
+            # Kubernetes metadata (injected by K8s)
+            - name: LUMO_AGENT_KUBERNETES_ENABLED
+              value: "true"
+            - name: LUMO_AGENT_KUBERNETES_SCOPE
+              value: "cluster"
+            - name: LUMO_AGENT_KUBERNETES_CLUSTER
+              value: "production"  # Update per environment
+            - name: LUMO_AGENT_KUBERNETES_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: LUMO_AGENT_KUBERNETES_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+            # Event-driven configuration
+            - name: LUMO_AGENT_EVENT_DRIVEN_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-agent-config-event-driven
+                  key: agent.event-driven.enabled
+            - name: LUMO_AGENT_EVENT_DRIVEN_DEBOUNCE_WINDOW
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-agent-config-event-driven
+                  key: agent.event-driven.debounce-window
+            - name: LUMO_AGENT_EVENT_DRIVEN_RESYNC_PERIOD
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-agent-config-event-driven
+                  key: agent.event-driven.resync-period
+            - name: LUMO_AGENT_EVENT_DRIVEN_GROUP_RELATED_EVENTS
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-agent-config-event-driven
+                  key: agent.event-driven.group-related-events
+            - name: LUMO_AGENT_EVENT_DRIVEN_WATCH_POD_EVENTS
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-agent-config-event-driven
+                  key: agent.event-driven.watch-pod-events
+            - name: LUMO_AGENT_EVENT_DRIVEN_WATCH_WORKLOADS
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-agent-config-event-driven
+                  key: agent.event-driven.watch-workloads
+            - name: LUMO_AGENT_EVENT_DRIVEN_WATCH_VOLUMES
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-agent-config-event-driven
+                  key: agent.event-driven.watch-volumes
+            - name: LUMO_AGENT_EVENT_DRIVEN_WATCH_NODES
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-agent-config-event-driven
+                  key: agent.event-driven.watch-nodes
+            - name: LUMO_AGENT_EVENT_DRIVEN_WATCH_EVENTS
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-agent-config-event-driven
+                  key: agent.event-driven.watch-events
+
+            # API configuration
+            - name: LUMO_AGENT_API_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-agent-config-event-driven
+                  key: agent.api-endpoint
+            - name: LUMO_AGENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: lumo-agent-secret
+                  key: token
+                  optional: true
+
+            # Redis configuration (required for event-driven mode)
+            - name: LUMO_CACHE_ENABLED
+              value: "true"
+            - name: LUMO_CACHE_REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-agent-config-event-driven
+                  key: cache.redis-url
+
+            # AI provider configuration
+            - name: LUMO_AI_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-agent-config-event-driven
+                  key: ai.enabled
+            - name: LUMO_AI_PROVIDER
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-agent-config-event-driven
+                  key: ai.provider
+            # API keys via secrets
+            - name: LUMO_ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: lumo-ai-secrets
+                  key: anthropic-api-key
+                  optional: true
+            - name: LUMO_OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: lumo-ai-secrets
+                  key: openai-api-key
+                  optional: true
+
+            # Logging
+            - name: LUMO_LOGGING_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-agent-config-event-driven
+                  key: logging.level
+            - name: LUMO_LOGGING_FORMAT
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-agent-config-event-driven
+                  key: logging.format
+
+          ports:
+            - name: health
+              containerPort: 8080
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+
+          # Health checks
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          # Resource limits
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+
+          volumeMounts:
+            - name: config
+              mountPath: /etc/lumo
+              readOnly: true
+            - name: cache
+              mountPath: /var/cache/lumo
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: config
+          configMap:
+            name: lumo-agent-config-event-driven
+        - name: cache
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi
+
+      # Graceful shutdown
+      terminationGracePeriodSeconds: 60
+
+      # Faster scheduling
+      priorityClassName: system-cluster-critical
