@@ -41,7 +41,7 @@ export default function GettingStarted() {
                   <p className="text-sm text-gray-500 mb-2 font-semibold">Via Go</p>
                   <CodeBlock
                     title="bash"
-                    code="go install github.com/ignacio/lumo/cmd/lumo@latest"
+                    code="go install github.com/IgnacioPro/lumo/cmd/lumo@latest"
                   />
                 </div>
 
@@ -49,7 +49,7 @@ export default function GettingStarted() {
                   <p className="text-sm text-gray-500 mb-2 font-semibold">From Source</p>
                   <CodeBlock
                     title="bash"
-                    code={`git clone https://github.com/ignacio/lumo.git
+                    code={`git clone https://github.com/IgnacioPro/lumo.git
 cd lumo
 make build`}
                   />
@@ -80,7 +80,7 @@ export LUMO_ANTHROPIC_API_KEY=sk-ant-...`}
               <p className="text-sm text-gray-500">
                 → See{' '}
                 <a
-                  href="https://github.com/ignacio/lumo/blob/main/docs/getting-started.md"
+                  href="https://github.com/IgnacioPro/lumo/blob/main/docs/getting-started.md"
                   className="text-lumo-blue hover:underline"
                 >
                   configuration guide
@@ -128,7 +128,7 @@ export LUMO_ANTHROPIC_API_KEY=sk-ant-...`}
 
         <div className="mt-16 text-center flex flex-col sm:flex-row gap-4 justify-center">
           <a
-            href="https://github.com/ignacio/lumo"
+            href="https://github.com/IgnacioPro/lumo"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-electric-green text-deep-navy font-semibold rounded-lg hover:bg-green-400 transition-all hover:scale-105 shadow-lg"
@@ -139,7 +139,7 @@ export LUMO_ANTHROPIC_API_KEY=sk-ant-...`}
             View on GitHub
           </a>
           <a
-            href="https://github.com/ignacio/lumo/tree/main/docs"
+            href="https://github.com/IgnacioPro/lumo/tree/main/docs"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-white border-2 border-lumo-blue text-lumo-blue font-semibold rounded-lg hover:bg-lumo-blue hover:text-white transition-all"

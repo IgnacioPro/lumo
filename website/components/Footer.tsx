@@ -8,19 +8,19 @@ export default function Footer() {
       { label: 'Features', href: '#features' },
       { label: 'Getting Started', href: '#getting-started' },
       { label: 'Live Demo', href: '#demo' },
-      { label: 'Roadmap', href: 'https://github.com/ignacio/lumo/projects' },
+      { label: 'Roadmap', href: 'https://github.com/IgnacioPro/lumo/projects' },
     ],
     resources: [
-      { label: 'Documentation', href: 'https://github.com/ignacio/lumo/tree/main/docs' },
-      { label: 'Examples', href: 'https://github.com/ignacio/lumo/tree/main/examples' },
-      { label: 'API Reference', href: 'https://github.com/ignacio/lumo/tree/main/api' },
-      { label: 'Changelog', href: 'https://github.com/ignacio/lumo/blob/main/CHANGELOG.md' },
+      { label: 'Documentation', href: 'https://github.com/IgnacioPro/lumo/tree/main/docs' },
+      { label: 'Examples', href: 'https://github.com/IgnacioPro/lumo/tree/main/examples' },
+      { label: 'API Reference', href: 'https://github.com/IgnacioPro/lumo/tree/main/api' },
+      { label: 'Changelog', href: 'https://github.com/IgnacioPro/lumo/blob/main/CHANGELOG.md' },
     ],
     community: [
-      { label: 'GitHub', href: 'https://github.com/ignacio/lumo' },
-      { label: 'Discussions', href: 'https://github.com/ignacio/lumo/discussions' },
-      { label: 'Issues', href: 'https://github.com/ignacio/lumo/issues' },
-      { label: 'Contributing', href: 'https://github.com/ignacio/lumo/blob/main/CONTRIBUTING.md' },
+      { label: 'GitHub', href: 'https://github.com/IgnacioPro/lumo' },
+      { label: 'Discussions', href: 'https://github.com/IgnacioPro/lumo/discussions' },
+      { label: 'Issues', href: 'https://github.com/IgnacioPro/lumo/issues' },
+      { label: 'Contributing', href: 'https://github.com/IgnacioPro/lumo/blob/main/CONTRIBUTING.md' },
     ],
     company: [
       { label: 'About', href: '/about' },
@@ -115,7 +115,7 @@ export default function Footer() {
 
           <div className="flex items-center gap-6">
             <a
-              href="https://github.com/ignacio/lumo"
+              href="https://github.com/IgnacioPro/lumo"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-electric-green transition-colors"

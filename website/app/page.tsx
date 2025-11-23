@@ -39,7 +39,7 @@ export default function Home() {
             {/* CTAs */}
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
               <a
-                href="https://github.com/ignacio/lumo"
+                href="https://github.com/IgnacioPro/lumo"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 px-8 py-4 bg-electric-green text-deep-navy font-semibold rounded-lg hover:bg-green-400 transition-all hover:scale-105 shadow-lg"

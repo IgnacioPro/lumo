@@ -45,7 +45,7 @@ export default function ValueProposition() {
       ),
       title: 'Open Source Transparency',
       description: 'MIT licensed, fully auditable code',
-      example: 'github.com/ignacio/lumo',
+      example: 'github.com/IgnacioPro/lumo',
       highlight: 'No vendor lock-in. Extend it yourself.',
     },
   ];
@@ -95,7 +95,7 @@ export default function ValueProposition() {
           <p className="text-gray-600">
             Trusted by SRE teams worldwide •{' '}
             <a
-              href="https://github.com/ignacio/lumo"
+              href="https://github.com/IgnacioPro/lumo"
               target="_blank"
               rel="noopener noreferrer"
               className="text-lumo-blue hover:underline font-semibold"
