@@ -12,7 +12,8 @@ export default function ValueProposition() {
       ),
       title: 'Natural Language Interface',
       description: 'Ask in plain English, get instant answers',
-      example: 'lumo ask "check CPU usage on all servers"',
+      type: 'code' as const,
+      content: 'lumo ask "check CPU usage on all servers"',
       highlight: 'No more memorizing 15 different CLI syntaxes',
     },
     {
@@ -23,8 +24,10 @@ export default function ValueProposition() {
       ),
       title: 'RAG-Powered Intelligence',
       description: '87% MTTR reduction through contextual learning',
-      example: 'Learns from every incident in your environment',
-      highlight: 'Recommendations get smarter with each incident',
+      type: 'metric' as const,
+      content: '87%',
+      subtitle: 'MTTR Reduction',
+      highlight: 'Learns from every incident to provide smarter recommendations',
     },
     {
       icon: (
@@ -34,7 +37,8 @@ export default function ValueProposition() {
       ),
       title: 'Multi-Cloud Native',
       description: 'Kubernetes, VMs, cloud, on-prem — one interface',
-      example: 'K8s • AWS • Azure • GCP • Proxmox',
+      type: 'badges' as const,
+      content: ['Kubernetes', 'AWS', 'Azure', 'GCP', 'Proxmox'],
       highlight: 'Works everywhere your infrastructure lives',
     },
     {
@@ -45,7 +49,9 @@ export default function ValueProposition() {
       ),
       title: 'Open Source Transparency',
       description: 'MIT licensed, fully auditable code',
-      example: 'github.com/IgnacioPro/lumo',
+      type: 'link' as const,
+      content: 'View on GitHub',
+      url: 'https://github.com/IgnacioPro/lumo',
       highlight: 'No vendor lock-in. Extend it yourself.',
     },
   ];
@@ -78,10 +84,52 @@ export default function ValueProposition() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <CodeBlock
-                    code={feature.example}
-                    className="text-xs"
-                  />
+                  {/* Code example for Natural Language */}
+                  {feature.type === 'code' && (
+                    <CodeBlock code={feature.content} className="text-xs" />
+                  )}
+
+                  {/* Metric display for RAG Intelligence */}
+                  {feature.type === 'metric' && (
+                    <div className="bg-gradient-to-br from-lumo-blue to-electric-green p-6 rounded-lg text-center">
+                      <div className="text-5xl font-bold text-white mb-1">
+                        {feature.content}
+                      </div>
+                      <div className="text-sm font-semibold text-white/90">
+                        {feature.subtitle}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Platform badges for Multi-Cloud */}
+                  {feature.type === 'badges' && (
+                    <div className="flex flex-wrap gap-2">
+                      {(feature.content as string[]).map((platform) => (
+                        <span
+                          key={platform}
+                          className="px-3 py-1 bg-deep-navy/5 border border-deep-navy/10 rounded-full text-xs font-semibold text-deep-navy"
+                        >
+                          {platform}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* GitHub link for Open Source */}
+                  {feature.type === 'link' && (
+                    <a
+                      href={feature.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 px-4 py-3 bg-deep-navy text-white rounded-lg hover:bg-deep-navy/90 transition-colors font-semibold text-sm"
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
+                      </svg>
+                      {feature.content}
+                    </a>
+                  )}
+
                   <p className="text-sm text-gray-700 italic">
                     → {feature.highlight}
                   </p>
