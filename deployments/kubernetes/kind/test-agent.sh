@@ -51,6 +51,13 @@ setup_cluster() {
     fi
 
     log_info "Step 1/7: Setting up kind cluster..."
+    
+    # Check if cluster already exists
+    if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
+        log_success "✓ Cluster '${CLUSTER_NAME}' already exists, skipping creation"
+        return 0
+    fi
+    
     ./setup-kind-cluster.sh
 }
 
@@ -61,6 +68,24 @@ build_and_load() {
     fi
 
     log_info "Step 2/7: Building and loading images (API + Agent)..."
+    
+    # Check if images are already loaded in kind cluster
+    local has_lumo=false
+    local has_agent=false
+    
+    if docker exec "${CLUSTER_NAME}-control-plane" crictl images 2>/dev/null | grep -q "lumo.*local"; then
+        has_lumo=true
+    fi
+    
+    if docker exec "${CLUSTER_NAME}-control-plane" crictl images 2>/dev/null | grep -q "lumo-agent.*local"; then
+        has_agent=true
+    fi
+    
+    if [ "$has_lumo" = true ] && [ "$has_agent" = true ]; then
+        log_success "✓ Images already loaded in cluster (lumo:local, lumo-agent:local), skipping build"
+        return 0
+    fi
+    
     ./build-and-load.sh
 }
 
@@ -74,6 +99,19 @@ deploy_infrastructure() {
     
     # Create namespace first
     kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+    
+    # Check if PostgreSQL is already running and healthy
+    local pg_status=$(kubectl get deployment/postgres -n "${NAMESPACE}" -o jsonpath='{.status.availableReplicas}' 2>/dev/null || echo "0")
+    
+    if [ "$pg_status" != "0" ]; then
+        log_info "PostgreSQL deployment already exists, checking health..."
+        local pod_name=$(kubectl get pods -n "${NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+        
+        if [ -n "$pod_name" ] && kubectl exec -n "${NAMESPACE}" "${pod_name}" -- psql -U lumo -d lumo -c "SELECT 1" >/dev/null 2>&1; then
+            log_success "✓ PostgreSQL already running and healthy, skipping deployment"
+            return 0
+        fi
+    fi
     
     # Deploy PostgreSQL
     log_info "Deploying PostgreSQL..."
@@ -101,6 +139,30 @@ deploy_api_server() {
     fi
 
     log_info "Step 4/7: Deploying Lumo API Server..."
+    
+    # Check if API server is already running and healthy
+    local api_status=$(kubectl get deployment/lumo-api -n "${NAMESPACE}" -o jsonpath='{.status.availableReplicas}' 2>/dev/null || echo "0")
+    
+    if [ "$api_status" != "0" ]; then
+        log_info "API server deployment already exists, checking health..."
+        local pod_name=$(kubectl get pods -n "${NAMESPACE}" -l app=lumo-api -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+        
+        if [ -n "$pod_name" ]; then
+            kubectl port-forward -n "${NAMESPACE}" "pod/${pod_name}" 8081:8080 >/dev/null 2>&1 &
+            local pf_pid=$!
+            sleep 3
+            
+            if curl -s http://localhost:8081/api/v1/health >/dev/null 2>&1; then
+                log_success "✓ API server already running and healthy, skipping deployment"
+                kill $pf_pid 2>/dev/null || true
+                wait $pf_pid 2>/dev/null || true
+                return 0
+            fi
+            
+            kill $pf_pid 2>/dev/null || true
+            wait $pf_pid 2>/dev/null || true
+        fi
+    fi
     
     # Deploy API server
     kubectl apply -f manifests/api-server.yaml
@@ -138,6 +200,16 @@ deploy_agent() {
     fi
 
     log_info "Step 5/7: Deploying agents (DaemonSet + Deployment)..."
+    
+    # Check if agents are already deployed and running
+    local ds_ready=$(kubectl get daemonset -n "${NAMESPACE}" lumo-agent-node -o jsonpath='{.status.numberReady}' 2>/dev/null || echo "0")
+    local node_count=$(kubectl get nodes -o json | jq -r '.items | length')
+    local deploy_ready=$(kubectl get deployment -n "${NAMESPACE}" lumo-agent-cluster -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+    
+    if [ "$ds_ready" -eq "$node_count" ] && [ "$ds_ready" -gt "0" ] && [ "$deploy_ready" -gt "0" ]; then
+        log_success "✓ Agents already deployed and running (DaemonSet: ${ds_ready}/${node_count}, Deployment: ${deploy_ready} ready), skipping deployment"
+        return 0
+    fi
     
     # Set API endpoint to point to our in-cluster API server
     export LUMO_API_ENDPOINT="http://lumo-api.${NAMESPACE}.svc.cluster.local:8080"
