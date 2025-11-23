@@ -177,11 +177,15 @@ func (a *Agent) register() error {
 
 	// Add Kubernetes metadata if enabled
 	if a.cfg.Agent.Kubernetes.Enabled {
-		req.KubernetesMetadata = &KubernetesMetadata{
-			Cluster:   a.cfg.Agent.Kubernetes.Cluster,
-			Namespace: a.cfg.Agent.Kubernetes.Namespace,
-			NodeName:  a.cfg.Agent.Kubernetes.NodeName,
-			PodName:   a.cfg.Agent.Kubernetes.PodName,
+		// Only add metadata if at least one field is non-empty
+		if a.cfg.Agent.Kubernetes.Cluster != "" || a.cfg.Agent.Kubernetes.Namespace != "" ||
+			a.cfg.Agent.Kubernetes.NodeName != "" || a.cfg.Agent.Kubernetes.PodName != "" {
+			req.KubernetesMetadata = &KubernetesMetadata{
+				Cluster:   a.cfg.Agent.Kubernetes.Cluster,
+				Namespace: a.cfg.Agent.Kubernetes.Namespace,
+				NodeName:  a.cfg.Agent.Kubernetes.NodeName,
+				PodName:   a.cfg.Agent.Kubernetes.PodName,
+			}
 		}
 	}
 

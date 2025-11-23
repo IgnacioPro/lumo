@@ -428,6 +428,13 @@ func Load() (*Config, error) {
 	viper.SetDefault("agent.cache_max_size", 1073741824)
 	viper.SetDefault("agent.cache_ttl", "24h")
 
+	// Kubernetes agent metadata binding (for K8s deployments)
+	// These map to POD_NAME, NODE_NAME, POD_NAMESPACE env vars set by K8s
+	viper.SetDefault("agent.kubernetes.cluster", "")
+	viper.SetDefault("agent.kubernetes.namespace", "")
+	viper.SetDefault("agent.kubernetes.node_name", "")
+	viper.SetDefault("agent.kubernetes.pod_name", "")
+
 	if err := viper.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
