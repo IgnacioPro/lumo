@@ -16,17 +16,17 @@ type RestartServiceAction struct {
 	serviceName string
 }
 
-// NewRestartServiceAction creates a new restart service action.
+// NewRestartServiceAction creates a new RestartServiceAction.
 func NewRestartServiceAction(serviceName string, logger *logrus.Logger) *RestartServiceAction {
 	return &RestartServiceAction{
 		BaseAction: NewBaseAction(
 			fmt.Sprintf("service.restart.%s", serviceName),
-			fmt.Sprintf("Restart %s service", serviceName),
-			fmt.Sprintf("Restarts the %s systemd service to recover from a failed state", serviceName),
+			fmt.Sprintf("Restart service %s", serviceName),
+			fmt.Sprintf("Restarts the systemd service '%s'", serviceName),
 			CategoryService,
 			RiskModerate,
-			true, // reversible (can be stopped if restart causes issues)
-			fmt.Sprintf("Service %s will be restarted. Dependent services may be briefly unavailable.", serviceName),
+			true, // Reversible by stopping the service (if it was stopped) or restarting it again
+			fmt.Sprintf("Service '%s' will be restarted. Short downtime may occur.", serviceName),
 			logger,
 		),
 		serviceName: serviceName,
@@ -44,28 +44,27 @@ func NewRestartServiceActionFactory() ActionFactory {
 	}
 }
 
-// Validate checks if the service exists and can be restarted.
+// Validate checks if the service exists and systemd is available.
 func (a *RestartServiceAction) Validate(ctx context.Context, executor diagnostics.CommandExecutor) error {
 	if err := a.BaseAction.Validate(ctx, executor); err != nil {
 		return err
 	}
 
-	// Validate service name to prevent command injection
 	if err := validateServiceName(a.serviceName); err != nil {
 		return err
 	}
 
 	// Check if systemctl is available
-	stdout, stderr, exitCode, err := executor.ExecuteWithContext(ctx, "which systemctl")
-	if err != nil || exitCode != 0 {
-		return fmt.Errorf("systemctl not available: %s %s", stdout, stderr)
+	_, _, exitCode, _ := executor.ExecuteWithContext(ctx, "which systemctl")
+	if exitCode != 0 {
+		return fmt.Errorf("systemctl command not found")
 	}
 
-	// Check if service exists - use shellQuote for defense in depth
-	cmd := fmt.Sprintf("systemctl list-unit-files --type=service | grep -E '^%s\\.service'", shellQuote(a.serviceName))
-	stdout, stderr, exitCode, err = executor.ExecuteWithContext(ctx, cmd)
-	if err != nil || exitCode != 0 {
-		return fmt.Errorf("service %s not found: %s %s", a.serviceName, stdout, stderr)
+	// Check if service exists
+	cmd := fmt.Sprintf("systemctl list-unit-files %s.service", shellQuote(a.serviceName))
+	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, cmd)
+	if exitCode != 0 || !strings.Contains(stdout, a.serviceName+".service") {
+		return fmt.Errorf("service '%s' not found", a.serviceName)
 	}
 
 	return nil
@@ -78,184 +77,69 @@ func (a *RestartServiceAction) Execute(ctx context.Context, executor diagnostics
 		StartTime: time.Now(),
 	}
 
-	// Get service status before restart
-	statusBefore, _ := a.getServiceStatus(ctx, executor)
+	// Get current status for rollback
+	status, _ := a.getServiceStatus(ctx, executor)
+	result.RollbackData = map[string]interface{}{
+		"previous_status": status,
+	}
 
-	// Restart the service - use shellQuote to prevent command injection
 	cmd := fmt.Sprintf("systemctl restart %s", shellQuote(a.serviceName))
 	stdout, stderr, exitCode, err := executor.ExecuteWithContext(ctx, cmd)
-
 	result.Output = fmt.Sprintf("stdout: %s\nstderr: %s", stdout, stderr)
 
 	if err != nil || exitCode != 0 {
 		result.Status = StatusFailed
-		result.Message = fmt.Sprintf("Failed to restart service %s", a.serviceName)
+		result.Message = fmt.Sprintf("Failed to restart service '%s'", a.serviceName)
 		result.Error = fmt.Sprintf("exit code %d: %s", exitCode, stderr)
 		result.EndTime = time.Now()
 		result.Duration = result.EndTime.Sub(result.StartTime)
 		return result, fmt.Errorf("systemctl restart failed: %s", stderr)
 	}
 
-	// Verify service is running
-	time.Sleep(2 * time.Second) // Give service time to start
-	statusAfter, err := a.getServiceStatus(ctx, executor)
-	if err != nil {
-		result.Status = StatusFailed
-		result.Message = "Service restarted but unable to verify status"
-		result.Error = err.Error()
-		result.EndTime = time.Now()
-		result.Duration = result.EndTime.Sub(result.StartTime)
-		return result, err
-	}
-
 	result.Status = StatusSuccess
-	result.Message = fmt.Sprintf("Successfully restarted %s service", a.serviceName)
-	result.ChangesApplied = []string{
-		fmt.Sprintf("Service %s restarted", a.serviceName),
-		fmt.Sprintf("Status: %s → %s", statusBefore, statusAfter),
-	}
-	result.RollbackData = map[string]interface{}{
-		"previous_status": statusBefore,
-		"service_name":    a.serviceName,
-	}
+	result.Message = fmt.Sprintf("Successfully restarted service '%s'", a.serviceName)
+	result.ChangesApplied = []string{fmt.Sprintf("Restarted service '%s'", a.serviceName)}
 	result.EndTime = time.Now()
 	result.Duration = result.EndTime.Sub(result.StartTime)
 
 	return result, nil
 }
 
-// Rollback stops the service (reversing the restart).
+// Rollback attempts to restore the service to its previous state.
 func (a *RestartServiceAction) Rollback(ctx context.Context, executor diagnostics.CommandExecutor, result *ActionResult) error {
-	if result.RollbackData == nil {
+	prevStatus, ok := result.RollbackData["previous_status"].(string)
+	if !ok {
 		return fmt.Errorf("no rollback data available")
 	}
 
-	previousStatus, ok := result.RollbackData["previous_status"].(string)
-	if !ok {
-		previousStatus = "unknown"
+	var cmd string
+	if prevStatus == "inactive" || prevStatus == "failed" {
+		cmd = fmt.Sprintf("systemctl stop %s", shellQuote(a.serviceName))
+	} else {
+		// If it was active, we might want to restart it again or just leave it running?
+		// Usually rollback for restart means "if restart broke it, try to fix it"
+		// But if restart succeeded, rollback might mean stopping it?
+		// Let's assume rollback means reverting state. If it was stopped, stop it.
+		// If it was running, restart implies it is running now, so no action needed unless we want to ensure config reload?
+		return nil // Nothing to do if it was already active
 	}
 
-	// If service was stopped before, stop it again
-	if strings.Contains(previousStatus, "inactive") || strings.Contains(previousStatus, "failed") {
-		cmd := fmt.Sprintf("systemctl stop %s", shellQuote(a.serviceName))
-		_, stderr, exitCode, err := executor.ExecuteWithContext(ctx, cmd)
-		if err != nil || exitCode != 0 {
-			return fmt.Errorf("failed to stop service during rollback: %s", stderr)
-		}
-	}
-
-	return nil
-}
-
-// getServiceStatus returns the current status of the service.
-func (a *RestartServiceAction) getServiceStatus(ctx context.Context, executor diagnostics.CommandExecutor) (string, error) {
-	cmd := fmt.Sprintf("systemctl is-active %s", shellQuote(a.serviceName))
-	stdout, _, _, _ := executor.ExecuteWithContext(ctx, cmd)
-	return strings.TrimSpace(stdout), nil
-}
-
-// StartServiceAction starts a systemd service.
-type StartServiceAction struct {
-	*BaseAction
-	serviceName string
-}
-
-// NewStartServiceAction creates a new start service action.
-func NewStartServiceAction(serviceName string, logger *logrus.Logger) *StartServiceAction {
-	return &StartServiceAction{
-		BaseAction: NewBaseAction(
-			fmt.Sprintf("service.start.%s", serviceName),
-			fmt.Sprintf("Start %s service", serviceName),
-			fmt.Sprintf("Starts the %s systemd service if it is currently stopped", serviceName),
-			CategoryService,
-			RiskSafe,
-			true,
-			fmt.Sprintf("Service %s will be started", serviceName),
-			logger,
-		),
-		serviceName: serviceName,
-	}
-}
-
-// NewStartServiceActionFactory returns a factory for creating StartServiceAction instances.
-func NewStartServiceActionFactory() ActionFactory {
-	return func(params map[string]interface{}, logger *logrus.Logger) (Action, error) {
-		serviceName, ok := params["service_name"].(string)
-		if !ok || serviceName == "" {
-			return nil, fmt.Errorf("service_name parameter is required")
-		}
-		return NewStartServiceAction(serviceName, logger), nil
-	}
-}
-
-// Validate checks if the service exists.
-func (a *StartServiceAction) Validate(ctx context.Context, executor diagnostics.CommandExecutor) error {
-	if err := a.BaseAction.Validate(ctx, executor); err != nil {
-		return err
-	}
-
-	// Validate service name to prevent command injection
-	if err := validateServiceName(a.serviceName); err != nil {
-		return err
-	}
-
-	// Check if systemctl is available
-	stdout, stderr, exitCode, err := executor.ExecuteWithContext(ctx, "which systemctl")
-	if err != nil || exitCode != 0 {
-		return fmt.Errorf("systemctl not available: %s %s", stdout, stderr)
-	}
-
-	// Check if service exists - use shellQuote for defense in depth
-	cmd := fmt.Sprintf("systemctl list-unit-files --type=service | grep -E '^%s\\.service'", shellQuote(a.serviceName))
-	stdout, stderr, exitCode, err = executor.ExecuteWithContext(ctx, cmd)
-	if err != nil || exitCode != 0 {
-		return fmt.Errorf("service %s not found: %s %s", a.serviceName, stdout, stderr)
-	}
-
-	return nil
-}
-
-// Execute starts the service.
-func (a *StartServiceAction) Execute(ctx context.Context, executor diagnostics.CommandExecutor) (*ActionResult, error) {
-	result := &ActionResult{
-		ActionID:  a.ID(),
-		StartTime: time.Now(),
-	}
-
-	cmd := fmt.Sprintf("systemctl start %s", shellQuote(a.serviceName))
-	stdout, stderr, exitCode, err := executor.ExecuteWithContext(ctx, cmd)
-
-	result.Output = fmt.Sprintf("stdout: %s\nstderr: %s", stdout, stderr)
-
-	if err != nil || exitCode != 0 {
-		result.Status = StatusFailed
-		result.Message = fmt.Sprintf("Failed to start service %s", a.serviceName)
-		result.Error = fmt.Sprintf("exit code %d: %s", exitCode, stderr)
-		result.EndTime = time.Now()
-		result.Duration = result.EndTime.Sub(result.StartTime)
-		return result, fmt.Errorf("systemctl start failed: %s", stderr)
-	}
-
-	result.Status = StatusSuccess
-	result.Message = fmt.Sprintf("Successfully started %s service", a.serviceName)
-	result.ChangesApplied = []string{fmt.Sprintf("Service %s started", a.serviceName)}
-	result.RollbackData = map[string]interface{}{
-		"service_name": a.serviceName,
-	}
-	result.EndTime = time.Now()
-	result.Duration = result.EndTime.Sub(result.StartTime)
-
-	return result, nil
-}
-
-// Rollback stops the service.
-func (a *StartServiceAction) Rollback(ctx context.Context, executor diagnostics.CommandExecutor, result *ActionResult) error {
-	cmd := fmt.Sprintf("systemctl stop %s", shellQuote(a.serviceName))
 	_, stderr, exitCode, err := executor.ExecuteWithContext(ctx, cmd)
 	if err != nil || exitCode != 0 {
-		return fmt.Errorf("failed to stop service during rollback: %s", stderr)
+		return fmt.Errorf("rollback failed: %s", stderr)
 	}
+
 	return nil
+}
+
+// getServiceStatus returns the ActiveState of the service
+func (a *RestartServiceAction) getServiceStatus(ctx context.Context, executor diagnostics.CommandExecutor) (string, error) {
+	cmd := fmt.Sprintf("systemctl show -p ActiveState --value %s", shellQuote(a.serviceName))
+	stdout, _, _, err := executor.ExecuteWithContext(ctx, cmd)
+	if err != nil {
+		return "unknown", err
+	}
+	return strings.TrimSpace(stdout), nil
 }
 
 // StopServiceAction stops a systemd service.
@@ -264,17 +148,17 @@ type StopServiceAction struct {
 	serviceName string
 }
 
-// NewStopServiceAction creates a new stop service action.
+// NewStopServiceAction creates a new StopServiceAction.
 func NewStopServiceAction(serviceName string, logger *logrus.Logger) *StopServiceAction {
 	return &StopServiceAction{
 		BaseAction: NewBaseAction(
 			fmt.Sprintf("service.stop.%s", serviceName),
-			fmt.Sprintf("Stop %s service", serviceName),
-			fmt.Sprintf("Stops the %s systemd service if it is currently running", serviceName),
+			fmt.Sprintf("Stop service %s", serviceName),
+			fmt.Sprintf("Stops the systemd service '%s'", serviceName),
 			CategoryService,
-			RiskModerate,
-			true,
-			fmt.Sprintf("Service %s will be stopped. Dependent services may fail.", serviceName),
+			RiskCritical, // Stopping a service is critical risk
+			true,     // Reversible by starting it
+			fmt.Sprintf("Service '%s' will be stopped. This will cause downtime.", serviceName),
 			logger,
 		),
 		serviceName: serviceName,
@@ -292,21 +176,25 @@ func NewStopServiceActionFactory() ActionFactory {
 	}
 }
 
-// Validate checks if the service exists.
+// Validate checks if the service exists and systemd is available.
 func (a *StopServiceAction) Validate(ctx context.Context, executor diagnostics.CommandExecutor) error {
 	if err := a.BaseAction.Validate(ctx, executor); err != nil {
 		return err
 	}
 
-	// Validate service name to prevent command injection
 	if err := validateServiceName(a.serviceName); err != nil {
 		return err
 	}
 
-	// Check if systemctl is available
-	stdout, stderr, exitCode, err := executor.ExecuteWithContext(ctx, "which systemctl")
-	if err != nil || exitCode != 0 {
-		return fmt.Errorf("systemctl not available: %s %s", stdout, stderr)
+	_, _, exitCode, _ := executor.ExecuteWithContext(ctx, "which systemctl")
+	if exitCode != 0 {
+		return fmt.Errorf("systemctl command not found")
+	}
+
+	cmd := fmt.Sprintf("systemctl list-unit-files %s.service", shellQuote(a.serviceName))
+	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, cmd)
+	if exitCode != 0 || !strings.Contains(stdout, a.serviceName+".service") {
+		return fmt.Errorf("service '%s' not found", a.serviceName)
 	}
 
 	return nil
@@ -321,12 +209,11 @@ func (a *StopServiceAction) Execute(ctx context.Context, executor diagnostics.Co
 
 	cmd := fmt.Sprintf("systemctl stop %s", shellQuote(a.serviceName))
 	stdout, stderr, exitCode, err := executor.ExecuteWithContext(ctx, cmd)
-
 	result.Output = fmt.Sprintf("stdout: %s\nstderr: %s", stdout, stderr)
 
 	if err != nil || exitCode != 0 {
 		result.Status = StatusFailed
-		result.Message = fmt.Sprintf("Failed to stop service %s", a.serviceName)
+		result.Message = fmt.Sprintf("Failed to stop service '%s'", a.serviceName)
 		result.Error = fmt.Sprintf("exit code %d: %s", exitCode, stderr)
 		result.EndTime = time.Now()
 		result.Duration = result.EndTime.Sub(result.StartTime)
@@ -334,11 +221,8 @@ func (a *StopServiceAction) Execute(ctx context.Context, executor diagnostics.Co
 	}
 
 	result.Status = StatusSuccess
-	result.Message = fmt.Sprintf("Successfully stopped %s service", a.serviceName)
-	result.ChangesApplied = []string{fmt.Sprintf("Service %s stopped", a.serviceName)}
-	result.RollbackData = map[string]interface{}{
-		"service_name": a.serviceName,
-	}
+	result.Message = fmt.Sprintf("Successfully stopped service '%s'", a.serviceName)
+	result.ChangesApplied = []string{fmt.Sprintf("Stopped service '%s'", a.serviceName)}
 	result.EndTime = time.Now()
 	result.Duration = result.EndTime.Sub(result.StartTime)
 
@@ -350,7 +234,112 @@ func (a *StopServiceAction) Rollback(ctx context.Context, executor diagnostics.C
 	cmd := fmt.Sprintf("systemctl start %s", shellQuote(a.serviceName))
 	_, stderr, exitCode, err := executor.ExecuteWithContext(ctx, cmd)
 	if err != nil || exitCode != 0 {
-		return fmt.Errorf("failed to start service during rollback: %s", stderr)
+		return fmt.Errorf("rollback failed: %s", stderr)
 	}
 	return nil
+}
+
+// StartServiceAction starts a systemd service.
+type StartServiceAction struct {
+	*BaseAction
+	serviceName string
+}
+
+// NewStartServiceAction creates a new StartServiceAction.
+func NewStartServiceAction(serviceName string, logger *logrus.Logger) *StartServiceAction {
+	return &StartServiceAction{
+		BaseAction: NewBaseAction(
+			fmt.Sprintf("service.start.%s", serviceName),
+			fmt.Sprintf("Start service %s", serviceName),
+			fmt.Sprintf("Starts the systemd service '%s'", serviceName),
+			CategoryService,
+			RiskModerate,
+			true, // Reversible by stopping it
+			fmt.Sprintf("Service '%s' will be started.", serviceName),
+			logger,
+		),
+		serviceName: serviceName,
+	}
+}
+
+// NewStartServiceActionFactory returns a factory for creating StartServiceAction instances.
+func NewStartServiceActionFactory() ActionFactory {
+	return func(params map[string]interface{}, logger *logrus.Logger) (Action, error) {
+		serviceName, ok := params["service_name"].(string)
+		if !ok || serviceName == "" {
+			return nil, fmt.Errorf("service_name parameter is required")
+		}
+		return NewStartServiceAction(serviceName, logger), nil
+	}
+}
+
+// Validate checks if the service exists and systemd is available.
+func (a *StartServiceAction) Validate(ctx context.Context, executor diagnostics.CommandExecutor) error {
+	if err := a.BaseAction.Validate(ctx, executor); err != nil {
+		return err
+	}
+
+	if err := validateServiceName(a.serviceName); err != nil {
+		return err
+	}
+
+	_, _, exitCode, _ := executor.ExecuteWithContext(ctx, "which systemctl")
+	if exitCode != 0 {
+		return fmt.Errorf("systemctl command not found")
+	}
+
+	cmd := fmt.Sprintf("systemctl list-unit-files %s.service", shellQuote(a.serviceName))
+	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, cmd)
+	if exitCode != 0 || !strings.Contains(stdout, a.serviceName+".service") {
+		return fmt.Errorf("service '%s' not found", a.serviceName)
+	}
+
+	return nil
+}
+
+// Execute starts the service.
+func (a *StartServiceAction) Execute(ctx context.Context, executor diagnostics.CommandExecutor) (*ActionResult, error) {
+	result := &ActionResult{
+		ActionID:  a.ID(),
+		StartTime: time.Now(),
+	}
+
+	cmd := fmt.Sprintf("systemctl start %s", shellQuote(a.serviceName))
+	stdout, stderr, exitCode, err := executor.ExecuteWithContext(ctx, cmd)
+	result.Output = fmt.Sprintf("stdout: %s\nstderr: %s", stdout, stderr)
+
+	if err != nil || exitCode != 0 {
+		result.Status = StatusFailed
+		result.Message = fmt.Sprintf("Failed to start service '%s'", a.serviceName)
+		result.Error = fmt.Sprintf("exit code %d: %s", exitCode, stderr)
+		result.EndTime = time.Now()
+		result.Duration = result.EndTime.Sub(result.StartTime)
+		return result, fmt.Errorf("systemctl start failed: %s", stderr)
+	}
+
+	result.Status = StatusSuccess
+	result.Message = fmt.Sprintf("Successfully started service '%s'", a.serviceName)
+	result.ChangesApplied = []string{fmt.Sprintf("Started service '%s'", a.serviceName)}
+	result.EndTime = time.Now()
+	result.Duration = result.EndTime.Sub(result.StartTime)
+
+	return result, nil
+}
+
+// Rollback stops the service.
+func (a *StartServiceAction) Rollback(ctx context.Context, executor diagnostics.CommandExecutor, result *ActionResult) error {
+	cmd := fmt.Sprintf("systemctl stop %s", shellQuote(a.serviceName))
+	_, stderr, exitCode, err := executor.ExecuteWithContext(ctx, cmd)
+	if err != nil || exitCode != 0 {
+		return fmt.Errorf("rollback failed: %s", stderr)
+	}
+	return nil
+}
+
+func init() {
+	logger := logrus.StandardLogger()
+	registry := GetDefaultRegistry(logger)
+	_ = registry.Register("service.restart", NewRestartServiceActionFactory())
+	_ = registry.Register("service.stop", NewStopServiceActionFactory())
+	_ = registry.Register("service.start", NewStartServiceActionFactory())
 }

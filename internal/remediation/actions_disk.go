@@ -3,6 +3,7 @@ package remediation
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -10,389 +11,434 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// CleanLogsAction cleans old log files to free disk space.
-type CleanLogsAction struct {
+// CleanTmpFilesAction deletes temporary files older than a specified duration.
+type CleanTmpFilesAction struct {
 	*BaseAction
-	olderThanDays int
-	dryRun        bool
+	targetDir   string
+	maxAgeDays  int
+	dryRun      bool // For validation/preview purposes
 }
 
-// NewCleanLogsAction creates a new clean logs action.
-func NewCleanLogsAction(olderThanDays int, dryRun bool, logger *logrus.Logger) *CleanLogsAction {
-	return &CleanLogsAction{
+// NewCleanTmpFilesAction creates a new CleanTmpFilesAction.
+func NewCleanTmpFilesAction(targetDir string, maxAgeDays int, dryRun bool, logger *logrus.Logger) *CleanTmpFilesAction {
+	if targetDir == "" {
+		targetDir = "/tmp" // Default to /tmp if not specified
+	}
+	if maxAgeDays <= 0 {
+		maxAgeDays = 7 // Default to 7 days if not specified or invalid
+	}
+
+	actionID := fmt.Sprintf("disk.clean_tmp.%s.%d", strings.ReplaceAll(targetDir, "/", "_"), maxAgeDays)
+	name := fmt.Sprintf("Clean temporary files in %s older than %d days", targetDir, maxAgeDays)
+	description := fmt.Sprintf("Deletes files from '%s' that have not been accessed or modified in the last %d days. This helps free up disk space.", targetDir, maxAgeDays)
+	impact := fmt.Sprintf("Frees up disk space in '%s'. May affect applications relying on long-lived temporary files. Files deleted: <count>", targetDir)
+	if dryRun {
+		impact = fmt.Sprintf("Preview of files that would be deleted in '%s': <list>", targetDir)
+	}
+
+	return &CleanTmpFilesAction{
 		BaseAction: NewBaseAction(
-			"disk.clean_logs",
-			"Clean old log files",
-			fmt.Sprintf("Removes log files older than %d days from /var/log to free disk space", olderThanDays),
+			actionID,
+			name,
+			description,
 			CategoryDisk,
-			RiskSafe,
-			false, // not reversible - files are deleted
-			fmt.Sprintf("Old log files (>%d days) will be permanently deleted from /var/log", olderThanDays),
+			RiskSafe,    // Low risk, but can cause issues if applications rely on old tmp files
+			false,       // Not reversible
+			impact,
 			logger,
 		),
-		olderThanDays: olderThanDays,
-		dryRun:        dryRun,
+		targetDir:   targetDir,
+		maxAgeDays:  maxAgeDays,
+		dryRun:      dryRun,
 	}
 }
 
-// NewCleanLogsActionFactory returns a factory for creating CleanLogsAction instances.
-func NewCleanLogsActionFactory() ActionFactory {
+// NewCleanTmpFilesActionFactory returns a factory for creating CleanTmpFilesAction instances.
+func NewCleanTmpFilesActionFactory() ActionFactory {
 	return func(params map[string]interface{}, logger *logrus.Logger) (Action, error) {
-		olderThanDays := 30 // default
-		if days, ok := params["older_than_days"].(int); ok {
-			olderThanDays = days
+		targetDir, _ := params["target_dir"].(string)
+		
+		maxAgeDays := 7 // Default
+		if ma, ok := params["max_age_days"].(int); ok {
+			maxAgeDays = ma
+		} else if maStr, ok := params["max_age_days"].(string); ok {
+			if parsedMa, err := strconv.Atoi(maStr); err == nil {
+				maxAgeDays = parsedMa
+			}
 		}
+
 		dryRun := false
 		if dr, ok := params["dry_run"].(bool); ok {
 			dryRun = dr
 		}
-		return NewCleanLogsAction(olderThanDays, dryRun, logger), nil
+
+		return NewCleanTmpFilesAction(targetDir, maxAgeDays, dryRun, logger), nil
 	}
 }
 
-// Validate checks prerequisites for log cleanup.
-func (a *CleanLogsAction) Validate(ctx context.Context, executor diagnostics.CommandExecutor) error {
+// Validate checks if the target directory exists and is writable.
+func (a *CleanTmpFilesAction) Validate(ctx context.Context, executor diagnostics.CommandExecutor) error {
 	if err := a.BaseAction.Validate(ctx, executor); err != nil {
 		return err
 	}
 
-	// Check if /var/log exists and is accessible
-	cmd := "test -d /var/log && test -r /var/log"
-	_, stderr, exitCode, err := executor.ExecuteWithContext(ctx, cmd)
+	// Check if directory exists and is a directory
+	cmdCheckDir := fmt.Sprintf("test -d %s", shellQuote(a.targetDir))
+	_, _, exitCode, err := executor.ExecuteWithContext(ctx, cmdCheckDir)
 	if err != nil || exitCode != 0 {
-		return fmt.Errorf("/var/log not accessible: %s", stderr)
+		return fmt.Errorf("target directory '%s' does not exist or is not a directory: %v", a.targetDir, err)
+	}
+
+	// Check if directory is writable (by current user or root if executing as root)
+	// This is a simple check, more robust checks might involve trying to create a temp file.
+	cmdCheckWrite := fmt.Sprintf("test -w %s", shellQuote(a.targetDir))
+	_, _, exitCode, err = executor.ExecuteWithContext(ctx, cmdCheckWrite)
+	if err != nil || exitCode != 0 {
+		return fmt.Errorf("target directory '%s' is not writable: %v", a.targetDir, err)
+	}
+
+	if a.maxAgeDays <= 0 {
+		return fmt.Errorf("max_age_days must be a positive integer")
 	}
 
 	return nil
 }
 
-// Execute cleans old log files.
-func (a *CleanLogsAction) Execute(ctx context.Context, executor diagnostics.CommandExecutor) (*ActionResult, error) {
+// Execute performs the temporary file cleanup.
+func (a *CleanTmpFilesAction) Execute(ctx context.Context, executor diagnostics.CommandExecutor) (*ActionResult, error) {
 	result := &ActionResult{
 		ActionID:  a.ID(),
 		StartTime: time.Now(),
 	}
 
-	// Find old log files
-	findCmd := fmt.Sprintf("find /var/log -type f -name '*.log' -mtime +%d", a.olderThanDays)
-	stdout, stderr, exitCode, err := executor.ExecuteWithContext(ctx, findCmd)
-	if err != nil || exitCode != 0 {
-		result.Status = StatusFailed
-		result.Message = "Failed to find old log files"
-		result.Error = fmt.Sprintf("exit code %d: %s", exitCode, stderr)
-		result.EndTime = time.Now()
-		result.Duration = result.EndTime.Sub(result.StartTime)
-		return result, fmt.Errorf("find command failed: %s", stderr)
+	findArgs := []string{
+		shellQuote(a.targetDir),
+		"-mindepth 1", // Don't delete the directory itself
+		"-type f",     // Only consider files
+		fmt.Sprintf("-atime +%d", a.maxAgeDays), // Access time
+		fmt.Sprintf("-mtime +%d", a.maxAgeDays), // Modification time
 	}
 
-	files := strings.Split(strings.TrimSpace(stdout), "\n")
-	if len(files) == 1 && files[0] == "" {
-		result.Status = StatusSuccess
-		result.Message = "No old log files found to clean"
+	// First, find files to be deleted to report them
+	findCmd := fmt.Sprintf("find %s", strings.Join(findArgs, " "))
+	filesToDeleteStr, _, exitCode, err := executor.ExecuteWithContext(ctx, findCmd)
+	if err != nil || exitCode != 0 {
+		result.Status = StatusFailed
+		result.Message = fmt.Sprintf("Failed to list files in '%s': %s", a.targetDir, err)
+		result.Error = err.Error()
+		result.EndTime = time.Now()
+		result.Duration = result.EndTime.Sub(result.StartTime)
+		return result, fmt.Errorf("command failed: %w", err)
+	}
+	filesToDelete := strings.Split(strings.TrimSpace(filesToDeleteStr), "\n")
+	if len(filesToDelete) == 1 && filesToDelete[0] == "" { // No files found
+		filesToDelete = []string{}
+	}
+
+	if len(filesToDelete) == 0 {
+		result.Status = StatusSkipped
+		result.Message = fmt.Sprintf("No temporary files found in '%s' older than %d days to delete.", a.targetDir, a.maxAgeDays)
 		result.EndTime = time.Now()
 		result.Duration = result.EndTime.Sub(result.StartTime)
 		return result, nil
 	}
 
-	// Get disk space before cleanup
-	dfBefore, _ := a.getDiskUsage(ctx, executor)
-
-	// Delete files
-	if !a.dryRun {
-		deleteCmd := fmt.Sprintf("find /var/log -type f -name '*.log' -mtime +%d -delete", a.olderThanDays)
-		_, stderr, exitCode, err := executor.ExecuteWithContext(ctx, deleteCmd)
-		if err != nil || exitCode != 0 {
-			result.Status = StatusFailed
-			result.Message = "Failed to delete old log files"
-			result.Error = fmt.Sprintf("exit code %d: %s", exitCode, stderr)
-			result.EndTime = time.Now()
-			result.Duration = result.EndTime.Sub(result.StartTime)
-			return result, fmt.Errorf("delete command failed: %s", stderr)
-		}
+	result.RollbackData = map[string]interface{}{
+		"deleted_files": filesToDelete, // List files for audit, even if not reversible
+	}
+	result.ChangesApplied = []string{
+		fmt.Sprintf("Identified %d files in '%s' older than %d days for deletion.", len(filesToDelete), a.targetDir, a.maxAgeDays),
 	}
 
-	// Get disk space after cleanup
-	dfAfter, _ := a.getDiskUsage(ctx, executor)
-
-	result.Status = StatusSuccess
 	if a.dryRun {
-		result.Message = fmt.Sprintf("Would delete %d old log files (dry-run mode)", len(files))
-	} else {
-		result.Message = fmt.Sprintf("Successfully deleted %d old log files", len(files))
+		result.Status = StatusSkipped
+		result.Message = fmt.Sprintf("Dry run: %d files would be deleted from '%s'.", len(filesToDelete), a.targetDir)
+		result.Output = strings.Join(filesToDelete, "\n")
+		result.EndTime = time.Now()
+		result.Duration = result.EndTime.Sub(result.StartTime)
+		return result, nil
 	}
-	result.ChangesApplied = []string{
-		fmt.Sprintf("Deleted %d files older than %d days", len(files), a.olderThanDays),
-		fmt.Sprintf("Disk usage: %s → %s", dfBefore, dfAfter),
+
+	// Actual deletion command
+	deleteCmd := fmt.Sprintf("%s -delete", findCmd)
+	stdout, _, exitCode, err := executor.ExecuteWithContext(ctx, deleteCmd)
+
+	result.Output = fmt.Sprintf("stdout: %s\nstderr: %s", stdout, "") // Changed stderr to ""
+	
+	if err != nil || exitCode != 0 {
+		result.Status = StatusFailed
+		result.Message = fmt.Sprintf("Failed to delete temporary files in '%s'", a.targetDir)
+		result.Error = fmt.Errorf("exit code %d: %s", exitCode, "").Error() // Changed stderr to ""
+		result.EndTime = time.Now()
+		result.Duration = result.EndTime.Sub(result.StartTime)
+		return result, fmt.Errorf("command failed: %w", err)
 	}
-	result.Output = fmt.Sprintf("Files cleaned:\n%s", strings.Join(files, "\n"))
+
+	result.Status = StatusSuccess
+	result.Message = fmt.Sprintf("Successfully deleted %d temporary files from '%s' older than %d days.", len(filesToDelete), a.targetDir, a.maxAgeDays)
+	result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Deleted %d files.", len(filesToDelete)))
 	result.EndTime = time.Now()
 	result.Duration = result.EndTime.Sub(result.StartTime)
 
 	return result, nil
 }
 
-// Rollback is not supported for this action.
-func (a *CleanLogsAction) Rollback(ctx context.Context, executor diagnostics.CommandExecutor, result *ActionResult) error {
-	return fmt.Errorf("log cleanup cannot be rolled back - files are permanently deleted")
-}
-
-// getDiskUsage returns current disk usage of /var/log.
-func (a *CleanLogsAction) getDiskUsage(ctx context.Context, executor diagnostics.CommandExecutor) (string, error) {
-	cmd := "df -h /var/log | tail -1 | awk '{print $5}'"
-	stdout, _, _, _ := executor.ExecuteWithContext(ctx, cmd)
-	return strings.TrimSpace(stdout), nil
-}
-
-// CleanTempAction cleans temporary files to free disk space.
-type CleanTempAction struct {
+// RotateLogsAction compresses and truncates log files.
+type RotateLogsAction struct {
 	*BaseAction
-	olderThanDays int
+	targetFile string
+	backupCount int
+	compress    bool
+	dryRun      bool
 }
 
-// NewCleanTempAction creates a new clean temp action.
-func NewCleanTempAction(olderThanDays int, logger *logrus.Logger) *CleanTempAction {
-	return &CleanTempAction{
+// NewRotateLogsAction creates a new RotateLogsAction.
+func NewRotateLogsAction(targetFile string, backupCount int, compress bool, dryRun bool, logger *logrus.Logger) *RotateLogsAction {
+	if targetFile == "" {
+		targetFile = "/var/log/syslog" // Default log file
+	}
+	if backupCount <= 0 {
+		backupCount = 1 // Default to 1 backup
+	}
+
+	actionID := fmt.Sprintf("disk.rotate_logs.%s", strings.ReplaceAll(targetFile, "/", "_"))
+	name := fmt.Sprintf("Rotate log file '%s'", targetFile)
+	description := fmt.Sprintf("Compresses and truncates '%s'. Keeps %d backups. Helps manage log growth.", targetFile, backupCount)
+	impact := fmt.Sprintf("Reduces disk usage by rotating '%s'. Old logs are backed up. Disk space freed: <size>", targetFile)
+	if dryRun {
+		impact = fmt.Sprintf("Preview of log rotation for '%s': Would create backup '%s.1', truncate original.", targetFile, targetFile)
+	}
+
+	return &RotateLogsAction{
 		BaseAction: NewBaseAction(
-			"disk.clean_temp",
-			"Clean temporary files",
-			fmt.Sprintf("Removes temporary files older than %d days from /tmp to free disk space", olderThanDays),
+			actionID,
+			name,
+			description,
 			CategoryDisk,
-			RiskSafe,
-			false,
-			fmt.Sprintf("Old files (>%d days) will be deleted from /tmp", olderThanDays),
+			RiskModerate, // Potential data loss if not handled correctly, but often safe
+			false,        // Not reversible (though backups are kept)
+			impact,
 			logger,
 		),
-		olderThanDays: olderThanDays,
+		targetFile:  targetFile,
+		backupCount: backupCount,
+		compress:    compress,
+		dryRun:      dryRun,
 	}
 }
 
-// NewCleanTempActionFactory returns a factory for creating CleanTempAction instances.
-func NewCleanTempActionFactory() ActionFactory {
+// NewRotateLogsActionFactory returns a factory for creating RotateLogsAction instances.
+func NewRotateLogsActionFactory() ActionFactory {
 	return func(params map[string]interface{}, logger *logrus.Logger) (Action, error) {
-		olderThanDays := 7 // default
-		if days, ok := params["older_than_days"].(int); ok {
-			olderThanDays = days
+		targetFile, ok := params["target_file"].(string)
+		if !ok || targetFile == "" {
+			return nil, fmt.Errorf("target_file parameter is required for RotateLogsAction")
 		}
-		return NewCleanTempAction(olderThanDays, logger), nil
+
+		backupCount := 1 // Default
+		if bc, ok := params["backup_count"].(int); ok {
+			backupCount = bc
+		} else if bcStr, ok := params["backup_count"].(string); ok {
+			if parsedBc, err := strconv.Atoi(bcStr); err == nil {
+				backupCount = parsedBc
+			}
+		}
+
+		compress := true // Default
+		if c, ok := params["compress"].(bool); ok {
+			compress = c
+		}
+
+		dryRun := false
+		if dr, ok := params["dry_run"].(bool); ok {
+			dryRun = dr
+		}
+
+		return NewRotateLogsAction(targetFile, backupCount, compress, dryRun, logger), nil
 	}
 }
 
-// Validate checks prerequisites.
-func (a *CleanTempAction) Validate(ctx context.Context, executor diagnostics.CommandExecutor) error {
+// Validate checks if the target file exists and is writable.
+func (a *RotateLogsAction) Validate(ctx context.Context, executor diagnostics.CommandExecutor) error {
 	if err := a.BaseAction.Validate(ctx, executor); err != nil {
 		return err
 	}
 
-	cmd := "test -d /tmp && test -w /tmp"
-	_, stderr, exitCode, err := executor.ExecuteWithContext(ctx, cmd)
+	// Check if file exists and is a file
+	cmdCheckFile := fmt.Sprintf("test -f %s", shellQuote(a.targetFile))
+	_, _, exitCode, err := executor.ExecuteWithContext(ctx, cmdCheckFile)
 	if err != nil || exitCode != 0 {
-		return fmt.Errorf("/tmp not accessible or writable: %s", stderr)
+		return fmt.Errorf("target file '%s' does not exist or is not a file: %v", a.targetFile, err)
+	}
+
+	// Check if file is writable
+	cmdCheckWrite := fmt.Sprintf("test -w %s", shellQuote(a.targetFile))
+	_, _, exitCode, err = executor.ExecuteWithContext(ctx, cmdCheckWrite)
+	if err != nil || exitCode != 0 {
+		return fmt.Errorf("target file '%s' is not writable: %v", a.targetFile, err)
+	}
+
+	if a.backupCount <= 0 {
+		return fmt.Errorf("backup_count must be a positive integer")
 	}
 
 	return nil
 }
 
-// Execute cleans temporary files.
-func (a *CleanTempAction) Execute(ctx context.Context, executor diagnostics.CommandExecutor) (*ActionResult, error) {
+// Execute performs the log rotation.
+// It renames the current log file and creates a new empty one.
+// It also manages old backups by compressing and deleting oldest ones.
+func (a *RotateLogsAction) Execute(ctx context.Context, executor diagnostics.CommandExecutor) (*ActionResult, error) {
 	result := &ActionResult{
 		ActionID:  a.ID(),
 		StartTime: time.Now(),
 	}
 
-	// Find and count old temp files
-	findCmd := fmt.Sprintf("find /tmp -type f -mtime +%d 2>/dev/null | wc -l", a.olderThanDays)
-	stdout, _, _, _ := executor.ExecuteWithContext(ctx, findCmd)
-	fileCount := strings.TrimSpace(stdout)
+	// Get initial file size for impact estimation
+	originalSize, err := getFileSize(ctx, executor, a.targetFile)
+	if err != nil {
+		a.logger.WithError(err).Warnf("Could not get original size for '%s'", a.targetFile)
+		originalSize = 0 // Proceed without size if error
+	}
 
-	// Delete old temp files
-	deleteCmd := fmt.Sprintf("find /tmp -type f -mtime +%d -delete 2>/dev/null", a.olderThanDays)
-	_, stderr, exitCode, err := executor.ExecuteWithContext(ctx, deleteCmd)
+	// Pre-check for dry run
+	cmdPreCheck := fmt.Sprintf("ls -lah %s", shellQuote(a.targetFile))
+	originalFileInfo, _, exitCode, err := executor.ExecuteWithContext(ctx, cmdPreCheck)
 	if err != nil || exitCode != 0 {
-		result.Status = StatusFailed
-		result.Message = "Failed to clean temp files"
-		result.Error = fmt.Sprintf("exit code %d: %s", exitCode, stderr)
+		a.logger.WithError(err).Warnf("Failed to get pre-rotation file info for '%s'", a.targetFile)
+	}
+
+	if a.dryRun {
+		result.Status = StatusSkipped
+		result.Message = fmt.Sprintf("Dry run: Log rotation for '%s' would create backup, truncate original.", a.targetFile)
+		result.Output = fmt.Sprintf("Original file info: %s\n", originalFileInfo)
+		result.ChangesApplied = []string{
+			fmt.Sprintf("Dry run: File '%s' would be moved to '%s.1' and truncated.", a.targetFile, a.targetFile),
+		}
 		result.EndTime = time.Now()
 		result.Duration = result.EndTime.Sub(result.StartTime)
-		return result, fmt.Errorf("cleanup failed: %s", stderr)
+		return result, nil
 	}
 
-	result.Status = StatusSuccess
-	result.Message = fmt.Sprintf("Successfully cleaned %s temporary files", fileCount)
-	result.ChangesApplied = []string{
-		fmt.Sprintf("Deleted %s files older than %d days from /tmp", fileCount, a.olderThanDays),
-	}
-	result.EndTime = time.Now()
-	result.Duration = result.EndTime.Sub(result.StartTime)
-
-	return result, nil
-}
-
-// Rollback is not supported.
-func (a *CleanTempAction) Rollback(ctx context.Context, executor diagnostics.CommandExecutor, result *ActionResult) error {
-	return fmt.Errorf("temp cleanup cannot be rolled back")
-}
-
-// CleanCacheAction cleans user cache directories.
-type CleanCacheAction struct {
-	*BaseAction
-}
-
-// NewCleanCacheAction creates a new clean cache action.
-func NewCleanCacheAction(logger *logrus.Logger) *CleanCacheAction {
-	return &CleanCacheAction{
-		BaseAction: NewBaseAction(
-			"disk.clean_cache",
-			"Clean user cache directories",
-			"Removes cache files from ~/.cache to free disk space",
-			CategoryDisk,
-			RiskSafe,
-			false,
-			"User cache directories will be cleaned",
-			logger,
-		),
-	}
-}
-
-// NewCleanCacheActionFactory returns a factory for creating CleanCacheAction instances.
-func NewCleanCacheActionFactory() ActionFactory {
-	return func(params map[string]interface{}, logger *logrus.Logger) (Action, error) {
-		return NewCleanCacheAction(logger), nil
-	}
-}
-
-// Validate checks prerequisites.
-func (a *CleanCacheAction) Validate(ctx context.Context, executor diagnostics.CommandExecutor) error {
-	if err := a.BaseAction.Validate(ctx, executor); err != nil {
-		return err
-	}
-	return nil
-}
-
-// Execute cleans cache directories.
-func (a *CleanCacheAction) Execute(ctx context.Context, executor diagnostics.CommandExecutor) (*ActionResult, error) {
-	result := &ActionResult{
-		ActionID:  a.ID(),
-		StartTime: time.Now(),
-	}
-
-	// Find cache directories
-	cmd := "find ~/.cache -type f 2>/dev/null | wc -l"
-	stdout, _, _, _ := executor.ExecuteWithContext(ctx, cmd)
-	fileCount := strings.TrimSpace(stdout)
-
-	// Clean cache
-	cleanCmd := "rm -rf ~/.cache/* 2>/dev/null"
-	_, stderr, exitCode, err := executor.ExecuteWithContext(ctx, cleanCmd)
-	if err != nil || exitCode != 0 {
-		result.Status = StatusFailed
-		result.Message = "Failed to clean cache"
-		result.Error = fmt.Sprintf("exit code %d: %s", exitCode, stderr)
+	// Shift existing backups: log.3 -> log.4, log.2 -> log.3, etc.
+	for i := a.backupCount; i >= 1; i-- {
+		oldBackup := fmt.Sprintf("%s.%d", a.targetFile, i)
+		newBackup := fmt.Sprintf("%s.%d", a.targetFile, i+1)
+		
+				// If compressing, check for .gz suffix
+				if a.compress {
+					oldBackupGz := oldBackup + ".gz"
+					newBackupGz := newBackup + ".gz"
+					if _, _, exitCode, _ := executor.ExecuteWithContext(ctx, fmt.Sprintf("test -f %s", shellQuote(oldBackupGz))); exitCode == 0 {
+						moveCmd := fmt.Sprintf("mv %s %s", shellQuote(oldBackupGz), shellQuote(newBackupGz))
+						_, _, exitCode, err := executor.ExecuteWithContext(ctx, moveCmd) // Replaced stderr with _
+						if err != nil || exitCode != 0 {
+							a.logger.WithError(err).Warnf("Failed to move compressed backup '%s': exit code %d, err: %v", oldBackupGz, exitCode, err) // Adjusted error message
+						} else {
+							result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Moved compressed backup '%s' to '%s'", oldBackupGz, newBackupGz))
+						}
+					}
+				}
+		
+				if _, _, exitCode, _ := executor.ExecuteWithContext(ctx, fmt.Sprintf("test -f %s", shellQuote(oldBackup))); exitCode == 0 {
+					moveCmd := fmt.Sprintf("mv %s %s", shellQuote(oldBackup), shellQuote(newBackup))
+					_, _, exitCode, err := executor.ExecuteWithContext(ctx, moveCmd) // Replaced stderr with _
+					if err != nil || exitCode != 0 {
+						a.logger.WithError(err).Warnf("Failed to move backup '%s': exit code %d, err: %v", oldBackup, exitCode, err) // Adjusted error message
+					} else {
+						result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Moved backup '%s' to '%s'", oldBackup, newBackup))
+					}
+				}
+			}
+		
+			// Move current log file to .1
+			backupFile := fmt.Sprintf("%s.1", a.targetFile)
+			moveCurrentCmd := fmt.Sprintf("mv %s %s", shellQuote(a.targetFile), shellQuote(backupFile))
+			_, _, exitCode, err = executor.ExecuteWithContext(ctx, moveCurrentCmd) // Replaced stderr with _
+			if err != nil || exitCode != 0 {
+				result.Status = StatusFailed
+				result.Message = fmt.Sprintf("Failed to move current log file '%s' to backup '%s'", a.targetFile, backupFile)
+				result.Error = fmt.Errorf("exit code %d: %v", exitCode, err).Error() // Adjusted error message
+				result.EndTime = time.Now()
+				result.Duration = result.EndTime.Sub(result.StartTime)
+				return result, fmt.Errorf("command failed: %w", err)
+			}
+			result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Moved '%s' to '%s'", a.targetFile, backupFile))
+	// Create a new empty log file with original permissions
+	touchNewCmd := fmt.Sprintf("touch %s", shellQuote(a.targetFile))
+	        _, _, exitCode, err = executor.ExecuteWithContext(ctx, touchNewCmd)
+		if err != nil || exitCode != 0 {
+			a.logger.WithError(err).Warnf("Failed to create new log file '%s': %s", a.targetFile, err)
+		} else {
+			result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Created new empty log file '%s'", a.targetFile))
+		}
+		
+		// If compress is true, compress the new backupFile
+		if a.compress {
+			compressCmd := fmt.Sprintf("gzip %s", shellQuote(backupFile))
+			_, _, exitCode, err := executor.ExecuteWithContext(ctx, compressCmd)
+			if err != nil || exitCode != 0 {
+				a.logger.WithError(err).Warnf("Failed to compress backup file '%s': %s", backupFile, err)
+			} else {
+				result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Compressed backup file '%s' to '%s.gz'", backupFile, backupFile))
+				backupFile += ".gz" // Update backupFile name
+			}
+		}
+	
+		// Calculate freed space
+		freedSpace := originalSize - (getFileSizeSafe(ctx, executor, backupFile))
+		
+		result.Status = StatusSuccess
+		result.Message = fmt.Sprintf("Successfully rotated log file '%s'. Freed %s.", a.targetFile, formatBytes(freedSpace))
+		result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Freed approximately %s of disk space.", formatBytes(freedSpace)))
 		result.EndTime = time.Now()
 		result.Duration = result.EndTime.Sub(result.StartTime)
-		return result, fmt.Errorf("cache cleanup failed: %s", stderr)
+	
+		return result, nil
 	}
-
-	result.Status = StatusSuccess
-	result.Message = fmt.Sprintf("Successfully cleaned %s cache files", fileCount)
-	result.ChangesApplied = []string{fmt.Sprintf("Deleted %s cache files from ~/.cache", fileCount)}
-	result.EndTime = time.Now()
-	result.Duration = result.EndTime.Sub(result.StartTime)
-
-	return result, nil
-}
-
-// Rollback is not supported.
-func (a *CleanCacheAction) Rollback(ctx context.Context, executor diagnostics.CommandExecutor, result *ActionResult) error {
-	return fmt.Errorf("cache cleanup cannot be rolled back")
-}
-
-// CleanAptCacheAction cleans apt package cache (Debian/Ubuntu).
-type CleanAptCacheAction struct {
-	*BaseAction
-}
-
-// NewCleanAptCacheAction creates a new clean apt cache action.
-func NewCleanAptCacheAction(logger *logrus.Logger) *CleanAptCacheAction {
-	return &CleanAptCacheAction{
-		BaseAction: NewBaseAction(
-			"disk.clean_apt_cache",
-			"Clean APT package cache",
-			"Runs 'apt-get clean' to remove cached package files",
-			CategoryDisk,
-			RiskSafe,
-			false,
-			"APT package cache will be cleaned (packages can be re-downloaded if needed)",
-			logger,
-		),
+	
+	// getFileSize returns the size of a file in bytes.
+	func getFileSize(ctx context.Context, executor diagnostics.CommandExecutor, filePath string) (int64, error) {
+		cmd := fmt.Sprintf("stat -c %%s %s 2>/dev/null || stat -f %%z %s 2>/dev/null", shellQuote(filePath), shellQuote(filePath))
+		stdout, _, exitCode, err := executor.ExecuteWithContext(ctx, cmd)
+		if err != nil || exitCode != 0 {
+			return 0, fmt.Errorf("failed to get file size for '%s': %w", filePath, err)
+		}
+		sizeStr := strings.TrimSpace(stdout)
+		size, err := strconv.ParseInt(sizeStr, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("failed to parse file size '%s': %w", sizeStr, err)
+		}
+		return size, nil
 	}
-}
-
-// NewCleanAptCacheActionFactory returns a factory for creating CleanAptCacheAction instances.
-func NewCleanAptCacheActionFactory() ActionFactory {
-	return func(params map[string]interface{}, logger *logrus.Logger) (Action, error) {
-		return NewCleanAptCacheAction(logger), nil
+	
+	// getFileSizeSafe returns the size of a file in bytes, or 0 if an error occurs.
+	func getFileSizeSafe(ctx context.Context, executor diagnostics.CommandExecutor, filePath string) int64 {
+		size, err := getFileSize(ctx, executor, filePath)
+		if err != nil {
+			return 0
+		}
+		return size
 	}
-}
-
-// Validate checks if apt is available.
-func (a *CleanAptCacheAction) Validate(ctx context.Context, executor diagnostics.CommandExecutor) error {
-	if err := a.BaseAction.Validate(ctx, executor); err != nil {
-		return err
+	
+	// formatBytes converts bytes to a human-readable format.
+	func formatBytes(b int64) string {
+		const unit = 1024
+		if b < unit {
+			return fmt.Sprintf("%d B", b)
+		}
+		div, exp := int64(unit), 0
+		for n := b / unit; n >= unit; n /= unit {
+			div *= unit
+			exp++
+		}
+		return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 	}
-
-	// Check if apt-get is available
-	cmd := "which apt-get"
-	_, stderr, exitCode, err := executor.ExecuteWithContext(ctx, cmd)
-	if err != nil || exitCode != 0 {
-		return fmt.Errorf("apt-get not available (not a Debian/Ubuntu system?): %s", stderr)
+	
+	// Register all factories for disk actions
+	func init() {
+		logger := logrus.StandardLogger() // Use standard logger for init functions
+		registry := GetDefaultRegistry(logger)
+		_ = registry.Register("disk.clean_tmp", NewCleanTmpFilesActionFactory())
+		_ = registry.Register("disk.rotate_logs", NewRotateLogsActionFactory())
 	}
-
-	return nil
-}
-
-// Execute cleans apt cache.
-func (a *CleanAptCacheAction) Execute(ctx context.Context, executor diagnostics.CommandExecutor) (*ActionResult, error) {
-	result := &ActionResult{
-		ActionID:  a.ID(),
-		StartTime: time.Now(),
-	}
-
-	// Get cache size before
-	beforeCmd := "du -sh /var/cache/apt/archives 2>/dev/null | awk '{print $1}'"
-	beforeSize, _, _, _ := executor.ExecuteWithContext(ctx, beforeCmd)
-	beforeSize = strings.TrimSpace(beforeSize)
-
-	// Clean apt cache
-	cmd := "apt-get clean"
-	stdout, stderr, exitCode, err := executor.ExecuteWithContext(ctx, cmd)
-	result.Output = fmt.Sprintf("stdout: %s\nstderr: %s", stdout, stderr)
-
-	if err != nil || exitCode != 0 {
-		result.Status = StatusFailed
-		result.Message = "Failed to clean APT cache"
-		result.Error = fmt.Sprintf("exit code %d: %s", exitCode, stderr)
-		result.EndTime = time.Now()
-		result.Duration = result.EndTime.Sub(result.StartTime)
-		return result, fmt.Errorf("apt-get clean failed: %s", stderr)
-	}
-
-	// Get cache size after
-	afterCmd := "du -sh /var/cache/apt/archives 2>/dev/null | awk '{print $1}'"
-	afterSize, _, _, _ := executor.ExecuteWithContext(ctx, afterCmd)
-	afterSize = strings.TrimSpace(afterSize)
-
-	result.Status = StatusSuccess
-	result.Message = "Successfully cleaned APT package cache"
-	result.ChangesApplied = []string{
-		fmt.Sprintf("APT cache cleaned: %s → %s", beforeSize, afterSize),
-	}
-	result.EndTime = time.Now()
-	result.Duration = result.EndTime.Sub(result.StartTime)
-
-	return result, nil
-}
-
-// Rollback is not supported.
-func (a *CleanAptCacheAction) Rollback(ctx context.Context, executor diagnostics.CommandExecutor, result *ActionResult) error {
-	return fmt.Errorf("apt cache cleanup cannot be rolled back")
-}

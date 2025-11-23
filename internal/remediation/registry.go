@@ -153,20 +153,22 @@ func (r *Registry) registerBuiltInActions() {
 	_ = r.Register("service.stop", NewStopServiceActionFactory())
 
 	// Disk actions
-	_ = r.Register("disk.clean_logs", NewCleanLogsActionFactory())
-	_ = r.Register("disk.clean_temp", NewCleanTempActionFactory())
-	_ = r.Register("disk.clean_cache", NewCleanCacheActionFactory())
-	_ = r.Register("disk.clean_apt_cache", NewCleanAptCacheActionFactory())
+	_ = r.Register("disk.clean_tmp", NewCleanTmpFilesActionFactory())
+	_ = r.Register("disk.rotate_logs", NewRotateLogsActionFactory())
 
 	// Process actions
 	_ = r.Register("process.kill", NewKillProcessActionFactory())
 	_ = r.Register("process.kill_graceful", NewKillProcessGracefulActionFactory())
 
+	// Kubernetes actions
+	_ = r.Register(ActionK8sRolloutRestart, NewK8sRolloutRestartActionFactory())
+	_ = r.Register(ActionK8sDeletePod, NewK8sDeletePodActionFactory())
+
 	// Network actions (placeholders for now)
-	// r.Register("network.restart_interface", NewRestartNetworkInterfaceActionFactory())
+	// _ = r.Register("network.restart_interface", NewRestartNetworkInterfaceActionFactory())
 
 	// System actions (placeholders for now)
-	// r.Register("system.update_sysctl", NewUpdateSysctlActionFactory())
+	// _ = r.Register("system.update_sysctl", NewUpdateSysctlActionFactory())
 }
 
 // DefaultRegistry is the global action registry instance.

@@ -31,19 +31,27 @@ type JobRepository interface {
 	UpdateError(ctx context.Context, id uuid.UUID, errorMsg string) error
 }
 
+// ApprovalRepository defines the interface for approval storage operations
+type ApprovalRepository interface {
+	Create(ctx context.Context, approval *models.Approval) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.Approval, error)
+}
+
 // RemediationHandler handles remediation requests
 type RemediationHandler struct {
-	jobRepo JobRepository
-	config  *config.Config
-	logger  *logrus.Logger
+	jobRepo      JobRepository
+	approvalRepo ApprovalRepository
+	config       *config.Config
+	logger       *logrus.Logger
 }
 
 // NewRemediationHandler creates a new remediation handler
-func NewRemediationHandler(jobRepo JobRepository, cfg *config.Config, logger *logrus.Logger) *RemediationHandler {
+func NewRemediationHandler(jobRepo JobRepository, approvalRepo ApprovalRepository, cfg *config.Config, logger *logrus.Logger) *RemediationHandler {
 	return &RemediationHandler{
-		jobRepo: jobRepo,
-		config:  cfg,
-		logger:  logger,
+		jobRepo:      jobRepo,
+		approvalRepo: approvalRepo,
+		config:       cfg,
+		logger:       logger,
 	}
 }
 
@@ -153,7 +161,7 @@ func (h *RemediationHandler) executeRemediation(ctx context.Context, job *models
 	}
 
 	// Execute remediation
-	result, err := h.performRemediation(ctx, req)
+	result, err := h.performRemediation(ctx, job, req)
 
 	// Update job with results
 	if err != nil {
@@ -182,7 +190,7 @@ func (h *RemediationHandler) executeRemediation(ctx context.Context, job *models
 }
 
 // performRemediation executes the actual remediation logic
-func (h *RemediationHandler) performRemediation(ctx context.Context, req *RemediationRequest) (map[string]interface{}, error) {
+func (h *RemediationHandler) performRemediation(ctx context.Context, job *models.Job, req *RemediationRequest) (map[string]interface{}, error) {
 	// Create tracing span
 	tracer := otel.Tracer("lumo.api.handlers")
 	ctx, span := tracer.Start(ctx, "performRemediation")
@@ -327,8 +335,14 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, req *Remedi
 	}
 	defer func() { _ = auditor.Close() }()
 
-	// Create approver
-	approver := remediation.NewApprover(h.logger)
+	// Create approver with API mode (database-based approvals)
+	approver := remediation.NewApprover(h.logger,
+		remediation.WithApprovalMode(remediation.ApprovalModeAPI),
+		remediation.WithApprovalRepository(h.approvalRepo),
+		remediation.WithJobID(job.ID),
+		remediation.WithTarget(req.Target),
+		remediation.WithRequestedBy(job.CreatedBy),
+	)
 
 	// Create executor
 	remediationExecutor := remediation.NewExecutor(executor, auditor, approver, h.logger, req.DryRun, req.AutoApprove)
