@@ -31,9 +31,12 @@ type Provider interface {
 	// Health checks if the provider is available and configured correctly.
 	Health(ctx context.Context) error
 
-	// Ask sends a natural language prompt to the AI and returns the response text.
+	// Ask sends a natural language prompt to the AI and returns the response text and token usage.
 	// This is used for general-purpose queries like the "ask" command.
-	Ask(ctx context.Context, prompt string) (string, error)
+	// systemPrompt provides context/instructions, userPrompt is the user's query.
+	// Either can be empty (but at least one should be provided).
+	// Returns the response text, token usage (nil if not supported by provider), and error.
+	Ask(ctx context.Context, systemPrompt, userPrompt string) (string, *TokenUsage, error)
 }
 
 // AnalysisRequest contains diagnostic results and context for AI analysis.
