@@ -16,11 +16,13 @@ func TestRestartServiceAction(t *testing.T) {
 	ctx := context.Background()
 	serviceName := "nginx"
 	serviceNameQuoted := "'nginx'"
+	// After normalization, the service name becomes 'nginx.service'
+	normalizedServiceNameQuoted := "'nginx.service'"
 
 	t.Run("Validates successfully", func(t *testing.T) {
 		mockExecutor := new(MockCommandExecutor)
 		mockExecutor.On("ExecuteWithContext", ctx, "which systemctl").Return("/bin/systemctl", "", 0, nil).Once()
-		mockExecutor.On("ExecuteWithContext", ctx, fmt.Sprintf("systemctl list-unit-files %s.service", serviceNameQuoted)).Return("nginx.service enabled", "", 0, nil).Once()
+		mockExecutor.On("ExecuteWithContext", ctx, fmt.Sprintf("systemctl list-unit-files %s", normalizedServiceNameQuoted)).Return("nginx.service enabled", "", 0, nil).Once()
 
 		action := NewRestartServiceAction(serviceName, logger)
 		err := action.Validate(ctx, mockExecutor)
@@ -31,7 +33,7 @@ func TestRestartServiceAction(t *testing.T) {
 	t.Run("Validation fails if service does not exist", func(t *testing.T) {
 		mockExecutor := new(MockCommandExecutor)
 		mockExecutor.On("ExecuteWithContext", ctx, "which systemctl").Return("/bin/systemctl", "", 0, nil).Once()
-		mockExecutor.On("ExecuteWithContext", ctx, fmt.Sprintf("systemctl list-unit-files %s.service", serviceNameQuoted)).Return("", "", 1, errors.New("not found")).Once()
+		mockExecutor.On("ExecuteWithContext", ctx, fmt.Sprintf("systemctl list-unit-files %s", normalizedServiceNameQuoted)).Return("", "", 1, errors.New("not found")).Once()
 
 		action := NewRestartServiceAction(serviceName, logger)
 		err := action.Validate(ctx, mockExecutor)

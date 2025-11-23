@@ -155,56 +155,39 @@ func (s *Suggester) suggestDiskActions(result *diagnostics.CheckResult) []Action
 	if usagePercent > 80 || result.Severity == diagnostics.SeverityCritical {
 		// High disk usage - suggest aggressive cleanup
 
-		// Clean old log files
-		action, _ := s.registry.Create("disk.clean_logs", map[string]interface{}{
-			"older_than_days": 30,
+		// Clean temp files from /tmp
+		action, err := s.registry.Create("disk.clean_tmp", map[string]interface{}{
+			"target_dir":   "/tmp",
+			"max_age_days": 7,
+			"dry_run":      false,
 		})
-		if action != nil {
+		if err == nil && action != nil {
 			suggestions = append(suggestions, action)
-			s.logger.Debug("Suggested cleaning old log files")
+			s.logger.Debug("Suggested cleaning temp files from /tmp")
 		}
 
-		// Clean temp files
-		action, _ = s.registry.Create("disk.clean_temp", map[string]interface{}{
-			"older_than_days": 7,
+		// Clean temp files from /var/tmp
+		action, err = s.registry.Create("disk.clean_tmp", map[string]interface{}{
+			"target_dir":   "/var/tmp",
+			"max_age_days": 7,
+			"dry_run":      false,
 		})
-		if action != nil {
+		if err == nil && action != nil {
 			suggestions = append(suggestions, action)
-			s.logger.Debug("Suggested cleaning temp files")
-		}
-
-		// Clean APT cache (if available)
-		action, _ = s.registry.Create("disk.clean_apt_cache", nil)
-		if action != nil {
-			suggestions = append(suggestions, action)
-			s.logger.Debug("Suggested cleaning APT cache")
-		}
-
-		// Clean user cache
-		action, _ = s.registry.Create("disk.clean_cache", nil)
-		if action != nil {
-			suggestions = append(suggestions, action)
-			s.logger.Debug("Suggested cleaning user cache")
+			s.logger.Debug("Suggested cleaning temp files from /var/tmp")
 		}
 	} else if usagePercent > 70 || result.Severity == diagnostics.SeverityWarning {
 		// Moderate disk usage - suggest conservative cleanup
 
-		// Clean old log files (more conservative)
-		action, _ := s.registry.Create("disk.clean_logs", map[string]interface{}{
-			"older_than_days": 60,
+		// Clean temp files from /tmp (more conservative age)
+		action, err := s.registry.Create("disk.clean_tmp", map[string]interface{}{
+			"target_dir":   "/tmp",
+			"max_age_days": 14,
+			"dry_run":      false,
 		})
-		if action != nil {
+		if err == nil && action != nil {
 			suggestions = append(suggestions, action)
-			s.logger.Debug("Suggested cleaning very old log files")
-		}
-
-		// Clean temp files
-		action, _ = s.registry.Create("disk.clean_temp", map[string]interface{}{
-			"older_than_days": 14,
-		})
-		if action != nil {
-			suggestions = append(suggestions, action)
-			s.logger.Debug("Suggested cleaning old temp files")
+			s.logger.Debug("Suggested cleaning old temp files from /tmp")
 		}
 	}
 
@@ -259,8 +242,13 @@ func (s *Suggester) suggestMemoryActions(result *diagnostics.CheckResult) []Acti
 
 	// For memory issues, we can suggest cleaning caches to free memory
 	if result.Severity == diagnostics.SeverityCritical {
-		action, _ := s.registry.Create("disk.clean_cache", nil)
-		if action != nil {
+		// Clean temp files from /tmp to free memory
+		action, err := s.registry.Create("disk.clean_tmp", map[string]interface{}{
+			"target_dir":   "/tmp",
+			"max_age_days": 7,
+			"dry_run":      false,
+		})
+		if err == nil && action != nil {
 			suggestions = append(suggestions, action)
 			s.logger.Debug("Suggested cleaning cache to free memory")
 		}
@@ -293,17 +281,21 @@ func (s *Suggester) SuggestForSeverity(report *diagnostics.Report, minSeverity d
 		s.logger.Info("Multiple critical issues detected, suggesting comprehensive cleanup")
 
 		// Suggest multiple cleanup actions
-		action, _ := s.registry.Create("disk.clean_logs", map[string]interface{}{
-			"older_than_days": 30,
+		action, err := s.registry.Create("disk.clean_tmp", map[string]interface{}{
+			"target_dir":   "/tmp",
+			"max_age_days": 7,
+			"dry_run":      false,
 		})
-		if action != nil {
+		if err == nil && action != nil {
 			suggestions = append(suggestions, action)
 		}
 
-		action, _ = s.registry.Create("disk.clean_temp", map[string]interface{}{
-			"older_than_days": 7,
+		action, err = s.registry.Create("disk.clean_tmp", map[string]interface{}{
+			"target_dir":   "/var/tmp",
+			"max_age_days": 7,
+			"dry_run":      false,
 		})
-		if action != nil {
+		if err == nil && action != nil {
 			suggestions = append(suggestions, action)
 		}
 	}

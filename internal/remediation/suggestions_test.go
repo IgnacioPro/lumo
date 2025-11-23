@@ -229,7 +229,7 @@ func TestSuggestDiskActions(t *testing.T) {
 				Severity: diagnostics.SeverityCritical,
 				Message:  "Disk usage at 92%",
 			},
-			minActions:    3, // Should suggest aggressive cleanup
+			minActions:    2, // Should suggest aggressive cleanup (/tmp and /var/tmp)
 			expectCleaner: true,
 		},
 		{

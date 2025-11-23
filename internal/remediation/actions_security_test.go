@@ -18,6 +18,25 @@ type MockSecurityExecutor struct {
 func (m *MockSecurityExecutor) ExecuteWithContext(ctx context.Context, command string) (string, string, int, error) {
 	m.lastCommand = command
 	m.commands = append(m.commands, command)
+
+	// Handle specific validation commands
+	if strings.Contains(command, "which systemctl") {
+		// systemctl is available
+		return "/usr/bin/systemctl", "", 0, nil
+	}
+
+	if strings.Contains(command, "systemctl list-unit-files") {
+		// Extract service name from command and return appropriate output
+		// Command format: systemctl list-unit-files 'servicename'.service
+		// For valid service names like nginx, return proper output
+		// Handle both 'nginx' and 'nginx.service' variations
+		if strings.Contains(command, "nginx") {
+			return "nginx.service                           enabled", "", 0, nil
+		}
+		// For invalid/injection attempts, return empty (service not found)
+		return "", "", 0, nil
+	}
+
 	return "mocked output", "", 0, nil
 }
 

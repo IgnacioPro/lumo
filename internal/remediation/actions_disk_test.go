@@ -162,26 +162,25 @@ func TestRotateLogsAction(t *testing.T) {
 
 	t.Run("Execute rotates logs successfully (no compression)", func(t *testing.T) {
 		mockExecutor := new(MockCommandExecutor)
-		
+
 		// 1. Initial file size check
 		mockExecutor.On("ExecuteWithContext", ctx, "stat -c %s "+testLogFileQuoted+" 2>/dev/null || stat -f %z "+testLogFileQuoted+" 2>/dev/null").Return("1024", "", 0, nil).Once()
-		
+
 		// 2. Pre-check for dry run info (ALWAYS called)
 		mockExecutor.On("ExecuteWithContext", ctx, "ls -lah "+testLogFileQuoted).Return("-rw-r--r-- 1 root root 1.0K Nov 23 12:00 test.log", "", 0, nil).Once()
 
-		// 3. Backup shifting
-		// test -f '/var/log/test.log.1.gz'
-		mockExecutor.On("ExecuteWithContext", ctx, "test -f '/var/log/test.log.1.gz'").Return("", "", 1, nil).Once()
-		// test -f '/var/log/test.log.1'
+		// 3. Backup shifting - with backupCount=1, loop runs once with i=1
+		// When compress=false, only check for uncompressed backup .1 (to shift to .2)
+		// The .gz check is skipped because compress=false
 		mockExecutor.On("ExecuteWithContext", ctx, "test -f '/var/log/test.log.1'").Return("", "", 1, nil).Once()
 
 		// 4. Move current log to .1
 		mockExecutor.On("ExecuteWithContext", ctx, "mv "+testLogFileQuoted+" '/var/log/test.log.1'").Return("", "", 0, nil).Once()
-		
+
 		// 5. Create new empty log file
 		mockExecutor.On("ExecuteWithContext", ctx, "touch "+testLogFileQuoted).Return("", "", 0, nil).Once()
-		
-		// 6. Get new backup size
+
+		// 6. Get new backup size for freed space calculation
 		mockExecutor.On("ExecuteWithContext", ctx, "stat -c %s '/var/log/test.log.1' 2>/dev/null || stat -f %z '/var/log/test.log.1' 2>/dev/null").Return("1024", "", 0, nil).Once()
 
 		action := NewRotateLogsAction(testLogFile, 1, false, false, logger)
