@@ -297,3 +297,63 @@ func (p *BaseProvider) healthInternal(ctx context.Context) error {
 
 	return nil
 }
+
+// Ask sends a natural language prompt to the AI and returns the response text and token usage.
+func (p *BaseProvider) Ask(ctx context.Context, systemPrompt, userPrompt string) (string, *TokenUsage, error) {
+	// Wrap execution in circuit breaker
+	result, err := p.circuitBreaker.Execute(func() (interface{}, error) {
+		return p.askInternal(ctx, systemPrompt, userPrompt)
+	})
+
+	if err != nil {
+		return "", nil, err
+	}
+
+	resp := result.(*askResponse)
+	return resp.content, resp.usage, nil
+}
+
+// askResponse holds the response and token usage from an Ask call
+type askResponse struct {
+	content string
+	usage   *TokenUsage
+}
+
+func (p *BaseProvider) askInternal(ctx context.Context, systemPrompt, userPrompt string) (*askResponse, error) {
+	// Build provider-specific request with separate system and user prompts
+	apiReq, err := p.adapter.BuildRequest(systemPrompt, userPrompt, false)
+	if err != nil {
+		return nil, &Error{
+			Op:       "build_request",
+			Provider: p.Name(),
+			Err:      err,
+		}
+	}
+
+	// Execute HTTP request
+	resp, err := p.httpClient.Do(ctx, RequestOptions{
+		Method:       "POST",
+		URL:          p.adapter.GetEndpoint(),
+		Body:         apiReq,
+		Headers:      p.adapter.BuildHeaders(),
+		ProviderName: p.Name(),
+	})
+	if err != nil {
+		return nil, err // Error already wrapped by HTTPClient
+	}
+
+	// Parse provider-specific response
+	content, usage, err := p.adapter.ParseResponse(resp.Body)
+	if err != nil {
+		return nil, &Error{
+			Op:       "parse_response",
+			Provider: p.Name(),
+			Err:      err,
+		}
+	}
+
+	return &askResponse{
+		content: content,
+		usage:   usage,
+	}, nil
+}

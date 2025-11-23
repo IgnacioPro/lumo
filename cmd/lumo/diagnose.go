@@ -219,7 +219,7 @@ func runDiagnostics(cmd *cobra.Command, args []string) error {
 	runner.RegisterCheckers(checkersToRegister...)
 
 	// Display pre-execution summary
-	displayDiagnosticsSummary(runner, checksFilter, format, enableAI, hostname)
+	displayDiagnosticsSummary(checksFilter, format, enableAI, hostname)
 
 	// Run diagnostics
 	log.Info("Running diagnostic checks...")
@@ -544,7 +544,7 @@ type CheckInfo struct {
 }
 
 // displayDiagnosticsSummary shows a summary of what checks will be run before execution
-func displayDiagnosticsSummary(runner *diagnostics.Runner, checksFilter []string, format string, enableAI bool, hostname string) {
+func displayDiagnosticsSummary(checksFilter []string, format string, enableAI bool, hostname string) {
 	// Display header
 	fmt.Println()
 	fmt.Printf("═══ System Diagnostics for %s ═══\n", hostname)
