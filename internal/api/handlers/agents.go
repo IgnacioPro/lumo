@@ -104,7 +104,13 @@ func (h *AgentsHandler) Register(w http.ResponseWriter, r *http.Request) {
 		existingAgent.Version = req.Version
 		existingAgent.Status = models.AgentStatusOnline
 		existingAgent.Capabilities = req.Capabilities
-		existingAgent.Labels = models.JSONB(req.Labels)
+
+		// Ensure labels is not nil
+		labels := req.Labels
+		if labels == nil {
+			labels = make(map[string]interface{})
+		}
+		existingAgent.Labels = models.JSONB(labels)
 		existingAgent.KubernetesMetadata = req.KubernetesMetadata
 
 		if err := h.agentRepo.Update(r.Context(), existingAgent); err != nil {
@@ -130,6 +136,12 @@ func (h *AgentsHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ensure labels is not nil
+	labels := req.Labels
+	if labels == nil {
+		labels = make(map[string]interface{})
+	}
+
 	// Create new agent
 	agent := &models.Agent{
 		Name:               req.Name,
@@ -139,7 +151,7 @@ func (h *AgentsHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Version:            req.Version,
 		Status:             models.AgentStatusOnline,
 		Capabilities:       req.Capabilities,
-		Labels:             models.JSONB(req.Labels),
+		Labels:             models.JSONB(labels),
 		KubernetesMetadata: req.KubernetesMetadata,
 	}
 
@@ -262,12 +274,12 @@ func (h *AgentsHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 // UpdateRequest represents an agent update request
 type UpdateRequest struct {
-	Name         *string                    `json:"name,omitempty"`
-	Status       *models.AgentStatus        `json:"status,omitempty"`
-	IPAddress    *string                    `json:"ip_address,omitempty"`
-	Version      *string                    `json:"version,omitempty"`
-	Capabilities []string                   `json:"capabilities,omitempty"`
-	Labels       map[string]interface{}     `json:"labels,omitempty"`
+	Name               *string                    `json:"name,omitempty"`
+	Status             *models.AgentStatus        `json:"status,omitempty"`
+	IPAddress          *string                    `json:"ip_address,omitempty"`
+	Version            *string                    `json:"version,omitempty"`
+	Capabilities       []string                   `json:"capabilities,omitempty"`
+	Labels             map[string]interface{}     `json:"labels,omitempty"`
 	KubernetesMetadata *models.KubernetesMetadata `json:"kubernetes_metadata,omitempty"`
 }
 

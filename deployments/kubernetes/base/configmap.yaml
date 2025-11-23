@@ -19,10 +19,10 @@ data:
   agent.schedule: "*/5 * * * *"
 
   # API endpoint for reporting
-  agent.api-endpoint: "https://lumo-api.example.com"
+  agent.api-endpoint: "http://lumo-api:8080"
 
   # TLS configuration
-  agent.tls-enabled: "true"
+  agent.tls-enabled: "false"
 
   # Enabled diagnostic checks (comma-separated)
   agent.enabled-checks: "cpu,memory,disk,process,service,network,kubernetes"
@@ -111,9 +111,9 @@ data:
     agent:
       mode: hybrid
       schedule: "*/5 * * * *"
-      api_endpoint: https://lumo-api.example.com
+      api_endpoint: http://lumo-api:8080
       token: ""  # Set via environment variable
-      tls_enabled: true
+      tls_enabled: false
       enabled_checks:
         - cpu
         - memory

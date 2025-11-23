@@ -402,6 +402,7 @@ func (a *Agent) registerCheckers(runner *diagnostics.Runner) {
 
 	// Security checkers
 	runner.RegisterCheckers(
+		checkers.NewPatchChecker(),
 		checkers.NewPortsChecker(a.cfg.Diagnostics.Security.PortCheck.WhitelistedPorts),
 		checkers.NewSSHSecurityChecker(),
 		checkers.NewAuthFailuresChecker(
