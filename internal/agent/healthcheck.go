@@ -35,10 +35,11 @@ type HealthCheck struct {
 // NewHealthCheck creates a new health check server
 func NewHealthCheck(port int, agent *Agent, logger *logrus.Logger) *HealthCheck {
 	hc := &HealthCheck{
-		port:   port,
-		logger: logger,
-		agent:  agent,
-		status: HealthStatusHealthy,
+		port:    port,
+		logger:  logger,
+		agent:   agent,
+		status:  HealthStatusHealthy,
+		lastRun: time.Now(),
 	}
 
 	// Set up HTTP server
