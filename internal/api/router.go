@@ -47,14 +47,16 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 	jobRepo := repository.NewJobRepository(db.DB)
 	apiKeyRepo := repository.NewAPIKeyRepository(db.DB)
 	agentRepo := repository.NewAgentRepository(db.DB)
+	approvalRepo := repository.NewApprovalRepository(db.DB)
 
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db, logger)
 	authHandler := handlers.NewAuthHandler(apiKeyRepo, jwtManager, logger)
 	diagnosticsHandler := handlers.NewDiagnosticsHandler(jobRepo, cfg, logger)
-	remediationHandler := handlers.NewRemediationHandler(jobRepo, cfg, logger)
+	remediationHandler := handlers.NewRemediationHandler(jobRepo, approvalRepo, cfg, logger)
 	jobsHandler := handlers.NewJobsHandler(jobRepo, logger)
 	agentsHandler := handlers.NewAgentsHandler(agentRepo, logger)
+	approvalsHandler := handlers.NewApprovalsHandler(approvalRepo, logger)
 
 	// API v1 routes
 	r.Route("/api/v1", func(r chi.Router) {
@@ -100,7 +102,15 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 			r.Get("/agents", agentsHandler.List)
 			r.Get("/agents/stats", agentsHandler.Stats)
 			r.Get("/agents/{id}", agentsHandler.Get)
+			r.Put("/agents/{id}", agentsHandler.Update)
 			r.Delete("/agents/{id}", agentsHandler.Delete)
+
+			// Approval endpoints
+			r.Get("/approvals", approvalsHandler.List)
+			r.Get("/approvals/stats", approvalsHandler.Stats)
+			r.Get("/approvals/{id}", approvalsHandler.Get)
+			r.Put("/approvals/{id}/approve", approvalsHandler.Approve)
+			r.Put("/approvals/{id}/reject", approvalsHandler.Reject)
 		})
 	})
 

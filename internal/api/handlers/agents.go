@@ -260,6 +260,91 @@ func (h *AgentsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, agent)
 }
 
+// UpdateRequest represents an agent update request
+type UpdateRequest struct {
+	Name         *string                    `json:"name,omitempty"`
+	Status       *models.AgentStatus        `json:"status,omitempty"`
+	IPAddress    *string                    `json:"ip_address,omitempty"`
+	Version      *string                    `json:"version,omitempty"`
+	Capabilities []string                   `json:"capabilities,omitempty"`
+	Labels       map[string]interface{}     `json:"labels,omitempty"`
+	KubernetesMetadata *models.KubernetesMetadata `json:"kubernetes_metadata,omitempty"`
+}
+
+// Update handles PUT /api/v1/agents/:id
+func (h *AgentsHandler) Update(w http.ResponseWriter, r *http.Request) {
+	// Get agent ID from URL
+	agentIDStr := chi.URLParam(r, "id")
+	agentID, err := uuid.Parse(agentIDStr)
+	if err != nil {
+		response.BadRequest(w, "Invalid agent ID")
+		return
+	}
+
+	// Parse request
+	var req UpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.BadRequest(w, "Invalid request body")
+		return
+	}
+
+	// Get existing agent
+	agent, err := h.agentRepo.GetByID(r.Context(), agentID)
+	if err != nil {
+		h.logger.WithError(err).WithField("agent_id", agentID).Error("Failed to get agent")
+		response.NotFound(w, "Agent not found")
+		return
+	}
+
+	// Update fields if provided
+	if req.Name != nil {
+		agent.Name = *req.Name
+	}
+	if req.Status != nil {
+		// Validate status
+		validStatuses := map[models.AgentStatus]bool{
+			models.AgentStatusOnline:  true,
+			models.AgentStatusOffline: true,
+			models.AgentStatusError:   true,
+		}
+		if !validStatuses[*req.Status] {
+			response.BadRequest(w, "Invalid status")
+			return
+		}
+		agent.Status = *req.Status
+	}
+	if req.IPAddress != nil {
+		agent.IPAddress = req.IPAddress
+	}
+	if req.Version != nil {
+		agent.Version = *req.Version
+	}
+	if req.Capabilities != nil {
+		agent.Capabilities = req.Capabilities
+	}
+	if req.Labels != nil {
+		agent.Labels = models.JSONB(req.Labels)
+	}
+	if req.KubernetesMetadata != nil {
+		agent.KubernetesMetadata = req.KubernetesMetadata
+	}
+
+	// Update in database
+	if err := h.agentRepo.Update(r.Context(), agent); err != nil {
+		h.logger.WithError(err).WithField("agent_id", agentID).Error("Failed to update agent")
+		response.InternalServerError(w, "Failed to update agent")
+		return
+	}
+
+	h.logger.WithFields(logrus.Fields{
+		"agent_id": agentID,
+		"name":     agent.Name,
+		"status":   agent.Status,
+	}).Info("Agent updated")
+
+	response.Success(w, agent)
+}
+
 // Delete handles DELETE /api/v1/agents/:id
 func (h *AgentsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	// Get agent ID from URL

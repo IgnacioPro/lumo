@@ -2,858 +2,262 @@ package remediation
 
 import (
 	"context"
-	"strings"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
-// Mock executor for disk action testing
-type diskMockExecutor struct {
-	responses map[string]mockResponse
+// MockCommandExecutor is a mock implementation of diagnostics.CommandExecutor
+type MockCommandExecutor struct {
+	mock.Mock
 }
 
-type mockResponse struct {
-	stdout   string
-	stderr   string
-	exitCode int
-	err      error
+func (m *MockCommandExecutor) ExecuteWithContext(ctx context.Context, command string) (string, string, int, error) {
+	args := m.Called(ctx, command)
+	return args.String(0), args.String(1), args.Int(2), args.Error(3)
 }
 
-func (m *diskMockExecutor) Execute(command string, timeout time.Duration) (stdout, stderr string, exitCode int, err error) {
-	return m.ExecuteWithContext(context.Background(), command)
+func (m *MockCommandExecutor) Execute(command string, timeout time.Duration) (string, string, int, error) {
+	args := m.Called(context.Background(), command, timeout)
+	return args.String(0), args.String(1), args.Int(2), args.Error(3)
 }
 
-func (m *diskMockExecutor) ExecuteWithContext(ctx context.Context, command string) (stdout, stderr string, exitCode int, err error) {
-	// Check for exact matches first
-	if resp, ok := m.responses[command]; ok {
-		return resp.stdout, resp.stderr, resp.exitCode, resp.err
-	}
-
-	// Check for pattern matches (for find commands with varying parameters)
-	for pattern, resp := range m.responses {
-		if strings.Contains(command, pattern) {
-			return resp.stdout, resp.stderr, resp.exitCode, resp.err
-		}
-	}
-
-	// Default response for unknown commands
-	return "", "command not mocked", 127, nil
-}
-
-// Test CleanLogsAction
-
-func TestCleanLogsAction_Validate(t *testing.T) {
+func TestCleanTmpFilesAction(t *testing.T) {
 	logger := logrus.New()
-	logger.SetOutput(&diskTestLogWriter{t})
+	logger.SetOutput(new(mockWriter))
+	ctx := context.Background()
 
-	t.Run("validates when /var/log is accessible", func(t *testing.T) {
-		action := NewCleanLogsAction(30, false, logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"test -d /var/log && test -r /var/log": {
-					stdout:   "",
-					exitCode: 0,
-				},
-			},
-		}
+	t.Run("Validates successfully", func(t *testing.T) {
+		mockExecutor := new(MockCommandExecutor)
+		mockExecutor.On("ExecuteWithContext", ctx, "test -d '/tmp'").Return("", "", 0, nil).Once()
+		mockExecutor.On("ExecuteWithContext", ctx, "test -w '/tmp'").Return("", "", 0, nil).Once()
 
-		err := action.Validate(context.Background(), executor)
-
-		if err != nil {
-			t.Errorf("Validate() unexpected error: %v", err)
-		}
+		action := NewCleanTmpFilesAction("/tmp", 7, false, logger)
+		err := action.Validate(ctx, mockExecutor)
+		assert.NoError(t, err)
+		mockExecutor.AssertExpectations(t)
 	})
 
-	t.Run("fails when /var/log not accessible", func(t *testing.T) {
-		action := NewCleanLogsAction(30, false, logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"test -d /var/log && test -r /var/log": {
-					stdout:   "",
-					stderr:   "Permission denied",
-					exitCode: 1,
-				},
-			},
-		}
+	t.Run("Validation fails if targetDir does not exist", func(t *testing.T) {
+		mockExecutor := new(MockCommandExecutor)
+		mockExecutor.On("ExecuteWithContext", ctx, "test -d '/nonexistent'").Return("", "", 1, errors.New("not a directory")).Once()
 
-		err := action.Validate(context.Background(), executor)
-
-		if err == nil {
-			t.Error("Validate() expected error when /var/log not accessible, got nil")
-		}
-
-		if !strings.Contains(err.Error(), "/var/log not accessible") {
-			t.Errorf("Validate() error = %q, want to contain '/var/log not accessible'", err.Error())
-		}
+		action := NewCleanTmpFilesAction("/nonexistent", 7, false, logger)
+		err := action.Validate(ctx, mockExecutor)
+		assert.Error(t, err)
+		mockExecutor.AssertExpectations(t)
 	})
 
-	t.Run("fails when executor is nil", func(t *testing.T) {
-		action := NewCleanLogsAction(30, false, logger)
+	t.Run("Validation fails if targetDir not writable", func(t *testing.T) {
+		mockExecutor := new(MockCommandExecutor)
+		mockExecutor.On("ExecuteWithContext", ctx, "test -d '/tmp'").Return("", "", 0, nil).Once()
+		mockExecutor.On("ExecuteWithContext", ctx, "test -w '/tmp'").Return("", "", 1, errors.New("not writable")).Once()
 
-		err := action.Validate(context.Background(), nil)
+		action := NewCleanTmpFilesAction("/tmp", 7, false, logger)
+		err := action.Validate(ctx, mockExecutor)
+		assert.Error(t, err)
+		mockExecutor.AssertExpectations(t)
+	})
 
-		if err == nil {
-			t.Error("Validate() expected error with nil executor, got nil")
+	t.Run("Execute deletes files successfully", func(t *testing.T) {
+		mockExecutor := new(MockCommandExecutor)
+		// The find command uses single quotes for the directory
+		mockExecutor.On("ExecuteWithContext", ctx, "find '/tmp' -mindepth 1 -type f -atime +7 -mtime +7").Return("file1\nfile2", "", 0, nil).Once()
+		mockExecutor.On("ExecuteWithContext", ctx, "find '/tmp' -mindepth 1 -type f -atime +7 -mtime +7 -delete").Return("", "", 0, nil).Once()
+
+		action := NewCleanTmpFilesAction("/tmp", 7, false, logger)
+		result, err := action.Execute(ctx, mockExecutor)
+
+		assert.NoError(t, err)
+		assert.Equal(t, StatusSuccess, result.Status)
+		assert.Len(t, result.ChangesApplied, 2)
+		mockExecutor.AssertExpectations(t)
+	})
+
+	t.Run("Execute handles no files found", func(t *testing.T) {
+		mockExecutor := new(MockCommandExecutor)
+		mockExecutor.On("ExecuteWithContext", ctx, "find '/tmp' -mindepth 1 -type f -atime +7 -mtime +7").Return("", "", 0, nil).Once()
+
+		action := NewCleanTmpFilesAction("/tmp", 7, false, logger)
+		result, err := action.Execute(ctx, mockExecutor)
+
+		assert.NoError(t, err)
+		assert.Equal(t, StatusSkipped, result.Status)
+		mockExecutor.AssertExpectations(t)
+	})
+
+	t.Run("Execute dry run returns skipped status", func(t *testing.T) {
+		mockExecutor := new(MockCommandExecutor)
+		mockExecutor.On("ExecuteWithContext", ctx, "find '/tmp' -mindepth 1 -type f -atime +7 -mtime +7").Return("file1\nfile2", "", 0, nil).Once()
+
+		action := NewCleanTmpFilesAction("/tmp", 7, true, logger)
+		result, err := action.Execute(ctx, mockExecutor)
+
+		assert.NoError(t, err)
+		assert.Equal(t, StatusSkipped, result.Status)
+		mockExecutor.AssertExpectations(t)
+	})
+
+	t.Run("Factory creates action correctly", func(t *testing.T) {
+		registry := GetDefaultRegistry(logger)
+		params := map[string]interface{}{
+			"target_dir":   "/var/tmp",
+			"max_age_days": 10,
+			"dry_run":      true,
 		}
-
-		if !strings.Contains(err.Error(), "executor is nil") {
-			t.Errorf("Validate() error = %q, want to contain 'executor is nil'", err.Error())
-		}
+		action, err := registry.Create("disk.clean_tmp", params)
+		assert.NoError(t, err)
+		cleanAction, ok := action.(*CleanTmpFilesAction)
+		assert.True(t, ok)
+		assert.Equal(t, "/var/tmp", cleanAction.targetDir)
+		assert.Equal(t, 10, cleanAction.maxAgeDays)
+		assert.True(t, cleanAction.dryRun)
 	})
 }
 
-func TestCleanLogsAction_Execute(t *testing.T) {
+func TestRotateLogsAction(t *testing.T) {
 	logger := logrus.New()
-	logger.SetOutput(&diskTestLogWriter{t})
+	logger.SetOutput(new(mockWriter))
+	ctx := context.Background()
+	testLogFile := "/var/log/test.log"
 
-	t.Run("successfully cleans old log files", func(t *testing.T) {
-		action := NewCleanLogsAction(30, false, logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"find /var/log -type f -name '*.log' -mtime +30": {
-					stdout:   "/var/log/old1.log\n/var/log/old2.log\n/var/log/old3.log",
-					exitCode: 0,
-				},
-				"find /var/log -type f -name '*.log' -mtime +30 -delete": {
-					stdout:   "",
-					exitCode: 0,
-				},
-				"df -h /var/log": {
-					stdout:   "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        50G   30G   18G  63% /",
-					exitCode: 0,
-				},
-			},
-		}
+	// Explicitly define the quoted string to match shellQuote behavior
+	testLogFileQuoted := "'/var/log/test.log'"
 
-		result, err := action.Execute(context.Background(), executor)
+	t.Run("Validates successfully", func(t *testing.T) {
+		mockExecutor := new(MockCommandExecutor)
+		mockExecutor.On("ExecuteWithContext", ctx, "test -f "+testLogFileQuoted).Return("", "", 0, nil).Once()
+		mockExecutor.On("ExecuteWithContext", ctx, "test -w "+testLogFileQuoted).Return("", "", 0, nil).Once()
 
-		if err != nil {
-			t.Fatalf("Execute() unexpected error: %v", err)
-		}
-
-		if result.Status != StatusSuccess {
-			t.Errorf("Execute() status = %q, want %q", result.Status, StatusSuccess)
-		}
-
-		if !result.Succeeded() {
-			t.Error("Execute() result.Succeeded() = false, want true")
-		}
-
-		if !strings.Contains(result.Message, "deleted 3 old log files") {
-			t.Errorf("Execute() message = %q, want to mention 3 files", result.Message)
-		}
-
-		if len(result.ChangesApplied) != 2 {
-			t.Errorf("Execute() len(ChangesApplied) = %d, want 2", len(result.ChangesApplied))
-		}
+		action := NewRotateLogsAction(testLogFile, 1, false, false, logger)
+		err := action.Validate(ctx, mockExecutor)
+		assert.NoError(t, err)
+		mockExecutor.AssertExpectations(t)
 	})
 
-	t.Run("handles no old log files found", func(t *testing.T) {
-		action := NewCleanLogsAction(30, false, logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"find /var/log -type f -name '*.log' -mtime +30": {
-					stdout:   "",
-					exitCode: 0,
-				},
-			},
-		}
+	t.Run("Validation fails if targetFile does not exist", func(t *testing.T) {
+		mockExecutor := new(MockCommandExecutor)
+		mockExecutor.On("ExecuteWithContext", ctx, "test -f "+testLogFileQuoted).Return("", "", 1, errors.New("not a file")).Once()
 
-		result, err := action.Execute(context.Background(), executor)
-
-		if err != nil {
-			t.Fatalf("Execute() unexpected error: %v", err)
-		}
-
-		if result.Status != StatusSuccess {
-			t.Errorf("Execute() status = %q, want %q", result.Status, StatusSuccess)
-		}
-
-		if !strings.Contains(result.Message, "No old log files found") {
-			t.Errorf("Execute() message = %q, want to mention no files found", result.Message)
-		}
+		action := NewRotateLogsAction(testLogFile, 1, false, false, logger)
+		err := action.Validate(ctx, mockExecutor)
+		assert.Error(t, err)
+		mockExecutor.AssertExpectations(t)
 	})
 
-	t.Run("dry-run mode simulates without deleting", func(t *testing.T) {
-		action := NewCleanLogsAction(30, true, logger) // dryRun = true
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"find /var/log -type f -name '*.log' -mtime +30": {
-					stdout:   "/var/log/old1.log\n/var/log/old2.log",
-					exitCode: 0,
-				},
-				"df -h /var/log": {
-					stdout:   "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        50G   30G   18G  63% /",
-					exitCode: 0,
-				},
-			},
-		}
+	t.Run("Validation fails if targetFile not writable", func(t *testing.T) {
+		mockExecutor := new(MockCommandExecutor)
+		mockExecutor.On("ExecuteWithContext", ctx, "test -f "+testLogFileQuoted).Return("", "", 0, nil).Once()
+		mockExecutor.On("ExecuteWithContext", ctx, "test -w "+testLogFileQuoted).Return("", "", 1, errors.New("not writable")).Once()
 
-		result, err := action.Execute(context.Background(), executor)
-
-		if err != nil {
-			t.Fatalf("Execute() unexpected error: %v", err)
-		}
-
-		if result.Status != StatusSuccess {
-			t.Errorf("Execute() status = %q, want %q", result.Status, StatusSuccess)
-		}
-
-		if !strings.Contains(result.Message, "Would delete") {
-			t.Errorf("Execute() message = %q, want to mention 'Would delete' for dry-run", result.Message)
-		}
-
-		if !strings.Contains(result.Message, "dry-run mode") {
-			t.Errorf("Execute() message = %q, want to mention 'dry-run mode'", result.Message)
-		}
+		action := NewRotateLogsAction(testLogFile, 1, false, false, logger)
+		err := action.Validate(ctx, mockExecutor)
+		assert.Error(t, err)
+		mockExecutor.AssertExpectations(t)
 	})
 
-	t.Run("fails when find command fails", func(t *testing.T) {
-		action := NewCleanLogsAction(30, false, logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"find /var/log -type f -name '*.log' -mtime +30": {
-					stdout:   "",
-					stderr:   "Permission denied",
-					exitCode: 1,
-				},
-			},
-		}
+	t.Run("Execute rotates logs successfully (no compression)", func(t *testing.T) {
+		mockExecutor := new(MockCommandExecutor)
+		
+		// 1. Initial file size check
+		mockExecutor.On("ExecuteWithContext", ctx, "stat -c %s "+testLogFileQuoted+" 2>/dev/null || stat -f %z "+testLogFileQuoted+" 2>/dev/null").Return("1024", "", 0, nil).Once()
+		
+		// 2. Pre-check for dry run info (ALWAYS called)
+		mockExecutor.On("ExecuteWithContext", ctx, "ls -lah "+testLogFileQuoted).Return("-rw-r--r-- 1 root root 1.0K Nov 23 12:00 test.log", "", 0, nil).Once()
 
-		result, err := action.Execute(context.Background(), executor)
+		// 3. Backup shifting
+		// test -f '/var/log/test.log.1.gz'
+		mockExecutor.On("ExecuteWithContext", ctx, "test -f '/var/log/test.log.1.gz'").Return("", "", 1, nil).Once()
+		// test -f '/var/log/test.log.1'
+		mockExecutor.On("ExecuteWithContext", ctx, "test -f '/var/log/test.log.1'").Return("", "", 1, nil).Once()
 
-		if err == nil {
-			t.Error("Execute() expected error when find fails, got nil")
-		}
+		// 4. Move current log to .1
+		mockExecutor.On("ExecuteWithContext", ctx, "mv "+testLogFileQuoted+" '/var/log/test.log.1'").Return("", "", 0, nil).Once()
+		
+		// 5. Create new empty log file
+		mockExecutor.On("ExecuteWithContext", ctx, "touch "+testLogFileQuoted).Return("", "", 0, nil).Once()
+		
+		// 6. Get new backup size
+		mockExecutor.On("ExecuteWithContext", ctx, "stat -c %s '/var/log/test.log.1' 2>/dev/null || stat -f %z '/var/log/test.log.1' 2>/dev/null").Return("1024", "", 0, nil).Once()
 
-		if result.Status != StatusFailed {
-			t.Errorf("Execute() result.Status = %q, want %q", result.Status, StatusFailed)
-		}
+		action := NewRotateLogsAction(testLogFile, 1, false, false, logger)
+		result, err := action.Execute(ctx, mockExecutor)
 
-		if !result.Failed() {
-			t.Error("Execute() result.Failed() = false, want true")
-		}
+		assert.NoError(t, err)
+		assert.Equal(t, StatusSuccess, result.Status)
+		mockExecutor.AssertExpectations(t)
 	})
 
-	t.Run("fails when delete command fails", func(t *testing.T) {
-		action := NewCleanLogsAction(30, false, logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"find /var/log -type f -name '*.log' -mtime +30": {
-					stdout:   "/var/log/old1.log",
-					exitCode: 0,
-				},
-				"find /var/log -type f -name '*.log' -mtime +30 -delete": {
-					stdout:   "",
-					stderr:   "Permission denied",
-					exitCode: 1,
-				},
-			},
-		}
+	t.Run("Execute rotates logs successfully (with compression)", func(t *testing.T) {
+		mockExecutor := new(MockCommandExecutor)
+		
+		// 1. Initial size
+		mockExecutor.On("ExecuteWithContext", ctx, "stat -c %s "+testLogFileQuoted+" 2>/dev/null || stat -f %z "+testLogFileQuoted+" 2>/dev/null").Return("10240", "", 0, nil).Once()
+		
+		// 2. Info check
+		mockExecutor.On("ExecuteWithContext", ctx, "ls -lah "+testLogFileQuoted).Return("-rw-r--r-- 1 root root 10K Nov 23 12:00 test.log", "", 0, nil).Once()
 
-		result, err := action.Execute(context.Background(), executor)
+		// 3. Backup shifting
+		mockExecutor.On("ExecuteWithContext", ctx, "test -f '/var/log/test.log.1.gz'").Return("", "", 1, nil).Once()
+		mockExecutor.On("ExecuteWithContext", ctx, "test -f '/var/log/test.log.1'").Return("", "", 1, nil).Once()
 
-		if err == nil {
-			t.Error("Execute() expected error when delete fails, got nil")
-		}
+		// 4. Move current
+		mockExecutor.On("ExecuteWithContext", ctx, "mv "+testLogFileQuoted+" '/var/log/test.log.1'").Return("", "", 0, nil).Once()
+		
+		// 5. Create new
+		mockExecutor.On("ExecuteWithContext", ctx, "touch "+testLogFileQuoted).Return("", "", 0, nil).Once()
+		
+		// 6. Compress backup
+		mockExecutor.On("ExecuteWithContext", ctx, "gzip '/var/log/test.log.1'").Return("", "", 0, nil).Once()
+		
+		// 7. Get size of compressed backup
+		mockExecutor.On("ExecuteWithContext", ctx, "stat -c %s '/var/log/test.log.1.gz' 2>/dev/null || stat -f %z '/var/log/test.log.1.gz' 2>/dev/null").Return("1024", "", 0, nil).Once()
 
-		if result.Status != StatusFailed {
-			t.Errorf("Execute() result.Status = %q, want %q", result.Status, StatusFailed)
-		}
+		action := NewRotateLogsAction(testLogFile, 1, true, false, logger)
+		result, err := action.Execute(ctx, mockExecutor)
 
-		if !strings.Contains(result.Error, "Permission denied") {
-			t.Errorf("Execute() result.Error = %q, want to contain 'Permission denied'", result.Error)
-		}
+		assert.NoError(t, err)
+		assert.Equal(t, StatusSuccess, result.Status)
+		mockExecutor.AssertExpectations(t)
 	})
 
-	t.Run("sets duration correctly", func(t *testing.T) {
-		action := NewCleanLogsAction(30, false, logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"find /var/log -type f -name '*.log' -mtime +30": {
-					stdout:   "",
-					exitCode: 0,
-				},
-			},
-		}
+	t.Run("Execute dry run for RotateLogs returns skipped status", func(t *testing.T) {
+		mockExecutor := new(MockCommandExecutor)
+		mockExecutor.On("ExecuteWithContext", ctx, "stat -c %s "+testLogFileQuoted+" 2>/dev/null || stat -f %z "+testLogFileQuoted+" 2>/dev/null").Return("1024", "", 0, nil).Once()
+		mockExecutor.On("ExecuteWithContext", ctx, "ls -lah "+testLogFileQuoted).Return("-rw-r--r-- 1 root root 1.0K Nov 23 12:00 test.log", "", 0, nil).Once()
 
-		result, err := action.Execute(context.Background(), executor)
+		action := NewRotateLogsAction(testLogFile, 1, false, true, logger)
+		result, err := action.Execute(ctx, mockExecutor)
 
-		if err != nil {
-			t.Fatalf("Execute() unexpected error: %v", err)
-		}
+		assert.NoError(t, err)
+		assert.Equal(t, StatusSkipped, result.Status)
+		mockExecutor.AssertExpectations(t)
+	})
 
-		if result.Duration == 0 {
-			t.Error("Execute() result.Duration = 0, want > 0")
+	t.Run("Factory creates action correctly", func(t *testing.T) {
+		registry := GetDefaultRegistry(logger)
+		params := map[string]interface{}{
+			"target_file":  "/var/log/nginx/access.log",
+			"backup_count": 5,
+			"compress":     false,
 		}
-
-		if result.StartTime.IsZero() {
-			t.Error("Execute() result.StartTime is zero, want valid time")
-		}
-
-		if result.EndTime.IsZero() {
-			t.Error("Execute() result.EndTime is zero, want valid time")
-		}
-
-		if !result.EndTime.After(result.StartTime) {
-			t.Error("Execute() result.EndTime should be after StartTime")
-		}
+		action, err := registry.Create("disk.rotate_logs", params)
+		assert.NoError(t, err)
+		rotateAction, ok := action.(*RotateLogsAction)
+		assert.True(t, ok)
+		assert.Equal(t, "/var/log/nginx/access.log", rotateAction.targetFile)
+		assert.Equal(t, 5, rotateAction.backupCount)
+		assert.False(t, rotateAction.compress)
 	})
 }
 
-func TestCleanLogsAction_Rollback(t *testing.T) {
-	logger := logrus.New()
-	logger.SetOutput(&diskTestLogWriter{t})
+// mockWriter is a simple writer to suppress logrus output during tests.
+type mockWriter struct{}
 
-	t.Run("returns error indicating rollback not supported", func(t *testing.T) {
-		action := NewCleanLogsAction(30, false, logger)
-		executor := &diskMockExecutor{}
-		result := &ActionResult{ActionID: "test"}
-
-		err := action.Rollback(context.Background(), executor, result)
-
-		if err == nil {
-			t.Error("Rollback() expected error, got nil")
-		}
-
-		if !strings.Contains(err.Error(), "cannot be rolled back") {
-			t.Errorf("Rollback() error = %q, want to mention 'cannot be rolled back'", err.Error())
-		}
-	})
-}
-
-func TestCleanLogsAction_GetDiskUsage(t *testing.T) {
-	logger := logrus.New()
-	logger.SetOutput(&diskTestLogWriter{t})
-
-	t.Run("parses disk usage correctly", func(t *testing.T) {
-		action := NewCleanLogsAction(30, false, logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"df -h /var/log | tail -1 | awk '{print $5}'": {
-					stdout:   "63%",
-					exitCode: 0,
-				},
-			},
-		}
-
-		usage, err := action.getDiskUsage(context.Background(), executor)
-
-		if err != nil {
-			t.Errorf("getDiskUsage() unexpected error: %v", err)
-		}
-
-		if usage != "63%" {
-			t.Errorf("getDiskUsage() = %q, want '63%%'", usage)
-		}
-	})
-
-	t.Run("handles empty output gracefully", func(t *testing.T) {
-		action := NewCleanLogsAction(30, false, logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"df -h /var/log": {
-					stdout:   "",
-					exitCode: 0,
-				},
-			},
-		}
-
-		usage, err := action.getDiskUsage(context.Background(), executor)
-
-		if err != nil {
-			t.Errorf("getDiskUsage() unexpected error: %v", err)
-		}
-
-		if usage != "" {
-			t.Errorf("getDiskUsage() = %q, want empty string", usage)
-		}
-	})
-}
-
-// Test CleanTempAction
-
-func TestCleanTempAction_Validate(t *testing.T) {
-	logger := logrus.New()
-	logger.SetOutput(&diskTestLogWriter{t})
-
-	t.Run("validates when /tmp is accessible", func(t *testing.T) {
-		action := NewCleanTempAction(7, logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"test -d /tmp && test -w /tmp": {
-					stdout:   "",
-					exitCode: 0,
-				},
-			},
-		}
-
-		err := action.Validate(context.Background(), executor)
-
-		if err != nil {
-			t.Errorf("Validate() unexpected error: %v", err)
-		}
-	})
-
-	t.Run("fails when /tmp not accessible", func(t *testing.T) {
-		action := NewCleanTempAction(7, logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"test -d /tmp && test -w /tmp": {
-					stdout:   "",
-					stderr:   "Permission denied",
-					exitCode: 1,
-				},
-			},
-		}
-
-		err := action.Validate(context.Background(), executor)
-
-		if err == nil {
-			t.Error("Validate() expected error when /tmp not accessible, got nil")
-		}
-
-		if !strings.Contains(err.Error(), "/tmp not accessible") {
-			t.Errorf("Validate() error = %q, want to contain '/tmp not accessible'", err.Error())
-		}
-	})
-}
-
-func TestCleanTempAction_Execute(t *testing.T) {
-	logger := logrus.New()
-	logger.SetOutput(&diskTestLogWriter{t})
-
-	t.Run("successfully cleans temp files", func(t *testing.T) {
-		action := NewCleanTempAction(7, logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"find /tmp -type f -mtime +7 2>/dev/null | wc -l": {
-					stdout:   "2",
-					exitCode: 0,
-				},
-				"find /tmp -type f -mtime +7 -delete 2>/dev/null": {
-					stdout:   "",
-					exitCode: 0,
-				},
-			},
-		}
-
-		result, err := action.Execute(context.Background(), executor)
-
-		if err != nil {
-			t.Fatalf("Execute() unexpected error: %v", err)
-		}
-
-		if result.Status != StatusSuccess {
-			t.Errorf("Execute() status = %q, want %q", result.Status, StatusSuccess)
-		}
-
-		if !strings.Contains(result.Message, "cleaned 2") {
-			t.Errorf("Execute() message = %q, want to mention cleaned 2 files", result.Message)
-		}
-	})
-
-	t.Run("handles no temp files found", func(t *testing.T) {
-		action := NewCleanTempAction(7, logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"find /tmp -type f -mtime +7 2>/dev/null | wc -l": {
-					stdout:   "0",
-					exitCode: 0,
-				},
-				"find /tmp -type f -mtime +7 -delete 2>/dev/null": {
-					stdout:   "",
-					exitCode: 0,
-				},
-			},
-		}
-
-		result, err := action.Execute(context.Background(), executor)
-
-		if err != nil {
-			t.Fatalf("Execute() unexpected error: %v", err)
-		}
-
-		if !strings.Contains(result.Message, "cleaned 0") {
-			t.Errorf("Execute() message = %q, want to mention cleaned 0 files", result.Message)
-		}
-	})
-}
-
-func TestCleanTempAction_Rollback(t *testing.T) {
-	logger := logrus.New()
-	logger.SetOutput(&diskTestLogWriter{t})
-
-	t.Run("returns error indicating rollback not supported", func(t *testing.T) {
-		action := NewCleanTempAction(7, logger)
-		executor := &diskMockExecutor{}
-		result := &ActionResult{ActionID: "test"}
-
-		err := action.Rollback(context.Background(), executor, result)
-
-		if err == nil {
-			t.Error("Rollback() expected error, got nil")
-		}
-
-		if !strings.Contains(err.Error(), "cannot be rolled back") {
-			t.Errorf("Rollback() error = %q, want to mention 'cannot be rolled back'", err.Error())
-		}
-	})
-}
-
-// Test CleanCacheAction
-
-func TestCleanCacheAction_Validate(t *testing.T) {
-	logger := logrus.New()
-	logger.SetOutput(&diskTestLogWriter{t})
-
-	t.Run("validates successfully", func(t *testing.T) {
-		action := NewCleanCacheAction(logger)
-		executor := &diskMockExecutor{}
-
-		err := action.Validate(context.Background(), executor)
-
-		if err != nil {
-			t.Errorf("Validate() unexpected error: %v", err)
-		}
-	})
-
-	t.Run("fails when executor is nil", func(t *testing.T) {
-		action := NewCleanCacheAction(logger)
-
-		err := action.Validate(context.Background(), nil)
-
-		if err == nil {
-			t.Error("Validate() expected error with nil executor, got nil")
-		}
-	})
-}
-
-func TestCleanCacheAction_Execute(t *testing.T) {
-	logger := logrus.New()
-	logger.SetOutput(&diskTestLogWriter{t})
-
-	t.Run("successfully cleans cache", func(t *testing.T) {
-		action := NewCleanCacheAction(logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"find ~/.cache -type f 2>/dev/null | wc -l": {
-					stdout:   "150",
-					exitCode: 0,
-				},
-				"rm -rf ~/.cache/* 2>/dev/null": {
-					stdout:   "",
-					exitCode: 0,
-				},
-			},
-		}
-
-		result, err := action.Execute(context.Background(), executor)
-
-		if err != nil {
-			t.Fatalf("Execute() unexpected error: %v", err)
-		}
-
-		if result.Status != StatusSuccess {
-			t.Errorf("Execute() status = %q, want %q", result.Status, StatusSuccess)
-		}
-
-		if !strings.Contains(result.Message, "cleaned 150") {
-			t.Errorf("Execute() message = %q, want to mention cleaned 150 files", result.Message)
-		}
-	})
-
-	t.Run("handles zero cache files", func(t *testing.T) {
-		action := NewCleanCacheAction(logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"find ~/.cache -type f 2>/dev/null | wc -l": {
-					stdout:   "0",
-					exitCode: 0,
-				},
-				"rm -rf ~/.cache/* 2>/dev/null": {
-					stdout:   "",
-					exitCode: 0,
-				},
-			},
-		}
-
-		result, err := action.Execute(context.Background(), executor)
-
-		if err != nil {
-			t.Fatalf("Execute() unexpected error: %v", err)
-		}
-
-		if result.Status != StatusSuccess {
-			t.Errorf("Execute() status = %q, want %q", result.Status, StatusSuccess)
-		}
-	})
-
-	t.Run("fails when rm command fails", func(t *testing.T) {
-		action := NewCleanCacheAction(logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"find ~/.cache -type f 2>/dev/null | wc -l": {
-					stdout:   "50",
-					exitCode: 0,
-				},
-				"rm -rf ~/.cache/* 2>/dev/null": {
-					stdout:   "",
-					stderr:   "Permission denied",
-					exitCode: 1,
-				},
-			},
-		}
-
-		result, err := action.Execute(context.Background(), executor)
-
-		if err == nil {
-			t.Error("Execute() expected error when rm fails, got nil")
-		}
-
-		if result.Status != StatusFailed {
-			t.Errorf("Execute() result.Status = %q, want %q", result.Status, StatusFailed)
-		}
-	})
-}
-
-func TestCleanCacheAction_Rollback(t *testing.T) {
-	logger := logrus.New()
-	logger.SetOutput(&diskTestLogWriter{t})
-
-	t.Run("returns error indicating rollback not supported", func(t *testing.T) {
-		action := NewCleanCacheAction(logger)
-		executor := &diskMockExecutor{}
-		result := &ActionResult{ActionID: "test"}
-
-		err := action.Rollback(context.Background(), executor, result)
-
-		if err == nil {
-			t.Error("Rollback() expected error, got nil")
-		}
-
-		if !strings.Contains(err.Error(), "cannot be rolled back") {
-			t.Errorf("Rollback() error = %q, want to mention 'cannot be rolled back'", err.Error())
-		}
-	})
-}
-
-// Test CleanAptCacheAction
-
-func TestCleanAptCacheAction_Validate(t *testing.T) {
-	logger := logrus.New()
-	logger.SetOutput(&diskTestLogWriter{t})
-
-	t.Run("validates when apt-get is available", func(t *testing.T) {
-		action := NewCleanAptCacheAction(logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"which apt-get": {
-					stdout:   "/usr/bin/apt-get",
-					exitCode: 0,
-				},
-			},
-		}
-
-		err := action.Validate(context.Background(), executor)
-
-		if err != nil {
-			t.Errorf("Validate() unexpected error: %v", err)
-		}
-	})
-
-	t.Run("fails when apt-get not available", func(t *testing.T) {
-		action := NewCleanAptCacheAction(logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"which apt-get": {
-					stdout:   "",
-					exitCode: 1,
-				},
-			},
-		}
-
-		err := action.Validate(context.Background(), executor)
-
-		if err == nil {
-			t.Error("Validate() expected error when apt-get not available, got nil")
-		}
-
-		if !strings.Contains(err.Error(), "apt-get not available") {
-			t.Errorf("Validate() error = %q, want to contain 'apt-get not available'", err.Error())
-		}
-	})
-
-	t.Run("fails when executor is nil", func(t *testing.T) {
-		action := NewCleanAptCacheAction(logger)
-
-		err := action.Validate(context.Background(), nil)
-
-		if err == nil {
-			t.Error("Validate() expected error with nil executor, got nil")
-		}
-	})
-}
-
-func TestCleanAptCacheAction_Execute(t *testing.T) {
-	logger := logrus.New()
-	logger.SetOutput(&diskTestLogWriter{t})
-
-	t.Run("successfully cleans apt cache", func(t *testing.T) {
-		action := NewCleanAptCacheAction(logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"du -sh /var/cache/apt/archives 2>/dev/null | awk '{print $1}'": {
-					stdout:   "250M",
-					exitCode: 0,
-				},
-				"apt-get clean": {
-					stdout:   "",
-					exitCode: 0,
-				},
-			},
-		}
-
-		result, err := action.Execute(context.Background(), executor)
-
-		if err != nil {
-			t.Fatalf("Execute() unexpected error: %v", err)
-		}
-
-		if result.Status != StatusSuccess {
-			t.Errorf("Execute() status = %q, want %q", result.Status, StatusSuccess)
-		}
-
-		if !strings.Contains(result.Message, "Successfully cleaned APT") {
-			t.Errorf("Execute() message = %q, want to mention APT cache cleaned", result.Message)
-		}
-
-		if len(result.ChangesApplied) != 1 {
-			t.Errorf("Execute() len(ChangesApplied) = %d, want 1", len(result.ChangesApplied))
-		}
-
-		if !strings.Contains(result.ChangesApplied[0], "250M") {
-			t.Errorf("Execute() ChangesApplied[0] = %q, want to mention initial size 250M", result.ChangesApplied[0])
-		}
-	})
-
-	t.Run("handles zero cache size", func(t *testing.T) {
-		action := NewCleanAptCacheAction(logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"du -sh /var/cache/apt/archives 2>/dev/null | awk '{print $1}'": {
-					stdout:   "0",
-					exitCode: 0,
-				},
-				"apt-get clean": {
-					stdout:   "",
-					exitCode: 0,
-				},
-			},
-		}
-
-		result, err := action.Execute(context.Background(), executor)
-
-		if err != nil {
-			t.Fatalf("Execute() unexpected error: %v", err)
-		}
-
-		if result.Status != StatusSuccess {
-			t.Errorf("Execute() status = %q, want %q", result.Status, StatusSuccess)
-		}
-	})
-
-	t.Run("fails when apt-get clean fails", func(t *testing.T) {
-		action := NewCleanAptCacheAction(logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"du -sh /var/cache/apt/archives 2>/dev/null | awk '{print $1}'": {
-					stdout:   "250M",
-					exitCode: 0,
-				},
-				"apt-get clean": {
-					stdout:   "",
-					stderr:   "Permission denied",
-					exitCode: 1,
-				},
-			},
-		}
-
-		result, err := action.Execute(context.Background(), executor)
-
-		if err == nil {
-			t.Error("Execute() expected error when apt-get clean fails, got nil")
-		}
-
-		if result.Status != StatusFailed {
-			t.Errorf("Execute() result.Status = %q, want %q", result.Status, StatusFailed)
-		}
-
-		if !strings.Contains(result.Error, "Permission denied") {
-			t.Errorf("Execute() result.Error = %q, want to contain 'Permission denied'", result.Error)
-		}
-	})
-
-	t.Run("sets duration correctly", func(t *testing.T) {
-		action := NewCleanAptCacheAction(logger)
-		executor := &diskMockExecutor{
-			responses: map[string]mockResponse{
-				"du -sh /var/cache/apt/archives 2>/dev/null | awk '{print $1}'": {
-					stdout:   "100M",
-					exitCode: 0,
-				},
-				"apt-get clean": {
-					stdout:   "",
-					exitCode: 0,
-				},
-			},
-		}
-
-		result, err := action.Execute(context.Background(), executor)
-
-		if err != nil {
-			t.Fatalf("Execute() unexpected error: %v", err)
-		}
-
-		if result.Duration == 0 {
-			t.Error("Execute() result.Duration = 0, want > 0")
-		}
-
-		if result.StartTime.IsZero() || result.EndTime.IsZero() {
-			t.Error("Execute() StartTime or EndTime is zero")
-		}
-	})
-}
-
-func TestCleanAptCacheAction_Rollback(t *testing.T) {
-	logger := logrus.New()
-	logger.SetOutput(&diskTestLogWriter{t})
-
-	t.Run("returns error indicating rollback not supported", func(t *testing.T) {
-		action := NewCleanAptCacheAction(logger)
-		executor := &diskMockExecutor{}
-		result := &ActionResult{ActionID: "test"}
-
-		err := action.Rollback(context.Background(), executor, result)
-
-		if err == nil {
-			t.Error("Rollback() expected error, got nil")
-		}
-
-		if !strings.Contains(err.Error(), "cannot be rolled back") {
-			t.Errorf("Rollback() error = %q, want to mention 'cannot be rolled back'", err.Error())
-		}
-	})
-}
-
-// Test log writer for disk action tests
-type diskTestLogWriter struct {
-	t *testing.T
-}
-
-func (w *diskTestLogWriter) Write(p []byte) (n int, err error) {
-	w.t.Log(string(p))
+func (m *mockWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }

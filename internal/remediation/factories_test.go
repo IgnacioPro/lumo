@@ -10,65 +10,6 @@ import (
 
 // Test action factory functions
 
-func TestNewCleanLogsActionFactory(t *testing.T) {
-	logger := logrus.New()
-	logger.SetLevel(logrus.DebugLevel)
-
-	factory := NewCleanLogsActionFactory()
-
-	t.Run("creates action with valid parameters", func(t *testing.T) {
-		params := map[string]interface{}{
-			"older_than_days": 30,
-			"compress":        true,
-		}
-
-		action, err := factory(params, logger)
-
-		if err != nil {
-			t.Fatalf("Factory() unexpected error: %v", err)
-		}
-
-		if action == nil {
-			t.Fatal("Factory() returned nil action")
-		}
-
-		if action.Category() != CategoryDisk {
-			t.Errorf("Action category = %v, want %v", action.Category(), CategoryDisk)
-		}
-	})
-
-	t.Run("uses defaults when parameters missing", func(t *testing.T) {
-		params := map[string]interface{}{}
-
-		action, err := factory(params, logger)
-
-		if err != nil {
-			t.Fatalf("Factory() unexpected error: %v", err)
-		}
-
-		if action == nil {
-			t.Fatal("Factory() returned nil action")
-		}
-	})
-
-	t.Run("handles invalid older_than_days type", func(t *testing.T) {
-		params := map[string]interface{}{
-			"older_than_days": "invalid",
-		}
-
-		action, err := factory(params, logger)
-
-		// Should still create action with defaults
-		if err != nil {
-			t.Fatalf("Factory() unexpected error: %v", err)
-		}
-
-		if action == nil {
-			t.Fatal("Factory() returned nil action")
-		}
-	})
-}
-
 func TestNewKillProcessActionFactory(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.DebugLevel)

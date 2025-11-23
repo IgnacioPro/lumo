@@ -144,7 +144,7 @@ func (e *Executor) executeAction(ctx context.Context, action Action, autoApprove
 	}
 
 	// Step 2: Get user approval
-	approved, err := e.approver.RequestApproval(action, autoApprove)
+	approved, err := e.approver.RequestApprovalWithContext(ctx, action, autoApprove)
 	if err != nil {
 		result.Status = StatusFailed
 		result.Message = "Approval process failed"
