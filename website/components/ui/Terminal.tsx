@@ -26,8 +26,8 @@ export default function Terminal() {
   const [visibleLines, setVisibleLines] = useState<number>(0);
 
   useEffect(() => {
-    let timeouts: NodeJS.Timeout[] = [];
-    
+    const timeouts: NodeJS.Timeout[] = [];
+
     // Reset
     setVisibleLines(0);
 

@@ -1,12 +1,10 @@
-import { 
-  Cpu, 
-  ShieldCheck, 
-  BrainCircuit, 
-  Zap, 
-  Layers, 
-  Lock, 
-  Server,
-  Terminal
+import {
+  Cpu,
+  ShieldCheck,
+  BrainCircuit,
+  Zap,
+  Layers,
+  Lock
 } from 'lucide-react';
 
 export default function BentoGrid() {

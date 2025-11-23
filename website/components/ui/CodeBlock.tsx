@@ -11,7 +11,7 @@ export interface CodeBlockProps extends Omit<HTMLAttributes<HTMLDivElement>, 'ch
 
 export default function CodeBlock({
   code,
-  language = 'bash',
+  language: _language = 'bash',
   showLineNumbers = false,
   title,
   className = '',
