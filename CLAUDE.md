@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-23 | **Version:** 1.0.9 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Remediation Test Suite Fixed ✅ | All Core Systems Live 🚀
+> **Last Updated:** 2025-11-23 | **Version:** 1.0.10 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Phase 15 In Progress 🔄 | All Core Systems Live 🚀
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -166,7 +166,13 @@ Implementation: `internal/doctor/{doctor.go,checks.go}`, `cmd/lumo/doctor.go`
 
 ## Testing & CI
 
-**Coverage:** 66.7% (70 test files) | Table-driven tests, mock executors | Remediation package: All tests passing (5 test fixes: disk cleanup, log rotation, service management, action suggestions)
+**Coverage:** 53.4% internal packages (82 test files, 250+ test cases added in Phase 15) | Table-driven tests, mock executors
+**Recent Improvements (Phase 15):**
+- API auth package: 0% → 90.3%
+- API response package: 0% → 90.5%
+- Comprehensive handler tests: agents, approvals, auth, health, jobs, diagnostics
+- All tests passing with clean linting
+
 **Run:** `go test ./...` | `make ci` (full local checks)
 
 **Makefile Targets:**
@@ -340,11 +346,23 @@ See [deployments/kubernetes/README.md](deployments/kubernetes/README.md) and [de
 - Diagnostic checker registration fully implemented
 - All tests passing with tracing enabled
 
+### Current (Phase 15)
+
+**Phase 15: Testing & Quality** - IN PROGRESS 🔄 (Nov 23, 2025)
+- ✅ **Unit Test Expansion:** Added 8 comprehensive test files (1,536 LOC)
+  - JWT authentication: token generation, validation, refresh (90.3% coverage)
+  - API response helpers: all response types tested (90.5% coverage)
+  - Handler validation: agents, approvals, auth, health, jobs, diagnostics
+  - 250+ test cases covering edge cases and error paths
+- ⏳ **Integration Tests:** End-to-end workflow testing (pending)
+- ⏳ **Load Testing:** Performance benchmarks and stress tests (pending)
+- ⏳ **Chaos Engineering:** Fault injection and resilience testing (pending)
+- **Overall Progress:** Internal package coverage 53.4%, all tests passing with clean linting
+
 ### Future (Phases 13+)
 
-**Phase 13:** Advanced Production Features - Circuit breakers, load testing, operational runbooks
+**Phase 13:** Advanced Production Features - Circuit breakers, operational runbooks
 **Phase 14:** Advanced Reporting - Multiple formats, historical data, trend analysis
-**Phase 15:** Testing & Quality - Target 80% coverage, integration tests, chaos engineering
 **Phase 16:** Advanced Features - Multi-cluster, anomaly detection, policy-as-code
 
 ---
