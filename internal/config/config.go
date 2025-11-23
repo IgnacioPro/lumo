@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -435,8 +436,24 @@ func Load() (*Config, error) {
 	viper.SetDefault("agent.kubernetes.node_name", "")
 	viper.SetDefault("agent.kubernetes.pod_name", "")
 
+	// Kubernetes diagnostics config - bind LUMO_AGENT_KUBERNETES_* to diagnostics.kubernetes.*
+	// This allows agents to use LUMO_AGENT_KUBERNETES_ENABLED instead of LUMO_DIAGNOSTICS_KUBERNETES_ENABLED
+	// Note: viper.BindEnv with multiple env vars checks them in order (first found wins)
+	_ = viper.BindEnv("diagnostics.kubernetes.enabled", "LUMO_AGENT_KUBERNETES_ENABLED", "LUMO_DIAGNOSTICS_KUBERNETES_ENABLED")
+	viper.SetDefault("diagnostics.kubernetes.enabled", false)
+
 	if err := viper.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	// Manual parsing of comma-separated LUMO_AGENT_ENABLED_CHECKS environment variable
+	// Viper's AutomaticEnv() doesn't handle comma-separated strings → slices
+	if enabledChecksEnv := os.Getenv("LUMO_AGENT_ENABLED_CHECKS"); enabledChecksEnv != "" {
+		cfg.Agent.EnabledChecks = strings.Split(enabledChecksEnv, ",")
+		// Trim whitespace from each check name
+		for i := range cfg.Agent.EnabledChecks {
+			cfg.Agent.EnabledChecks[i] = strings.TrimSpace(cfg.Agent.EnabledChecks[i])
+		}
 	}
 
 	if err := cfg.Validate(); err != nil {

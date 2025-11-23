@@ -35,14 +35,34 @@ func (r *AgentRepository) Create(ctx context.Context, agent *models.Agent) error
 	agent.UpdatedAt = now
 	agent.LastHeartbeatAt = now
 
-	// Serialize Kubernetes metadata if present
-	var k8sMetadataJSON []byte
+	// Serialize labels
+	var labelsJSON []byte
 	var err error
+	if agent.Labels != nil {
+		val, err := agent.Labels.Value()
+		if err != nil {
+			return fmt.Errorf("failed to marshal labels: %w", err)
+		}
+		if val != nil {
+			labelsJSON = val.([]byte)
+			fmt.Printf("DEBUG: Labels JSON from Value(): %s\n", string(labelsJSON))
+		}
+	} else {
+		fmt.Printf("DEBUG: Labels is nil\n")
+	}
+
+	// Serialize Kubernetes metadata if present
+	var k8sMetadataJSON interface{} = nil
 	if agent.KubernetesMetadata != nil {
-		k8sMetadataJSON, err = json.Marshal(agent.KubernetesMetadata)
+		k8sJSON, err := json.Marshal(agent.KubernetesMetadata)
 		if err != nil {
 			return fmt.Errorf("failed to marshal kubernetes metadata: %w", err)
 		}
+		k8sMetadataJSON = k8sJSON
+		// Debug: Log marshaled K8s metadata
+		fmt.Printf("DEBUG: K8s metadata JSON: %s\n", string(k8sJSON))
+	} else {
+		fmt.Printf("DEBUG: K8s metadata is nil - passing NULL\n")
 	}
 
 	query := `
@@ -53,6 +73,13 @@ func (r *AgentRepository) Create(ctx context.Context, agent *models.Agent) error
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id, registered_at, updated_at, last_heartbeat_at
 	`
+
+	// Try passing labels as string instead of []byte for debugging
+	var labelsStr interface{} = nil
+	if labelsJSON != nil {
+		labelsStr = string(labelsJSON)
+		fmt.Printf("DEBUG: Passing labels as string: %s\n", labelsStr)
+	}
 
 	err = r.db.QueryRowContext(
 		ctx,
@@ -66,7 +93,7 @@ func (r *AgentRepository) Create(ctx context.Context, agent *models.Agent) error
 		agent.Version,
 		agent.Status,
 		pq.Array(agent.Capabilities),
-		agent.Labels,
+		labelsStr,
 		k8sMetadataJSON,
 		agent.LastHeartbeatAt,
 		agent.RegisteredAt,
@@ -294,14 +321,33 @@ func (r *AgentRepository) Update(ctx context.Context, agent *models.Agent) error
 	// Update timestamp
 	agent.UpdatedAt = time.Now()
 
-	// Serialize Kubernetes metadata if present
-	var k8sMetadataJSON []byte
+	// Serialize labels
+	var labelsJSON []byte
 	var err error
+	if agent.Labels != nil {
+		val, err := agent.Labels.Value()
+		if err != nil {
+			return fmt.Errorf("failed to marshal labels: %w", err)
+		}
+		if val != nil {
+			labelsJSON = val.([]byte)
+		}
+	}
+
+	// Serialize Kubernetes metadata if present
+	var k8sMetadataJSON interface{} = nil
 	if agent.KubernetesMetadata != nil {
-		k8sMetadataJSON, err = json.Marshal(agent.KubernetesMetadata)
+		k8sJSON, err := json.Marshal(agent.KubernetesMetadata)
 		if err != nil {
 			return fmt.Errorf("failed to marshal kubernetes metadata: %w", err)
 		}
+		k8sMetadataJSON = k8sJSON
+	}
+
+	// Use string for labels like in Create
+	var labelsStr interface{} = nil
+	if labelsJSON != nil {
+		labelsStr = string(labelsJSON)
 	}
 
 	query := `
@@ -319,7 +365,7 @@ func (r *AgentRepository) Update(ctx context.Context, agent *models.Agent) error
 		agent.Version,
 		agent.Status,
 		pq.Array(agent.Capabilities),
-		agent.Labels,
+		labelsStr,
 		k8sMetadataJSON,
 		agent.UpdatedAt,
 		agent.ID,

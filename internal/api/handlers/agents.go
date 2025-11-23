@@ -57,6 +57,10 @@ func (h *AgentsHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Debug: Log the parsed request
+	reqJSON, _ := json.MarshalIndent(req, "", "  ")
+	h.logger.WithField("request", string(reqJSON)).Debug("Received registration request")
+
 	// Validate required fields
 	if req.Name == "" {
 		response.BadRequest(w, "Name is required")
@@ -170,6 +174,14 @@ func (h *AgentsHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if req.IPAddress != "" {
 		agent.IPAddress = &req.IPAddress
 	}
+
+	// Debug: Log agent before DB insert
+	h.logger.WithFields(logrus.Fields{
+		"name":         agent.Name,
+		"hostname":     agent.Hostname,
+		"labels":       agent.Labels,
+		"k8s_metadata": agent.KubernetesMetadata,
+	}).Debug("Attempting to insert agent into database")
 
 	// Save to database
 	if err := h.agentRepo.Create(r.Context(), agent); err != nil {

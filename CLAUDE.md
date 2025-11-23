@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-23 | **Version:** 1.0.11 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Phase 15 In Progress 🔄 | **Full Stack K8s Deployment Working** 🚀
+> **Last Updated:** 2025-11-23 | **Version:** 1.0.11 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Phase 15 In Progress 🔄 | **Full Stack K8s Deployment + All 7 Diagnostic Checks Working** 🚀
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -89,7 +89,10 @@ Total: 192 Go files + 70 test files | Coverage: 66.7% | Verified: 2025-11-21
 **Loading:** `cfg, err := config.Load()` (searches hierarchy, auto-validates)
 **Security:** API keys ONLY via env vars (LUMO_*_API_KEY), never in config files
 
-**Viper Bindings (Nov 23, 2025):** Explicit `viper.SetDefault()` calls added for database, AI, and agent config to enable environment variable reading in K8s deployments. Required because we use struct defaults instead of viper.SetDefault for all fields.
+**Viper Bindings (Nov 23, 2025):** 
+- Explicit `viper.SetDefault()` calls added for database, AI, and agent config to enable environment variable reading in K8s deployments
+- Fixed `viper.BindEnv()` to support multiple environment variable names (LUMO_AGENT_KUBERNETES_ENABLED, LUMO_DIAGNOSTICS_KUBERNETES_ENABLED)
+- Added manual parsing of comma-separated `LUMO_AGENT_ENABLED_CHECKS` environment variable into slice (Viper doesn't auto-parse CSV to slices)
 
 **Key Environment Variables:**
 ```bash
@@ -100,6 +103,8 @@ export LUMO_RAG_ENABLED=true
 export LUMO_AGENT_MODE=hybrid                       # scheduled|on-demand|continuous|hybrid
 export LUMO_AGENT_API_ENDPOINT=https://lumo-api...
 export LUMO_AGENT_TOKEN=$JWT_TOKEN
+export LUMO_AGENT_ENABLED_CHECKS=cpu,memory,disk,process,service,network,kubernetes
+export LUMO_AGENT_KUBERNETES_ENABLED=true           # Enable Kubernetes diagnostics checker
 export LUMO_AGENT_CACHE_PATH=/var/cache/lumo        # Agent cache directory
 export LUMO_API_JWT_SECRET=secret-key               # Production required
 export LUMO_DATABASE_HOST=postgres                  # Database host (K8s service name)
@@ -228,10 +233,10 @@ For rate limiting and DB pool config, see [configs/config.example.yaml](configs/
 
 ## Key Files & Components
 
-**Checkers (12):**
+**Checkers (12 total, 7 active in K8s agents):**
 - Core (6): CPU, Memory, Disk, Process, Service, Network
 - Security (4): Patch Status, Open Ports, SSH Security, Auth Failures
-- Specialized (2): Kubernetes (native client), Proxmox VE
+- Specialized (2): Kubernetes (native client, ✅ working in cluster deployments), Proxmox VE
 
 **AI System:**
 - Adapter pattern: HTTPClient, BaseProvider, StreamHandler (SSE + JSON-line)
@@ -280,6 +285,8 @@ For rate limiting and DB pool config, see [configs/config.example.yaml](configs/
 **Security:** JWT + mTLS, K8s RBAC (least-privilege), TLS 1.3, external secrets (Vault, AWS Secrets Manager)
 
 **Resource Target:** 64-128 MB memory, <5% CPU avg, 1-10 KB/s network
+
+**Status (Nov 23, 2025):** ✅ **Fully operational!** All 5 agents running (3 DaemonSet + 2 Deployment), 7 diagnostic checks executing including Kubernetes checker, successfully detecting cluster issues.
 
 **Deployment:**
 ```bash
