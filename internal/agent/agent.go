@@ -4,15 +4,26 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/ignacio/lumo/internal/diagnostics/checkers"
 	"github.com/ignacio/lumo/internal/version"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ignacio/lumo/internal/agent/eventdriven"
+	"github.com/ignacio/lumo/internal/agent/eventdriven/watchers"
+	"github.com/ignacio/lumo/internal/ai"
+	"github.com/ignacio/lumo/internal/notifications"
 )
 
 // Agent represents the Lumo agent daemon
@@ -22,13 +33,14 @@ type Agent struct {
 	Mode      string
 	StartTime time.Time
 
-	cfg         *config.Config
-	logger      *logrus.Logger
-	reporter    *Reporter
-	cache       *Cache
-	scheduler   *Scheduler
-	healthCheck *HealthCheck
-	metrics     *Metrics
+	cfg              *config.Config
+	logger           *logrus.Logger
+	reporter         *Reporter
+	cache            *Cache
+	scheduler        *Scheduler
+	healthCheck      *HealthCheck
+	metrics          *Metrics
+	eventDrivenMgr   *eventdriven.Manager // Kubernetes event-driven manager
 
 	stopCh chan struct{}
 }
@@ -130,6 +142,14 @@ func (a *Agent) Stop() error {
 	a.logger.Info("Stopping Lumo agent")
 
 	close(a.stopCh)
+
+	// Stop event-driven manager if running
+	if a.eventDrivenMgr != nil {
+		a.logger.Info("Stopping event-driven manager")
+		if err := a.eventDrivenMgr.Stop(); err != nil {
+			a.logger.WithError(err).Warn("Failed to stop event-driven manager")
+		}
+	}
 
 	// Stop scheduler
 	a.scheduler.Stop()
@@ -244,6 +264,8 @@ func (a *Agent) setupMode(ctx context.Context) error {
 		return a.setupContinuousMode(ctx)
 	case "hybrid":
 		return a.setupHybridMode(ctx)
+	case "event-driven":
+		return a.setupEventDrivenMode(ctx)
 	default:
 		return fmt.Errorf("invalid agent mode: %s", a.Mode)
 	}
@@ -315,6 +337,331 @@ func (a *Agent) setupHybridMode(_ context.Context) error {
 
 	// On-demand functionality would be added here
 	return nil
+}
+
+// setupEventDrivenMode sets up Kubernetes event-driven monitoring
+func (a *Agent) setupEventDrivenMode(ctx context.Context) error {
+	a.logger.Info("Setting up event-driven mode for Kubernetes monitoring")
+
+	// Validate prerequisites
+	if !a.cfg.Agent.Kubernetes.Enabled {
+		return fmt.Errorf("event-driven mode requires Kubernetes agent to be enabled")
+	}
+
+	if !a.cfg.Agent.EventDriven.Enabled {
+		return fmt.Errorf("event-driven configuration is not enabled")
+	}
+
+	// Step 1: Create Kubernetes client
+	a.logger.Info("Initializing Kubernetes client")
+	k8sClient, err := a.createKubernetesClient()
+	if err != nil {
+		return fmt.Errorf("failed to create Kubernetes client: %w", err)
+	}
+
+	// Step 2: Create Redis client for debouncer state tracking
+	a.logger.Info("Initializing Redis client for event state tracking")
+	redisClient, err := a.createRedisClient()
+	if err != nil {
+		return fmt.Errorf("failed to create Redis client: %w", err)
+	}
+
+	// Step 3: Create AI provider (if enabled)
+	var aiProvider ai.Provider
+	if a.cfg.AI.Enabled {
+		a.logger.WithField("provider", a.cfg.AI.Provider).Info("Initializing AI provider")
+
+		// Parse provider type
+		providerType, err := ai.ParseProviderType(a.cfg.AI.Provider)
+		if err != nil {
+			a.logger.WithError(err).Warn("Invalid AI provider type, continuing without AI")
+			aiProvider = nil
+		} else {
+			// Create provider config
+			providerConfig := &ai.ProviderConfig{
+				Name:        a.cfg.AI.Provider,
+				APIKey:      a.cfg.AI.APIKey,
+				Model:       a.cfg.AI.Model,
+				Endpoint:    a.cfg.AI.Endpoint,
+				Timeout:     a.cfg.AI.Timeout,
+				MaxRetries:  a.cfg.AI.MaxRetries,
+				Temperature: a.cfg.AI.Temperature,
+			}
+
+			aiProvider, err = ai.NewProvider(providerType, providerConfig, a.logger)
+			if err != nil {
+				a.logger.WithError(err).Warn("Failed to initialize AI provider, continuing without AI")
+				aiProvider = nil
+			}
+		}
+	} else {
+		a.logger.Info("AI analysis disabled")
+	}
+
+	// Step 4: Create notifiers (if enabled)
+	var notifiers []notifications.Notifier
+	if a.cfg.Notifications.Enabled && len(a.cfg.Notifications.Notifiers) > 0 {
+		a.logger.WithField("notifier_count", len(a.cfg.Notifications.Notifiers)).Info("Initializing notifiers")
+		for _, notifCfg := range a.cfg.Notifications.Notifiers {
+			if !notifCfg.Enabled {
+				continue
+			}
+
+			// Convert config.NotifierConfig to notifications.NotifierConfig
+			nc := &notifications.NotifierConfig{
+				Name:         notifCfg.Name,
+				Type:         notifications.NotifierType(notifCfg.Type),
+				Enabled:      notifCfg.Enabled,
+				WebhookURL:   notifCfg.WebhookURL,
+				BotToken:     notifCfg.BotToken,
+				ChatID:       notifCfg.ChatID,
+				Headers:      notifCfg.Headers,
+				Method:       notifCfg.Method,
+				SMTPHost:     notifCfg.SMTPHost,
+				SMTPPort:     notifCfg.SMTPPort,
+				SMTPUsername: notifCfg.SMTPUser,
+				SMTPPassword: notifCfg.SMTPPass,
+				From:         notifCfg.From,
+				To:           notifCfg.To,
+				UseTLS:       notifCfg.UseTLS,
+				Timeout:      notifCfg.Timeout,
+			}
+
+			notifier, err := notifications.NewNotifier(nc, a.logger)
+			if err != nil {
+				a.logger.WithError(err).WithField("notifier", notifCfg.Name).Warn("Failed to create notifier")
+				continue
+			}
+			notifiers = append(notifiers, notifier)
+		}
+		a.logger.WithField("active_notifiers", len(notifiers)).Info("Notifiers initialized")
+	} else {
+		a.logger.Info("Notifications disabled")
+	}
+
+	// Step 5: Create debouncer
+	a.logger.WithField("debounce_window", a.cfg.Agent.EventDriven.DebounceWindow).Info("Creating event debouncer")
+	debouncer, err := eventdriven.NewDebouncer(&eventdriven.DebouncerConfig{
+		DebounceWindow: a.cfg.Agent.EventDriven.DebounceWindow,
+		RedisClient:    redisClient,
+	}, a.logger)
+	if err != nil {
+		return fmt.Errorf("failed to create debouncer: %w", err)
+	}
+
+	// Step 6: Create event grouper
+	grouper := eventdriven.NewEventGrouper(a.logger)
+
+	// Step 7: Create event processor
+	processor, err := eventdriven.NewDefaultEventProcessor(&eventdriven.ProcessorConfig{
+		Config:      a.cfg,
+		AIProvider:  aiProvider,
+		Notifiers:   notifiers,
+		EnableAI:    a.cfg.AI.Enabled && aiProvider != nil,
+		EnableNotif: a.cfg.Notifications.Enabled && len(notifiers) > 0,
+	}, a.logger)
+	if err != nil {
+		return fmt.Errorf("failed to create event processor: %w", err)
+	}
+
+	// Step 8: Create event filter
+	minSeverity := eventdriven.SeverityLow
+	switch a.cfg.Agent.EventDriven.MinSeverity {
+	case "medium":
+		minSeverity = eventdriven.SeverityMedium
+	case "high":
+		minSeverity = eventdriven.SeverityHigh
+	case "critical":
+		minSeverity = eventdriven.SeverityCritical
+	}
+
+	filter := &eventdriven.EventFilter{
+		EventTypes:  []eventdriven.EventType{}, // Empty = all events
+		Namespaces:  a.cfg.Agent.EventDriven.WatchNamespaces,
+		MinSeverity: minSeverity,
+	}
+
+	// Step 9: Create event handler
+	handler := eventdriven.NewBaseHandler(
+		debouncer,
+		filter,
+		processor,
+		grouper,
+		a.cfg.Agent.EventDriven.GroupRelatedEvents,
+		a.logger,
+	)
+
+	// Step 10: Create event-driven manager
+	a.logger.Info("Creating event-driven manager")
+	managerConfig := &eventdriven.Config{
+		ResyncPeriod:       a.cfg.Agent.EventDriven.ResyncPeriod,
+		Namespaces:         a.cfg.Agent.EventDriven.WatchNamespaces,
+		DebounceWindow:     a.cfg.Agent.EventDriven.DebounceWindow,
+		MaxEventsPerMinute: a.cfg.Agent.EventDriven.MaxEventsPerMinute,
+		GroupRelatedEvents: a.cfg.Agent.EventDriven.GroupRelatedEvents,
+	}
+
+	manager, err := eventdriven.NewManager(k8sClient, managerConfig, a.logger)
+	if err != nil {
+		return fmt.Errorf("failed to create event-driven manager: %w", err)
+	}
+
+	a.eventDrivenMgr = manager
+
+	// Step 11: Register watchers based on configuration
+	watcherCount := 0
+
+	if a.cfg.Agent.EventDriven.WatchPodEvents {
+		a.logger.Info("Registering Pod watcher")
+		podWatcher := watchers.NewPodWatcher(a.logger)
+		if err := manager.AddWatcher(podWatcher, handler); err != nil {
+			return fmt.Errorf("failed to register pod watcher: %w", err)
+		}
+		watcherCount++
+	}
+
+	if a.cfg.Agent.EventDriven.WatchWorkloads {
+		a.logger.Info("Registering workload watchers (Deployment, StatefulSet, DaemonSet, Job)")
+
+		deploymentWatcher := watchers.NewDeploymentWatcher(a.logger)
+		if err := manager.AddWatcher(deploymentWatcher, handler); err != nil {
+			return fmt.Errorf("failed to register deployment watcher: %w", err)
+		}
+
+		statefulSetWatcher := watchers.NewStatefulSetWatcher(a.logger)
+		if err := manager.AddWatcher(statefulSetWatcher, handler); err != nil {
+			return fmt.Errorf("failed to register statefulset watcher: %w", err)
+		}
+
+		daemonSetWatcher := watchers.NewDaemonSetWatcher(a.logger)
+		if err := manager.AddWatcher(daemonSetWatcher, handler); err != nil {
+			return fmt.Errorf("failed to register daemonset watcher: %w", err)
+		}
+
+		jobWatcher := watchers.NewJobWatcher(a.logger)
+		if err := manager.AddWatcher(jobWatcher, handler); err != nil {
+			return fmt.Errorf("failed to register job watcher: %w", err)
+		}
+
+		watcherCount += 4
+	}
+
+	if a.cfg.Agent.EventDriven.WatchVolumes {
+		a.logger.Info("Registering volume watchers (PVC, Events)")
+
+		pvcWatcher := watchers.NewPVCWatcher(a.logger)
+		if err := manager.AddWatcher(pvcWatcher, handler); err != nil {
+			return fmt.Errorf("failed to register pvc watcher: %w", err)
+		}
+
+		watcherCount++
+	}
+
+	if a.cfg.Agent.EventDriven.WatchNodes {
+		a.logger.Info("Registering Node watcher")
+		nodeWatcher := watchers.NewNodeWatcher(a.logger)
+		if err := manager.AddWatcher(nodeWatcher, handler); err != nil {
+			return fmt.Errorf("failed to register node watcher: %w", err)
+		}
+		watcherCount++
+	}
+
+	if a.cfg.Agent.EventDriven.WatchEvents {
+		a.logger.Info("Registering Kubernetes Event watcher")
+		eventWatcher := watchers.NewEventWatcher(a.logger)
+		if err := manager.AddWatcher(eventWatcher, handler); err != nil {
+			return fmt.Errorf("failed to register event watcher: %w", err)
+		}
+		watcherCount++
+	}
+
+	if watcherCount == 0 {
+		return fmt.Errorf("no watchers enabled - at least one watcher type must be enabled")
+	}
+
+	// Step 12: Start the event-driven manager
+	a.logger.WithFields(logrus.Fields{
+		"watchers":         watcherCount,
+		"debounce_window":  a.cfg.Agent.EventDriven.DebounceWindow,
+		"resync_period":    a.cfg.Agent.EventDriven.ResyncPeriod,
+		"group_events":     a.cfg.Agent.EventDriven.GroupRelatedEvents,
+		"min_severity":     a.cfg.Agent.EventDriven.MinSeverity,
+		"ai_enabled":       a.cfg.AI.Enabled && aiProvider != nil,
+		"notifiers":        len(notifiers),
+	}).Info("Starting event-driven manager")
+
+	if err := manager.Start(); err != nil {
+		return fmt.Errorf("failed to start event-driven manager: %w", err)
+	}
+
+	a.logger.Info("Event-driven mode started successfully - watching for Kubernetes events")
+	return nil
+}
+
+// createKubernetesClient creates a Kubernetes client (in-cluster or kubeconfig)
+func (a *Agent) createKubernetesClient() (*kubernetes.Clientset, error) {
+	var config *rest.Config
+	var err error
+
+	// Try in-cluster configuration first
+	config, err = rest.InClusterConfig()
+	if err != nil {
+		a.logger.Debug("Not running in-cluster, trying kubeconfig")
+
+		// Fall back to kubeconfig
+		kubeconfigPath := a.cfg.Diagnostics.Kubernetes.KubeconfigPath
+		if kubeconfigPath == "" {
+			// Use default location
+			if home := os.Getenv("HOME"); home != "" {
+				kubeconfigPath = filepath.Join(home, ".kube", "config")
+			}
+		}
+
+		config, err = clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build kubeconfig: %w", err)
+		}
+	}
+
+	// Create clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Kubernetes clientset: %w", err)
+	}
+
+	return clientset, nil
+}
+
+// createRedisClient creates a Redis client for event state tracking
+func (a *Agent) createRedisClient() (*redis.Client, error) {
+	if !a.cfg.Cache.Enabled {
+		return nil, fmt.Errorf("redis cache must be enabled for event-driven mode")
+	}
+
+	opts, err := redis.ParseURL(a.cfg.Cache.RedisURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid Redis URL: %w", err)
+	}
+
+	if a.cfg.Cache.Password != "" {
+		opts.Password = a.cfg.Cache.Password
+	}
+
+	opts.MaxRetries = a.cfg.Cache.MaxRetries
+	opts.PoolSize = a.cfg.Cache.PoolSize
+
+	client := redis.NewClient(opts)
+
+	// Test connection
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := client.Ping(ctx).Err(); err != nil {
+		return nil, fmt.Errorf("failed to connect to Redis: %w", err)
+	}
+
+	a.logger.WithField("url", a.cfg.Cache.RedisURL).Info("Connected to Redis")
+	return client, nil
 }
 
 // runDiagnostics executes a diagnostic run
