@@ -405,6 +405,29 @@ func Load() (*Config, error) {
 	viper.SetDefault("api.rate_limit_requests_per_hour", 3600)
 	viper.SetDefault("api.rate_limit_burst_size", 10)
 
+	// Database config binding (required for K8s deployment)
+	viper.SetDefault("database.host", "localhost")
+	viper.SetDefault("database.port", 5432)
+	viper.SetDefault("database.name", "lumo")
+	viper.SetDefault("database.user", "lumo")
+	viper.SetDefault("database.password", "")
+	viper.SetDefault("database.sslmode", "disable")
+
+	// AI config binding (required for K8s deployment)
+	viper.SetDefault("ai.provider", "anthropic")
+	viper.SetDefault("ai.enabled", true)
+	viper.SetDefault("anthropic_api_key", "")
+	viper.SetDefault("openai_api_key", "")
+	viper.SetDefault("gemini_api_key", "")
+	viper.SetDefault("ollama_api_key", "")
+	viper.SetDefault("openrouter_api_key", "")
+	viper.SetDefault("ai_api_key", "")
+
+	// Agent config binding (required for K8s deployment)
+	viper.SetDefault("agent.cache_path", "/var/lib/lumo-agent/cache")
+	viper.SetDefault("agent.cache_max_size", 1073741824)
+	viper.SetDefault("agent.cache_ttl", "24h")
+
 	if err := viper.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
