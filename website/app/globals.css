@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme {
+  --color-lumo-blue: #0066FF;
+  --color-deep-navy: #1A1F36;
+  --color-electric-green: #00FF88;
+  --color-warning-orange: #FF6B35;
+  --color-critical-red: #FF3366;
+
+  --font-family-sans: 'Inter', system-ui, sans-serif;
+  --font-family-mono: 'JetBrains Mono', Consolas, monospace;
+  --font-family-display: 'Manrope', 'Inter', sans-serif;
+}
+
+body {
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
