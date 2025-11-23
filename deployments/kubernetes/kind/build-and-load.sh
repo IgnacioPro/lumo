@@ -62,27 +62,37 @@ build_image() {
     # Change to project root (3 levels up from kind/)
     cd "$(dirname "$0")/../../.."
 
-    # Build image with Dockerfile.agent from root
+    # Build Agent image
     docker build \
         -f Dockerfile.agent \
         -t "${FULL_IMAGE}" \
         --progress=plain \
         .
 
+    # Build API Server image
+    log_info "Building API Server image: lumo:local"
+    docker build \
+        -f Dockerfile \
+        -t "lumo:local" \
+        --progress=plain \
+        .
+
     echo ""
-    log_success "Image built successfully"
+    log_success "Images built successfully"
 
     # Show image details
     log_info "Image details:"
     docker images "${IMAGE_NAME}" | head -2
+    docker images "lumo" | head -2
 }
 
 load_image() {
-    log_info "Loading image into kind cluster '${CLUSTER_NAME}'..."
+    log_info "Loading images into kind cluster '${CLUSTER_NAME}'..."
 
     kind load docker-image "${FULL_IMAGE}" --name "${CLUSTER_NAME}"
+    kind load docker-image "lumo:local" --name "${CLUSTER_NAME}"
 
-    log_success "Image loaded into kind cluster"
+    log_success "Images loaded into kind cluster"
 }
 
 verify_image() {

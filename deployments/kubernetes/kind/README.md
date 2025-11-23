@@ -1,16 +1,22 @@
-# Testing Lumo Agent with kind (Kubernetes in Docker)
+# Testing Lumo Full Stack with kind (Kubernetes in Docker)
 
-This directory contains everything you need to test the Lumo Agent locally using [kind](https://kind.sigs.k8s.io/).
+This directory contains everything you need to test the **complete Lumo stack** locally using [kind](https://kind.sigs.k8s.io/).
 
 ## Quick Start
 
-### One-Command Setup
+### One-Command Full Stack Deployment
 
-Run the complete test suite (creates cluster, builds image, deploys agent, runs tests):
+Run the complete test suite (creates cluster, builds images, deploys DB + API + Agents, runs integration tests):
 
 ```bash
 ./test-agent.sh
 ```
+
+**This deploys:**
+- ✅ PostgreSQL (Database)
+- ✅ Lumo API Server (REST API)
+- ✅ Lumo Agents (DaemonSet + Deployment)
+- ✅ Runs 10 automated tests
 
 ### Step-by-Step Setup
 
@@ -20,10 +26,16 @@ If you prefer to run each step manually:
 # 1. Create kind cluster (3 nodes: 1 control-plane + 2 workers)
 ./setup-kind-cluster.sh
 
-# 2. Build Docker image and load into kind
+# 2. Build Docker images (API + Agent) and load into kind
 ./build-and-load.sh
 
-# 3. Deploy agent to kind cluster
+# 3. Deploy PostgreSQL
+kubectl apply -f manifests/postgres.yaml
+
+# 4. Deploy API Server
+kubectl apply -f manifests/api-server.yaml
+
+# 5. Deploy agents to kind cluster
 ./deploy-to-kind.sh
 ```
 
@@ -39,11 +51,14 @@ The scripts will automatically install missing prerequisites, but you can instal
 
 | File | Purpose |
 |------|---------|
-| `Dockerfile` | Multi-stage Docker build for lumo-agent |
+| `test-agent.sh` | **PRIMARY**: Complete full-stack deployment + tests |
 | `setup-kind-cluster.sh` | Creates a 3-node kind cluster |
-| `build-and-load.sh` | Builds Docker image and loads into kind |
-| `deploy-to-kind.sh` | Deploys agent to kind cluster |
-| `test-agent.sh` | Complete end-to-end test suite |
+| `build-and-load.sh` | Builds Docker images (API + Agent) and loads into kind |
+| `deploy-to-kind.sh` | Deploys agents to kind cluster |
+| `test-workflow.sh` | Legacy full-stack deployment (use `test-agent.sh` instead) |
+| `manifests/postgres.yaml` | PostgreSQL deployment |
+| `manifests/api-server.yaml` | Lumo API Server deployment |
+| `FULL_STACK_DEPLOYMENT.md` | Detailed documentation |
 | `README.md` | This file |
 
 ## Detailed Usage
