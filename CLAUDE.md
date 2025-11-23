@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-23 | **Version:** 1.0.9 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | All Core Systems Live 🚀
+> **Last Updated:** 2025-11-23 | **Version:** 1.0.9 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Remediation Test Suite Fixed ✅ | All Core Systems Live 🚀
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -166,7 +166,7 @@ Implementation: `internal/doctor/{doctor.go,checks.go}`, `cmd/lumo/doctor.go`
 
 ## Testing & CI
 
-**Coverage:** 66.7% (70 test files) | Table-driven tests, mock executors
+**Coverage:** 66.7% (70 test files) | Table-driven tests, mock executors | Remediation package: All tests passing (5 test fixes: disk cleanup, log rotation, service management, action suggestions)
 **Run:** `go test ./...` | `make ci` (full local checks)
 
 **Makefile Targets:**
@@ -226,7 +226,7 @@ For rate limiting and DB pool config, see [configs/config.example.yaml](configs/
 - 5 providers: Anthropic, OpenAI, Gemini, Ollama, OpenRouter (via ProviderAdapter interface)
 - Benefits: 27% code reduction, 5x easier maintenance
 
-**Remediation:** executor, approval, audit, actions (disk, service, process)
+**Remediation:** executor, approval, audit, actions (disk, service, process, Kubernetes), suggestion engine - comprehensive test coverage with all tests passing (disk cleanup, log rotation, service management with command injection prevention)
 
 **Notifications (4 providers):**
 - Slack: Webhook + rich attachments

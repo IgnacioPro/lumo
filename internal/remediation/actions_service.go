@@ -61,9 +61,15 @@ func (a *RestartServiceAction) Validate(ctx context.Context, executor diagnostic
 	}
 
 	// Check if service exists
-	cmd := fmt.Sprintf("systemctl list-unit-files %s.service", shellQuote(a.serviceName))
+	// Normalize service name - add .service if not already present
+	serviceName := a.serviceName
+	if !strings.HasSuffix(serviceName, ".service") {
+		serviceName += ".service"
+	}
+
+	cmd := fmt.Sprintf("systemctl list-unit-files %s", shellQuote(serviceName))
 	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, cmd)
-	if exitCode != 0 || !strings.Contains(stdout, a.serviceName+".service") {
+	if exitCode != 0 || !strings.Contains(stdout, serviceName) {
 		return fmt.Errorf("service '%s' not found", a.serviceName)
 	}
 
@@ -191,9 +197,15 @@ func (a *StopServiceAction) Validate(ctx context.Context, executor diagnostics.C
 		return fmt.Errorf("systemctl command not found")
 	}
 
-	cmd := fmt.Sprintf("systemctl list-unit-files %s.service", shellQuote(a.serviceName))
+	// Normalize service name - add .service if not already present
+	serviceName := a.serviceName
+	if !strings.HasSuffix(serviceName, ".service") {
+		serviceName += ".service"
+	}
+
+	cmd := fmt.Sprintf("systemctl list-unit-files %s", shellQuote(serviceName))
 	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, cmd)
-	if exitCode != 0 || !strings.Contains(stdout, a.serviceName+".service") {
+	if exitCode != 0 || !strings.Contains(stdout, serviceName) {
 		return fmt.Errorf("service '%s' not found", a.serviceName)
 	}
 
@@ -288,9 +300,15 @@ func (a *StartServiceAction) Validate(ctx context.Context, executor diagnostics.
 		return fmt.Errorf("systemctl command not found")
 	}
 
-	cmd := fmt.Sprintf("systemctl list-unit-files %s.service", shellQuote(a.serviceName))
+	// Normalize service name - add .service if not already present
+	serviceName := a.serviceName
+	if !strings.HasSuffix(serviceName, ".service") {
+		serviceName += ".service"
+	}
+
+	cmd := fmt.Sprintf("systemctl list-unit-files %s", shellQuote(serviceName))
 	stdout, _, exitCode, _ := executor.ExecuteWithContext(ctx, cmd)
-	if exitCode != 0 || !strings.Contains(stdout, a.serviceName+".service") {
+	if exitCode != 0 || !strings.Contains(stdout, serviceName) {
 		return fmt.Errorf("service '%s' not found", a.serviceName)
 	}
 
