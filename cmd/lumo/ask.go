@@ -8,9 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
+
 	"github.com/ignacio/lumo/internal/ai"
 	"github.com/ignacio/lumo/internal/config"
-	"github.com/spf13/cobra"
 )
 
 var askCmd = &cobra.Command{
@@ -37,6 +39,35 @@ Examples:
 func init() {
 	rootCmd.AddCommand(askCmd)
 	askCmd.Flags().BoolP("yes", "y", false, "Automatically execute the proposed command without confirmation")
+}
+
+// validateProposedCommand performs comprehensive safety checks on the AI-generated command
+func validateProposedCommand(command string) error {
+	// Safety Check 1: Must start with "lumo"
+	if !strings.HasPrefix(command, "lumo ") {
+		return fmt.Errorf("AI proposed an unsafe or invalid command (must start with 'lumo'): %s", command)
+	}
+
+	// Safety Check 2: Block recursive ask commands
+	parts := strings.Fields(command)
+	if len(parts) >= 2 && parts[1] == "ask" {
+		return fmt.Errorf("recursive 'lumo ask' commands are not allowed for security reasons")
+	}
+
+	// Safety Check 3: Comprehensive shell operator blocking
+	// Aligned with internal/ssh/session.go:430 sanitizeWorkingDir
+	// Block shell operators, subshells, wildcards, and control characters
+	dangerousChars := ";|&$`<>(){}[]!*?~\n\r"
+	if strings.ContainsAny(command, dangerousChars) {
+		return fmt.Errorf("AI proposed a command with unsafe shell characters: %s", command)
+	}
+
+	// Safety Check 4: Null bytes
+	if strings.Contains(command, "\x00") {
+		return fmt.Errorf("AI proposed a command with null bytes")
+	}
+
+	return nil
 }
 
 func runAsk(cmd *cobra.Command, query string) error {
@@ -108,16 +139,36 @@ User: "what is the capital of France?"
 Response: ERROR: I can only help with Lumo CLI commands.
 `
 
-	// Combine system prompt and user query
-	fullPrompt := fmt.Sprintf("%s\n\nUser: %s\nResponse:", systemPrompt, query)
+	// Log the request
+	log.WithFields(logrus.Fields{
+		"query":      query,
+		"provider":   cfg.AI.Provider,
+		"model":      cfg.AI.GetModelForProvider(cfg.AI.Provider),
+		"auto_yes":   false, // Will be updated below
+	}).Info("Processing ask request")
 
 	log.Info("Interpreting request...")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	response, err := provider.Ask(ctx, fullPrompt)
+	// Call Ask with separate system and user prompts
+	response, usage, err := provider.Ask(ctx, systemPrompt, query)
 	if err != nil {
+		log.WithFields(logrus.Fields{
+			"query":    query,
+			"provider": cfg.AI.Provider,
+			"error":    err.Error(),
+		}).Error("AI request failed")
 		return fmt.Errorf("AI request failed: %w", err)
+	}
+
+	// Log token usage if available
+	if usage != nil && verbose {
+		log.WithFields(logrus.Fields{
+			"input_tokens":  usage.InputTokens,
+			"output_tokens": usage.OutputTokens,
+			"total_tokens":  usage.TotalTokens,
+		}).Debug("AI request completed")
 	}
 
 	proposedCommand := strings.TrimSpace(response)
@@ -131,35 +182,66 @@ Response: ERROR: I can only help with Lumo CLI commands.
 	proposedCommand = strings.TrimSuffix(proposedCommand, "```")
 	proposedCommand = strings.TrimSpace(proposedCommand)
 
-	// Safety Check 1: Must start with "lumo"
-	if !strings.HasPrefix(proposedCommand, "lumo ") {
-		return fmt.Errorf("AI proposed an unsafe or invalid command (must start with 'lumo'): %s", proposedCommand)
+	// Run comprehensive safety checks
+	if err := validateProposedCommand(proposedCommand); err != nil {
+		log.WithFields(logrus.Fields{
+			"command": proposedCommand,
+			"query":   query,
+		}).Warn("Proposed command failed safety checks")
+		return err
 	}
 
-	// Safety Check 2: No shell operators
-	// Since we execute via Cobra, these wouldn't execute as shell operators anyway,
-	// but allowing them is risky if the execution method ever changes or if they confuse the user.
-	if strings.ContainsAny(proposedCommand, "&|;><$") {
-		return fmt.Errorf("AI proposed a command with unsafe shell characters: %s", proposedCommand)
-	}
+	// Log the AI-generated command
+	log.WithFields(logrus.Fields{
+		"proposed_command": proposedCommand,
+		"query":            query,
+	}).Info("AI generated command proposal")
 
 	fmt.Printf("\nProposed Command: \033[1;36m%s\033[0m\n", proposedCommand)
 
 	// Check for auto-execute flag
-	autoYes, _ := cmd.Flags().GetBool("yes")
+	autoYes, err := cmd.Flags().GetBool("yes")
+	if err != nil {
+		return fmt.Errorf("failed to get auto-execute flag: %w", err)
+	}
+
 	if !autoYes {
-		fmt.Print("Execute this command? [Y/n] ")
+		fmt.Print("Execute this command? [y/N] ")
 		reader := bufio.NewReader(os.Stdin)
 		input, err := reader.ReadString('\n')
 		if err != nil {
 			return fmt.Errorf("failed to read user input: %w", err)
 		}
+
 		input = strings.TrimSpace(strings.ToLower(input))
 
-		if input != "y" && input != "yes" && input != "" {
-			fmt.Println("Aborted.")
+		// Only proceed on explicit yes
+		if input != "y" && input != "yes" {
+			if input == "" {
+				fmt.Println("No confirmation received. Aborted.")
+			} else {
+				fmt.Println("Aborted.")
+			}
+			log.WithFields(logrus.Fields{
+				"command": proposedCommand,
+				"query":   query,
+			}).Info("User rejected command execution")
 			return nil
 		}
+	}
+
+	// Log user approval
+	log.WithFields(logrus.Fields{
+		"command": proposedCommand,
+		"auto":    autoYes,
+		"query":   query,
+	}).Info("Command execution approved")
+
+	// Check for dry-run mode
+	if dryRun {
+		fmt.Printf("\n[DRY RUN] Would execute: %s\n", proposedCommand)
+		log.WithField("command", proposedCommand).Info("Dry-run mode: skipping execution")
+		return nil
 	}
 
 	// Execute command
@@ -179,5 +261,21 @@ Response: ERROR: I can only help with Lumo CLI commands.
 	// For safety, we re-enter the root command execution rather than spawning a subprocess
 	// This ensures we use the same process context and don't rely on PATH
 	rootCmd.SetArgs(args)
-	return rootCmd.Execute()
+	err = rootCmd.Execute()
+
+	// Log execution result
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"command": proposedCommand,
+			"status":  "failed",
+			"error":   err.Error(),
+		}).Error("AI-generated command execution failed")
+	} else {
+		log.WithFields(logrus.Fields{
+			"command": proposedCommand,
+			"status":  "completed",
+		}).Info("AI-generated command executed successfully")
+	}
+
+	return err
 }

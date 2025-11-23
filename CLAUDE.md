@@ -15,6 +15,7 @@ Always run `make ci` before committing (linters, security checks, tests, builds)
 **Lumo** - Intelligent SRE/DevOps automation platform in Go with 12 diagnostic checkers, 5 AI providers, auto-remediation, multi-platform notifications, and agent architecture (K8s + VM).
 
 **Key Features:**
+- Natural language interface (`lumo ask`) - translate queries to commands with AI
 - System diagnostics (6 core + 4 security + 2 specialized checkers)
 - AI analysis: Anthropic, OpenAI, Ollama, Gemini, OpenRouter (adapter pattern)
 - Auto-remediation with human approval
@@ -32,7 +33,7 @@ Always run `make ci` before committing (linters, security checks, tests, builds)
 ```
 lumo/
 ├── cmd/
-│   ├── lumo/                          # CLI: init, doctor, diagnose, fix, serve, examples
+│   ├── lumo/                          # CLI: init, doctor, ask, diagnose, fix, serve, examples
 │   └── lumo-agent/                    # Agent daemon: scheduler, reporter, health, metrics
 ├── internal/
 │   ├── config/                        # Configuration + env var hierarchy
@@ -125,6 +126,7 @@ See [configs/config.example.yaml](configs/config.example.yaml) and [configs/noti
 | `init` | ✅ | Interactive setup wizard (Usability Week 1) |
 | `doctor` | ✅ | Validate configuration and dependencies (Usability Week 2) |
 | `examples` | ✅ | Show usage examples and tutorials (Usability Week 1) |
+| `ask` | ✅ | Natural language interface - translate queries to commands |
 | `connect` | ✅ | SSH connection |
 | `diagnose` | ✅ | System diagnostics + AI analysis + RAG context |
 | `diagnose --list-checks` | ✅ | List all available diagnostic checks |
@@ -374,6 +376,8 @@ go test ./...      # Run tests
 **CLI Usage:**
 ```bash
 lumo doctor                              # Validate setup
+lumo ask "check cpu usage"               # Natural language interface
+lumo ask "why is the server slow?" -y    # Auto-execute without confirmation
 lumo diagnose localhost --analyze --format toon
 lumo fix localhost --dry-run
 LUMO_ANTHROPIC_API_KEY=sk-ant-... lumo diagnose --analyze
