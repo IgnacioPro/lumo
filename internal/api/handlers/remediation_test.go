@@ -34,6 +34,28 @@ func (m *MockRemediationJobRepository) Create(ctx context.Context, job *models.J
 	return args.Error(0)
 }
 
+// MockApprovalRepository is a mock implementation of ApprovalRepository for testing
+type MockApprovalRepository struct {
+	mock.Mock
+}
+
+func (m *MockApprovalRepository) Create(ctx context.Context, approval *models.Approval) error {
+	args := m.Called(ctx, approval)
+	// Set a mock ID for the approval
+	if approval.ID == uuid.Nil {
+		approval.ID = uuid.New()
+	}
+	return args.Error(0)
+}
+
+func (m *MockApprovalRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Approval, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Approval), args.Error(1)
+}
+
 func (m *MockRemediationJobRepository) Get(ctx context.Context, id uuid.UUID) (*models.Job, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
@@ -78,6 +100,7 @@ func (m *MockRemediationJobRepository) Delete(ctx context.Context, id uuid.UUID)
 func TestRemediationHandler_Run_ValidRequest(t *testing.T) {
 	// Setup
 	mockRepo := new(MockRemediationJobRepository)
+	mockApprovalRepo := new(MockApprovalRepository)
 	cfg := &config.Config{
 		SSH: config.SSHConfig{
 			Port:    22,
@@ -87,7 +110,7 @@ func TestRemediationHandler_Run_ValidRequest(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel) // Suppress logs during testing
 
-	handler := NewRemediationHandler(mockRepo, cfg, logger)
+	handler := NewRemediationHandler(mockRepo, mockApprovalRepo, cfg, logger)
 
 	// Create test request
 	reqBody := RemediationRequest{
@@ -143,11 +166,12 @@ func TestRemediationHandler_Run_ValidRequest(t *testing.T) {
 func TestRemediationHandler_Run_MissingTarget(t *testing.T) {
 	// Setup
 	mockRepo := new(MockRemediationJobRepository)
+	mockApprovalRepo := new(MockApprovalRepository)
 	cfg := &config.Config{}
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 
-	handler := NewRemediationHandler(mockRepo, cfg, logger)
+	handler := NewRemediationHandler(mockRepo, mockApprovalRepo, cfg, logger)
 
 	// Create test request without target
 	reqBody := RemediationRequest{
@@ -176,11 +200,12 @@ func TestRemediationHandler_Run_MissingTarget(t *testing.T) {
 func TestRemediationHandler_Run_InvalidJSON(t *testing.T) {
 	// Setup
 	mockRepo := new(MockRemediationJobRepository)
+	mockApprovalRepo := new(MockApprovalRepository)
 	cfg := &config.Config{}
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 
-	handler := NewRemediationHandler(mockRepo, cfg, logger)
+	handler := NewRemediationHandler(mockRepo, mockApprovalRepo, cfg, logger)
 
 	// Create invalid JSON request
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/remediation", bytes.NewReader([]byte("invalid json")))
@@ -204,11 +229,12 @@ func TestRemediationHandler_Run_InvalidJSON(t *testing.T) {
 func TestRemediationHandler_Run_NoAuthentication(t *testing.T) {
 	// Setup
 	mockRepo := new(MockRemediationJobRepository)
+	mockApprovalRepo := new(MockApprovalRepository)
 	cfg := &config.Config{}
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 
-	handler := NewRemediationHandler(mockRepo, cfg, logger)
+	handler := NewRemediationHandler(mockRepo, mockApprovalRepo, cfg, logger)
 
 	// Create test request
 	reqBody := RemediationRequest{
@@ -232,6 +258,7 @@ func TestRemediationHandler_Run_NoAuthentication(t *testing.T) {
 func TestRemediationHandler_Run_WithSkipCategories(t *testing.T) {
 	// Setup
 	mockRepo := new(MockRemediationJobRepository)
+	mockApprovalRepo := new(MockApprovalRepository)
 	cfg := &config.Config{
 		SSH: config.SSHConfig{
 			Port:    22,
@@ -241,7 +268,7 @@ func TestRemediationHandler_Run_WithSkipCategories(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 
-	handler := NewRemediationHandler(mockRepo, cfg, logger)
+	handler := NewRemediationHandler(mockRepo, mockApprovalRepo, cfg, logger)
 
 	// Create test request with skip categories
 	reqBody := RemediationRequest{
