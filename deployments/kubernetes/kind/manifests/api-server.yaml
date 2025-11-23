@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lumo-api
+  namespace: lumo-system
+  labels:
+    app: lumo-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lumo-api
+  template:
+    metadata:
+      labels:
+        app: lumo-api
+    spec:
+      containers:
+      - name: lumo-api
+        image: lumo:local
+        imagePullPolicy: Never
+        command: ["/app/lumo", "serve", "--config", "/etc/lumo/config.yaml"]
+        env:
+        - name: LUMO_DATABASE_HOST
+          value: postgres
+        - name: LUMO_DATABASE_PORT
+          value: "5432"
+        - name: LUMO_DATABASE_NAME
+          value: lumo
+        - name: LUMO_DATABASE_USER
+          value: lumo
+        - name: LUMO_DATABASE_PASSWORD
+          value: lumo
+        - name: LUMO_DATABASE_SSLMODE
+          value: disable
+        - name: LUMO_AI_ENABLED
+          value: "false"
+        - name: LUMO_API_PORT
+          value: "8080"
+        - name: LUMO_API_HOST
+          value: "0.0.0.0"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/lumo
+          readOnly: true
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: lumo-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lumo-api
+  namespace: lumo-system
+spec:
+  selector:
+    app: lumo-api
+  ports:
+  - port: 8080
+    targetPort: 8080
