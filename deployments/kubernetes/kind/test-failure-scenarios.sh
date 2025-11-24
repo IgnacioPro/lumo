@@ -26,7 +26,7 @@ NC='\033[0m' # No Color
 NAMESPACE="${LUMO_NAMESPACE:-lumo-system}"
 TEST_NAMESPACE="lumo-test-scenarios"
 DEBOUNCE_WINDOW=45
-WAIT_TIME=55  # Debounce + 10s buffer
+WAIT_TIME=180  # 3min: pod startup + image pull retries + debounce (45s) + processing
 
 # Counters
 TESTS_RUN=0
@@ -225,15 +225,11 @@ EOF
     log_info "Waiting ${WAIT_TIME}s for debounce and event processing..."
     sleep ${WAIT_TIME}
     
-    # Verify event detection
-    if wait_for_event "image-pull-backoff" "${pod_name}" 10; then
-        if verify_event_in_database "image-pull-backoff" "${pod_name}"; then
-            log_result "PASS" "ImagePullBackOff scenario detected and stored"
-        else
-            log_result "FAIL" "ImagePullBackOff detected but not stored in database"
-        fi
+    # Verify event detection (check database directly - logs may be too old)
+    if verify_event_in_database "image-pull-backoff" "${pod_name}"; then
+        log_result "PASS" "ImagePullBackOff scenario detected and stored"
     else
-        log_result "FAIL" "ImagePullBackOff scenario not detected"
+        log_result "FAIL" "ImagePullBackOff scenario not detected in database"
     fi
 }
 
@@ -284,15 +280,11 @@ EOF
     log_info "Waiting ${WAIT_TIME}s for debounce and event processing..."
     sleep ${WAIT_TIME}
     
-    # Verify event detection
-    if wait_for_event "crash-loop-backoff" "${pod_name}" 10; then
-        if verify_event_in_database "crash-loop-backoff" "${pod_name}"; then
-            log_result "PASS" "CrashLoopBackOff scenario detected and stored"
-        else
-            log_result "FAIL" "CrashLoopBackOff detected but not stored in database"
-        fi
+    # Verify event detection (check database directly - logs may be too old)
+    if verify_event_in_database "crash-loop-backoff" "${pod_name}"; then
+        log_result "PASS" "CrashLoopBackOff scenario detected and stored"
     else
-        log_result "FAIL" "CrashLoopBackOff scenario not detected"
+        log_result "FAIL" "CrashLoopBackOff scenario not detected in database"
     fi
 }
 
@@ -348,15 +340,11 @@ EOF
     log_info "Waiting ${WAIT_TIME}s for debounce and event processing..."
     sleep ${WAIT_TIME}
     
-    # Verify event detection
-    if wait_for_event "oom-killed" "${pod_name}" 10; then
-        if verify_event_in_database "oom-killed" "${pod_name}"; then
-            log_result "PASS" "OOMKilled scenario detected and stored"
-        else
-            log_result "FAIL" "OOMKilled detected but not stored in database"
-        fi
+    # Verify event detection (check database directly - logs may be too old)
+    if verify_event_in_database "oom-killed" "${pod_name}"; then
+        log_result "PASS" "OOMKilled scenario detected and stored"
     else
-        log_result "FAIL" "OOMKilled scenario not detected"
+        log_result "FAIL" "OOMKilled scenario not detected in database"
     fi
 }
 
@@ -408,15 +396,11 @@ EOF
     log_info "Waiting ${WAIT_TIME}s for debounce and event processing..."
     sleep ${WAIT_TIME}
     
-    # Verify event detection
-    if wait_for_event "deployment-failed" "${deploy_name}" 10; then
-        if verify_event_in_database "deployment-failed" "${deploy_name}"; then
-            log_result "PASS" "Deployment failure detected and stored"
-        else
-            log_result "FAIL" "Deployment failure detected but not stored in database"
-        fi
+    # Verify event detection (check database directly - logs may be too old)
+    if verify_event_in_database "deployment-failed" "${deploy_name}"; then
+        log_result "PASS" "Deployment failure detected and stored"
     else
-        log_result "FAIL" "Deployment failure not detected"
+        log_result "FAIL" "Deployment failure not detected in database"
     fi
 }
 
@@ -470,15 +454,11 @@ EOF
     log_info "Waiting ${WAIT_TIME}s for debounce and event processing..."
     sleep ${WAIT_TIME}
     
-    # Verify event detection
-    if wait_for_event "job-failed" "${job_name}" 10; then
-        if verify_event_in_database "job-failed" "${job_name}"; then
-            log_result "PASS" "Job failure detected and stored"
-        else
-            log_result "FAIL" "Job failure detected but not stored in database"
-        fi
+    # Verify event detection (check database directly - logs may be too old)
+    if verify_event_in_database "job-failed" "${job_name}"; then
+        log_result "PASS" "Job failure detected and stored"
     else
-        log_result "FAIL" "Job failure not detected"
+        log_result "FAIL" "Job failure not detected in database"
     fi
 }
 
@@ -519,13 +499,9 @@ EOF
     log_info "Waiting ${WAIT_TIME}s for debounce and event processing..."
     sleep ${WAIT_TIME}
     
-    # Verify event detection
-    if wait_for_event "pvc-provision-failed" "${pvc_name}" 10; then
-        if verify_event_in_database "pvc-provision-failed" "${pvc_name}"; then
-            log_result "PASS" "PVC provision failure detected and stored"
-        else
-            log_result "FAIL" "PVC provision failure detected but not stored in database"
-        fi
+    # Verify event detection (check database directly - logs may be too old)
+    if verify_event_in_database "pvc-provision-failed" "${pvc_name}"; then
+        log_result "PASS" "PVC provision failure detected and stored"
     else
         # PVC provision failures might show as scheduling-failed in some K8s versions
         log_warning "PVC provision failure not detected as pvc-provision-failed"
@@ -570,15 +546,11 @@ EOF
     log_info "Waiting ${WAIT_TIME}s for debounce and event processing..."
     sleep ${WAIT_TIME}
     
-    # Verify event detection
-    if wait_for_event "scheduling-failed" "${pod_name}" 10; then
-        if verify_event_in_database "scheduling-failed" "${pod_name}"; then
-            log_result "PASS" "Scheduling failure detected and stored"
-        else
-            log_result "FAIL" "Scheduling failure detected but not stored in database"
-        fi
+    # Verify event detection (check database directly - logs may be too old)
+    if verify_event_in_database "scheduling-failed" "${pod_name}"; then
+        log_result "PASS" "Scheduling failure detected and stored"
     else
-        log_result "FAIL" "Scheduling failure not detected"
+        log_result "FAIL" "Scheduling failure not detected in database"
     fi
 }
 
