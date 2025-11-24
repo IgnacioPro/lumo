@@ -5,12 +5,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/ignacio/lumo/internal/ai"
 	"github.com/ignacio/lumo/internal/api/auth"
 	"github.com/ignacio/lumo/internal/api/handlers"
 	apimiddleware "github.com/ignacio/lumo/internal/api/middleware"
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/database"
 	"github.com/ignacio/lumo/internal/database/repository"
+	"github.com/ignacio/lumo/internal/notifications"
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
@@ -48,6 +50,65 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 	apiKeyRepo := repository.NewAPIKeyRepository(db.DB)
 	agentRepo := repository.NewAgentRepository(db.DB)
 	approvalRepo := repository.NewApprovalRepository(db.DB)
+	eventRepo := repository.NewEventRepository(db.DB)
+
+	// Initialize AI provider if enabled
+	var aiProvider ai.Provider
+	aiEnabled := cfg.AI.Enabled
+	if aiEnabled {
+		providerConfig := &ai.ProviderConfig{
+			APIKey:      cfg.AI.APIKey,
+			Model:       cfg.AI.Model,
+			Endpoint:    cfg.AI.Endpoint,
+			Timeout:     cfg.AI.Timeout,
+			MaxRetries:  cfg.AI.MaxRetries,
+			Temperature: cfg.AI.Temperature,
+			MaxTokens:   cfg.AI.MaxTokens,
+		}
+		var err error
+		aiProvider, err = ai.NewProvider(ai.ProviderType(cfg.AI.Provider), providerConfig, logger)
+		if err != nil {
+			logger.WithError(err).Warn("Failed to initialize AI provider, continuing without AI")
+			aiEnabled = false
+		}
+	}
+
+	// Initialize notification providers
+	var notifiers []notifications.Notifier
+	notifEnabled := cfg.Notifications.Enabled && len(cfg.Notifications.Notifiers) > 0
+	if notifEnabled {
+		for _, cfgNotifier := range cfg.Notifications.Notifiers {
+			if !cfgNotifier.Enabled {
+				continue
+			}
+			notifCfg := &notifications.NotifierConfig{
+				Name:         cfgNotifier.Name,
+				Type:         notifications.NotifierType(cfgNotifier.Type),
+				Enabled:      cfgNotifier.Enabled,
+				WebhookURL:   cfgNotifier.WebhookURL,
+				BotToken:     cfgNotifier.BotToken,
+				ChatID:       cfgNotifier.ChatID,
+				Headers:      cfgNotifier.Headers,
+				Method:       cfgNotifier.Method,
+				SMTPHost:     cfgNotifier.SMTPHost,
+				SMTPPort:     cfgNotifier.SMTPPort,
+				SMTPUsername: cfgNotifier.SMTPUser,
+				SMTPPassword: cfgNotifier.SMTPPass,
+				From:         cfgNotifier.From,
+				To:           cfgNotifier.To,
+			}
+			notifier, err := notifications.NewNotifier(notifCfg, logger)
+			if err != nil {
+				logger.WithError(err).WithField("provider", cfgNotifier.Type).Warn("Failed to initialize notifier")
+				continue
+			}
+			notifiers = append(notifiers, notifier)
+		}
+		if len(notifiers) == 0 {
+			logger.Warn("No notification providers initialized")
+			notifEnabled = false
+		}
+	}
 
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db, logger)
@@ -57,6 +118,7 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 	jobsHandler := handlers.NewJobsHandler(jobRepo, logger)
 	agentsHandler := handlers.NewAgentsHandler(agentRepo, logger)
 	approvalsHandler := handlers.NewApprovalsHandler(approvalRepo, logger)
+	eventsHandler := handlers.NewEventsHandler(eventRepo, agentRepo, aiProvider, notifiers, logger, aiEnabled, notifEnabled)
 
 	// API v1 routes
 	r.Route("/api/v1", func(r chi.Router) {
@@ -111,6 +173,11 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 			r.Get("/approvals/{id}", approvalsHandler.Get)
 			r.Put("/approvals/{id}/approve", approvalsHandler.Approve)
 			r.Put("/approvals/{id}/reject", approvalsHandler.Reject)
+
+			// Event endpoints
+			r.Post("/events", eventsHandler.SubmitEvents)
+			r.Get("/events", eventsHandler.ListEvents)
+			r.Get("/events/{id}", eventsHandler.GetEvent)
 		})
 	})
 

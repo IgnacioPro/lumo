@@ -160,7 +160,7 @@ type CacheConfig struct {
 
 // AgentConfig contains agent daemon settings
 type AgentConfig struct {
-	Mode             string        `mapstructure:"mode"`               // scheduled|on-demand|continuous|hybrid
+	Mode             string        `mapstructure:"mode"`               // scheduled|on-demand|continuous|hybrid|event-driven
 	Schedule         string        `mapstructure:"schedule"`           // Cron expression for scheduled mode
 	APIEndpoint      string        `mapstructure:"api_endpoint"`       // Lumo API server endpoint
 	Token            string        `mapstructure:"token"`              // JWT authentication token (prefer env var)
@@ -183,6 +183,9 @@ type AgentConfig struct {
 
 	// Kubernetes-specific settings
 	Kubernetes KubernetesAgentConfig `mapstructure:"kubernetes"`
+
+	// Event-driven mode settings (for Kubernetes agents)
+	EventDriven EventDrivenConfig `mapstructure:"event_driven"`
 }
 
 // KubernetesAgentConfig contains Kubernetes-specific agent settings
@@ -193,6 +196,24 @@ type KubernetesAgentConfig struct {
 	Namespace string `mapstructure:"namespace"` // Agent namespace
 	NodeName  string `mapstructure:"node_name"` // Node name (for DaemonSet agents)
 	PodName   string `mapstructure:"pod_name"`  // Pod name
+}
+
+// EventDrivenConfig contains event-driven mode settings for Kubernetes agents
+type EventDrivenConfig struct {
+	Enabled            bool          `mapstructure:"enabled"`              // Enable event-driven mode
+	DebounceWindow     time.Duration `mapstructure:"debounce_window"`      // Debounce window (30-60s)
+	ResyncPeriod       time.Duration `mapstructure:"resync_period"`        // Informer resync period (0 = no resync)
+	GroupRelatedEvents bool          `mapstructure:"group_related_events"` // Group related events for batch analysis
+	MaxEventsPerMinute int           `mapstructure:"max_events_per_min"`   // Rate limit for event processing
+	MinSeverity        string        `mapstructure:"min_severity"`         // Minimum severity to process (low|medium|high|critical)
+	WatchNamespaces    []string      `mapstructure:"watch_namespaces"`     // Namespaces to watch (empty = all)
+
+	// Event type filters (empty = watch all)
+	WatchPodEvents bool `mapstructure:"watch_pod_events"` // Watch pod failures (ImagePullBackOff, CrashLoopBackOff, OOMKilled)
+	WatchWorkloads bool `mapstructure:"watch_workloads"`  // Watch workload failures (Deployments, StatefulSets, DaemonSets, Jobs)
+	WatchVolumes   bool `mapstructure:"watch_volumes"`    // Watch volume issues (FailedMount, FailedBinding)
+	WatchNodes     bool `mapstructure:"watch_nodes"`      // Watch node issues (NotReady, pressure events)
+	WatchEvents    bool `mapstructure:"watch_events"`     // Watch Kubernetes Event resources
 }
 
 // NotificationsConfig contains notification system settings
@@ -371,6 +392,20 @@ func DefaultConfig() *Config {
 				NodeName:  "",
 				PodName:   "",
 			},
+			EventDriven: EventDrivenConfig{
+				Enabled:            false,            // Disabled by default (use scheduled mode)
+				DebounceWindow:     45 * time.Second, // 45 second debounce window
+				ResyncPeriod:       0,                // No resync - pure event-driven
+				GroupRelatedEvents: true,             // Group related events for batch analysis
+				MaxEventsPerMinute: 100,              // Process up to 100 events per minute
+				MinSeverity:        "low",            // Process all severity levels
+				WatchNamespaces:    []string{},       // Watch all namespaces
+				WatchPodEvents:     true,             // Watch pod failures
+				WatchWorkloads:     true,             // Watch workload failures
+				WatchVolumes:       true,             // Watch volume issues
+				WatchNodes:         true,             // Watch node issues
+				WatchEvents:        true,             // Watch Kubernetes Event resources
+			},
 		},
 		Notifications: NotificationsConfig{
 			Enabled:   false,              // Disabled by default
@@ -424,6 +459,12 @@ func Load() (*Config, error) {
 	viper.SetDefault("openrouter_api_key", "")
 	viper.SetDefault("ai_api_key", "")
 
+	// Cache (Redis) config binding (required for event-driven agents)
+	_ = viper.BindEnv("cache.enabled", "LUMO_CACHE_ENABLED")
+	viper.SetDefault("cache.enabled", false)
+	_ = viper.BindEnv("cache.redis_url", "LUMO_CACHE_REDIS_URL")
+	viper.SetDefault("cache.redis_url", "redis://localhost:6379/0")
+
 	// Agent config binding (required for K8s deployment)
 	viper.SetDefault("agent.cache_path", "/var/lib/lumo-agent/cache")
 	viper.SetDefault("agent.cache_max_size", 1073741824)
@@ -431,6 +472,10 @@ func Load() (*Config, error) {
 
 	// Kubernetes agent metadata binding (for K8s deployments)
 	// These map to POD_NAME, NODE_NAME, POD_NAMESPACE env vars set by K8s
+	_ = viper.BindEnv("agent.kubernetes.enabled", "LUMO_AGENT_KUBERNETES_ENABLED")
+	viper.SetDefault("agent.kubernetes.enabled", false)
+	_ = viper.BindEnv("agent.kubernetes.scope", "LUMO_AGENT_KUBERNETES_SCOPE")
+	viper.SetDefault("agent.kubernetes.scope", "node")
 	viper.SetDefault("agent.kubernetes.cluster", "")
 	viper.SetDefault("agent.kubernetes.namespace", "")
 	viper.SetDefault("agent.kubernetes.node_name", "")
@@ -441,6 +486,19 @@ func Load() (*Config, error) {
 	// Note: viper.BindEnv with multiple env vars checks them in order (first found wins)
 	_ = viper.BindEnv("diagnostics.kubernetes.enabled", "LUMO_AGENT_KUBERNETES_ENABLED", "LUMO_DIAGNOSTICS_KUBERNETES_ENABLED")
 	viper.SetDefault("diagnostics.kubernetes.enabled", false)
+
+	// Event-driven config binding (for K8s agents)
+	viper.SetDefault("agent.event_driven.enabled", false)
+	viper.SetDefault("agent.event_driven.debounce_window", "45s")
+	viper.SetDefault("agent.event_driven.resync_period", "0s")
+	viper.SetDefault("agent.event_driven.group_related_events", true)
+	viper.SetDefault("agent.event_driven.max_events_per_min", 100)
+	viper.SetDefault("agent.event_driven.min_severity", "low")
+	viper.SetDefault("agent.event_driven.watch_pod_events", true)
+	viper.SetDefault("agent.event_driven.watch_workloads", true)
+	viper.SetDefault("agent.event_driven.watch_volumes", true)
+	viper.SetDefault("agent.event_driven.watch_nodes", true)
+	viper.SetDefault("agent.event_driven.watch_events", true)
 
 	if err := viper.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
@@ -617,13 +675,14 @@ func (c *Config) Validate() error {
 	// Agent validation
 	if c.Agent.Mode != "" {
 		validModes := map[string]bool{
-			"scheduled":  true,
-			"on-demand":  true,
-			"continuous": true,
-			"hybrid":     true,
+			"scheduled":    true,
+			"on-demand":    true,
+			"continuous":   true,
+			"hybrid":       true,
+			"event-driven": true,
 		}
 		if !validModes[c.Agent.Mode] {
-			return fmt.Errorf("invalid agent mode: %s (must be scheduled, on-demand, continuous, or hybrid)", c.Agent.Mode)
+			return fmt.Errorf("invalid agent mode: %s (must be scheduled, on-demand, continuous, hybrid, or event-driven)", c.Agent.Mode)
 		}
 	}
 

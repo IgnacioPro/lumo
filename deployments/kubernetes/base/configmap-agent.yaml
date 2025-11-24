@@ -1,0 +1,115 @@
+---
+# ConfigMap for Lumo Agent Event-Driven Configuration
+# Use this ConfigMap for Kubernetes event-driven monitoring mode
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lumo-agent-config
+  namespace: lumo-system
+  labels:
+    app.kubernetes.io/name: lumo-agent
+    app.kubernetes.io/component: configuration
+    app.kubernetes.io/part-of: lumo
+    app.kubernetes.io/mode: event-driven
+data:
+  # Agent operational mode - EVENT-DRIVEN for Kubernetes
+  # This mode uses Kubernetes informers to watch for events in real-time
+  agent.mode: "event-driven"
+
+  # API endpoint for reporting and notifications
+  agent.api-endpoint: "http://lumo-api:8080"
+
+  # TLS configuration
+  agent.tls-enabled: "false"
+
+  # Report format (toon format reduces AI token costs by 30-60%)
+  agent.report-format: "toon"
+
+  # Offline mode - continue operation if API unavailable
+  agent.offline-mode: "true"
+
+  # Health check port
+  agent.health-check-port: "8080"
+
+  # Prometheus metrics port
+  agent.metrics-port: "9090"
+
+  # Kubernetes-specific configuration
+  agent.kubernetes.enabled: "true"
+  agent.kubernetes.scope: "cluster"  # cluster scope for event-driven mode
+
+  # Event-driven mode configuration
+  agent.event-driven.enabled: "true"
+  agent.event-driven.debounce-window: "45s"  # Wait 45s before processing event
+  agent.event-driven.resync-period: "0s"     # 0 = pure event-driven (no polling)
+  agent.event-driven.group-related-events: "true"
+  agent.event-driven.max-events-per-min: "100"
+  agent.event-driven.min-severity: "low"     # low|medium|high|critical
+
+  # Event type watchers (all enabled by default)
+  agent.event-driven.watch-pod-events: "true"     # ImagePullBackOff, CrashLoopBackOff, OOMKilled
+  agent.event-driven.watch-workloads: "true"      # Deployments, StatefulSets, DaemonSets, Jobs
+  agent.event-driven.watch-volumes: "true"        # PVC, Volume mount failures
+  agent.event-driven.watch-nodes: "true"          # Node conditions, pressure events
+  agent.event-driven.watch-events: "true"         # Kubernetes Event resource aggregation
+
+  # Redis configuration (required for event-driven mode)
+  cache.enabled: "true"
+  cache.redis-url: "redis://lumo-redis:6379/0"
+
+  # Logging configuration
+  logging.level: "info"  # debug, info, warn, error
+  logging.format: "json"  # text, json
+
+  # config.yaml - Full agent configuration file for event-driven mode
+  config.yaml: |
+    # Lumo Agent Event-Driven Configuration
+    # Optimized for real-time Kubernetes event monitoring
+    # 
+    # NOTE: AI analysis and notifications are handled by the API server
+    # Agents report events via POST /api/v1/events endpoint
+
+    logging:
+      level: info
+      format: json
+      output: stdout
+
+    diagnostics:
+      kubernetes:
+        enabled: true
+        # Event-driven mode handles Kubernetes resources via informers
+        # Traditional diagnostic checks are not used in event-driven agents
+
+    cache:
+      enabled: true
+      redis_url: redis://lumo-redis:6379/0
+
+    agent:
+      mode: event-driven
+      api_endpoint: http://lumo-api:8080
+      token: ""  # Set via LUMO_AGENT_TOKEN environment variable
+      tls_enabled: false
+      report_format: toon
+      offline_mode: true
+      health_check_port: 8080
+      metrics_port: 9090
+
+      kubernetes:
+        enabled: true
+        scope: cluster  # cluster-wide monitoring
+
+      event_driven:
+        enabled: true
+        debounce_window: 45s        # Wait for transient issues to resolve
+        resync_period: 0s            # Pure event-driven (no periodic resync)
+        group_related_events: true   # Batch related events for analysis
+        max_events_per_min: 100      # Rate limiting
+        min_severity: low            # Process all severity levels
+        watch_namespaces: []         # Empty = all namespaces
+
+        # Event type filters
+        watch_pod_events: true       # Pod failures (ImagePullBackOff, CrashLoopBackOff, OOMKilled)
+        watch_workloads: true        # Workload failures (Deployments, StatefulSets, DaemonSets, Jobs)
+        watch_volumes: true          # Volume issues (FailedMount, FailedBinding, PVC problems)
+        watch_nodes: true            # Node issues (NotReady, pressure events)
+        watch_events: true           # Kubernetes Event resource aggregation
