@@ -95,25 +95,94 @@ deploy_infrastructure() {
         return 0
     fi
 
-    log_info "Step 3/7: Deploying infrastructure (PostgreSQL)..."
+    log_info "Step 3/7: Deploying infrastructure (PostgreSQL + Redis)..."
     
     # Create namespace first
     kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+    
+    # ==================== PostgreSQL ====================
     
     # Check if PostgreSQL is already running and healthy
     local pg_status=$(kubectl get deployment/postgres -n "${NAMESPACE}" -o jsonpath='{.status.availableReplicas}' 2>/dev/null || echo "0")
     
     if [ "$pg_status" != "0" ]; then
         log_info "PostgreSQL deployment already exists, checking health..."
-        local pod_name=$(kubectl get pods -n "${NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+        local pg_pod=$(kubectl get pods -n "${NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
 
-        if [ -n "$pod_name" ]; then
+        if [ -n "$pg_pod" ]; then
             # Try connection with retries (up to 15s)
             local max_attempts=5
             local attempt=1
             while [ $attempt -le $max_attempts ]; do
-                if kubectl exec -n "${NAMESPACE}" "${pod_name}" -- psql -U lumo -d lumo -c "SELECT 1" >/dev/null 2>&1; then
+                if kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo -c "SELECT 1" >/dev/null 2>&1; then
                     log_success "✓ PostgreSQL already running and healthy, skipping deployment"
+                    break
+                fi
+                if [ $attempt -lt $max_attempts ]; then
+                    sleep 3
+                fi
+                attempt=$((attempt + 1))
+            done
+            
+            if [ $attempt -gt $max_attempts ]; then
+                log_info "Existing PostgreSQL not responding, will redeploy..."
+                pg_status="0"
+            fi
+        fi
+    fi
+    
+    # Deploy PostgreSQL if not healthy
+    if [ "$pg_status" = "0" ]; then
+        log_info "Deploying PostgreSQL..."
+        kubectl apply -f manifests/postgres.yaml
+        
+        # Wait for PostgreSQL to be ready
+        log_info "Waiting for PostgreSQL to be ready (timeout: 120s)..."
+        kubectl rollout status deployment/postgres -n "${NAMESPACE}" --timeout=120s
+        
+        # Verify PostgreSQL is accessible with retries
+        log_info "Verifying PostgreSQL connection (will retry up to 30s)..."
+        local pg_pod=$(kubectl get pods -n "${NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+        local max_attempts=10
+        local attempt=1
+
+        while [ $attempt -le $max_attempts ]; do
+            if kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo -c "SELECT 1" >/dev/null 2>&1; then
+                log_success "✓ PostgreSQL is ready and accepting connections (attempt ${attempt}/${max_attempts})"
+                break
+            fi
+
+            if [ $attempt -lt $max_attempts ]; then
+                log_info "PostgreSQL not ready yet, waiting 3s before retry (attempt ${attempt}/${max_attempts})..."
+                sleep 3
+            fi
+            attempt=$((attempt + 1))
+        done
+
+        if [ $attempt -gt $max_attempts ]; then
+            log_error "✗ PostgreSQL connection test failed after ${max_attempts} attempts"
+            log_info "PostgreSQL pod logs (last 20 lines):"
+            kubectl logs -n "${NAMESPACE}" "${pg_pod}" --tail=20
+            return 1
+        fi
+    fi
+    
+    # ==================== Redis ====================
+    
+    # Check if Redis is already running and healthy
+    local redis_status=$(kubectl get deployment/lumo-redis -n "${NAMESPACE}" -o jsonpath='{.status.availableReplicas}' 2>/dev/null || echo "0")
+    
+    if [ "$redis_status" != "0" ]; then
+        log_info "Redis deployment already exists, checking health..."
+        local redis_pod=$(kubectl get pods -n "${NAMESPACE}" -l app=lumo-redis -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+
+        if [ -n "$redis_pod" ]; then
+            # Try connection with retries (up to 15s)
+            local max_attempts=5
+            local attempt=1
+            while [ $attempt -le $max_attempts ]; do
+                if kubectl exec -n "${NAMESPACE}" "${redis_pod}" -- redis-cli ping >/dev/null 2>&1; then
+                    log_success "✓ Redis already running and healthy, skipping deployment"
                     return 0
                 fi
                 if [ $attempt -lt $max_attempts ]; then
@@ -121,40 +190,41 @@ deploy_infrastructure() {
                 fi
                 attempt=$((attempt + 1))
             done
-            log_info "Existing PostgreSQL not responding, will redeploy..."
+            
+            log_info "Existing Redis not responding, will redeploy..."
         fi
     fi
     
-    # Deploy PostgreSQL
-    log_info "Deploying PostgreSQL..."
-    kubectl apply -f manifests/postgres.yaml
+    # Deploy Redis
+    log_info "Deploying Redis..."
+    kubectl apply -f manifests/redis.yaml
     
-    # Wait for PostgreSQL to be ready
-    log_info "Waiting for PostgreSQL to be ready (timeout: 120s)..."
-    kubectl rollout status deployment/postgres -n "${NAMESPACE}" --timeout=120s
+    # Wait for Redis to be ready
+    log_info "Waiting for Redis to be ready (timeout: 60s)..."
+    kubectl rollout status deployment/lumo-redis -n "${NAMESPACE}" --timeout=60s
     
-    # Verify PostgreSQL is accessible with retries
-    log_info "Verifying PostgreSQL connection (will retry up to 30s)..."
-    local pod_name=$(kubectl get pods -n "${NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}')
-    local max_attempts=10
+    # Verify Redis is accessible with retries
+    log_info "Verifying Redis connection (will retry up to 20s)..."
+    local redis_pod=$(kubectl get pods -n "${NAMESPACE}" -l app=lumo-redis -o jsonpath='{.items[0].metadata.name}')
+    local max_attempts=7
     local attempt=1
 
     while [ $attempt -le $max_attempts ]; do
-        if kubectl exec -n "${NAMESPACE}" "${pod_name}" -- psql -U lumo -d lumo -c "SELECT 1" >/dev/null 2>&1; then
-            log_success "✓ PostgreSQL is ready and accepting connections (attempt ${attempt}/${max_attempts})"
+        if kubectl exec -n "${NAMESPACE}" "${redis_pod}" -- redis-cli ping >/dev/null 2>&1; then
+            log_success "✓ Redis is ready and accepting connections (attempt ${attempt}/${max_attempts})"
             return 0
         fi
 
         if [ $attempt -lt $max_attempts ]; then
-            log_info "PostgreSQL not ready yet, waiting 3s before retry (attempt ${attempt}/${max_attempts})..."
+            log_info "Redis not ready yet, waiting 3s before retry (attempt ${attempt}/${max_attempts})..."
             sleep 3
         fi
         attempt=$((attempt + 1))
     done
 
-    log_error "✗ PostgreSQL connection test failed after ${max_attempts} attempts"
-    log_info "PostgreSQL pod logs (last 20 lines):"
-    kubectl logs -n "${NAMESPACE}" "${pod_name}" --tail=20
+    log_error "✗ Redis connection test failed after ${max_attempts} attempts"
+    log_info "Redis pod logs (last 20 lines):"
+    kubectl logs -n "${NAMESPACE}" "${redis_pod}" --tail=20
     return 1
 }
 
