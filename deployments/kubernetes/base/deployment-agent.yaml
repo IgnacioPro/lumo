@@ -157,6 +157,10 @@ spec:
                   name: lumo-agent-config
                   key: cache.redis-url
 
+            # Agent cache path (writable emptyDir mount)
+            - name: LUMO_AGENT_CACHE_PATH
+              value: "/var/cache/lumo"
+
             # NOTE: AI and notification configuration removed
             # Events are submitted to API server for AI analysis and notifications
             # Configure AI/notifications in the API server deployment instead
