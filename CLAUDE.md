@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-23 | **Version:** 1.0.11 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Phase 15 In Progress 🔄 | **Full Stack K8s Deployment + Event-Driven Architecture** 🚀
+> **Last Updated:** 2025-11-24 | **Version:** 1.0.12 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Phase 15 In Progress 🔄 | Phase 16 Complete ✅ | **Full Stack K8s Deployment + Event-Driven Architecture + Code Review** 🚀
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -329,7 +329,7 @@ See [deployments/kubernetes/README.md](deployments/kubernetes/README.md), [deplo
 
 ## Event-Driven Architecture (K8s)
 
-**Status (Nov 23, 2025):** ✅ **Complete and Production-Ready** | 11 new files, ~3,500 LOC | All CI checks passed
+**Status (Nov 24, 2025):** ✅ **Complete and Production-Ready** | 11 new files, ~3,500 LOC | Code review improvements applied | All CI checks passed
 
 ### Overview
 
@@ -375,6 +375,11 @@ K8s Event → Informer → Watcher → Debouncer → Processor → AI Analysis �
 - 17 event types with severity classification
 - Event filtering by namespace, severity, labels
 - Event grouping by owner UID
+
+**Code Review Improvements (Nov 24, 2025):**
+- Fixed EventGrouper race condition with sync.RWMutex
+- Eliminated unsafe type assertions in all watchers (proper interface methods)
+- Added 5 Prometheus metrics: events_processed_total, event_processing_duration_seconds, ai_analysis_total, ai_analysis_duration_seconds, notifications_sent_total
 
 ### Event Types & Severity
 
@@ -507,11 +512,24 @@ See [EVENT_DRIVEN_IMPLEMENTATION.md](EVENT_DRIVEN_IMPLEMENTATION.md) for complet
 - ⏳ **Chaos Engineering:** Fault injection and resilience testing (pending)
 - **Overall Progress:** Internal package coverage 53.4%, all tests passing with clean linting
 
+### Completed (Phase 16)
+
+**Phase 16: Event-Driven K8s Monitoring** - COMPLETE ✅ (Nov 24, 2025)
+- Real-time event-driven Kubernetes monitoring via informers (replacing 5-min polling)
+- 11 new files (~3,500 LOC): Manager, 9 specialized watchers, Debouncer, Processor, Types
+- 17 event types with 4 severity levels (critical, high, medium, low)
+- 45-second intelligent debouncing with Redis state tracking
+- <60s detection latency vs 0-300s polling (150s avg)
+- 90%+ Kubernetes API load reduction
+- Code review: Race condition fix (sync.RWMutex), safe type assertions, 5 Prometheus metrics
+- Location: `internal/agent/eventdriven/` with full documentation in `EVENT_DRIVEN_IMPLEMENTATION.md`
+- All CI checks passed
+
 ### Future (Phases 13+)
 
 **Phase 13:** Advanced Production Features - Circuit breakers, operational runbooks
 **Phase 14:** Advanced Reporting - Multiple formats, historical data, trend analysis
-**Phase 16:** Advanced Features - Multi-cluster, anomaly detection, policy-as-code
+**Phase 17:** Advanced Features - Multi-cluster, anomaly detection, policy-as-code
 
 ---
 
