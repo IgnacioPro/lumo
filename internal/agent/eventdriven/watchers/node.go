@@ -238,7 +238,7 @@ func (w *NodeWatcher) checkNode(node *corev1.Node, oldNode *corev1.Node, handler
 
 	// Send events to handler
 	for _, event := range events {
-		handler.(*eventdriven.BaseHandler).HandleEvent(event)
+		handler.HandleEvent(event)
 	}
 }
 

@@ -6,11 +6,56 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ignacio/lumo/internal/ai"
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/notifications"
+)
+
+var (
+	eventsProcessedTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "lumo_events_processed_total",
+			Help: "Total number of Kubernetes events processed",
+		},
+		[]string{"event_type", "severity", "namespace"},
+	)
+
+	eventProcessingDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "lumo_event_processing_duration_seconds",
+			Help:    "Duration of event processing",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"event_type"},
+	)
+
+	aiAnalysisTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "lumo_ai_analysis_total",
+			Help: "Total number of AI analyses performed",
+		},
+		[]string{"status"}, // success, failure
+	)
+
+	aiAnalysisDuration = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "lumo_ai_analysis_duration_seconds",
+			Help:    "Duration of AI analysis",
+			Buckets: []float64{.1, .5, 1, 2, 5, 10, 30, 60},
+		},
+	)
+
+	notificationsSentTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "lumo_notifications_sent_total",
+			Help: "Total number of notifications sent",
+		},
+		[]string{"notifier_name", "status"}, // status: success, failure
+	)
 )
 
 // DefaultEventProcessor processes debounced events with AI analysis and notifications
@@ -50,6 +95,18 @@ func NewDefaultEventProcessor(cfg *ProcessorConfig, logger *logrus.Logger) (*Def
 
 // Process handles a debounced Kubernetes event
 func (p *DefaultEventProcessor) Process(event *KubernetesEvent) error {
+	// Record metrics
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start).Seconds()
+		eventProcessingDuration.WithLabelValues(string(event.Type)).Observe(duration)
+		eventsProcessedTotal.WithLabelValues(
+			string(event.Type),
+			string(event.Severity),
+			event.ResourceNamespace,
+		).Inc()
+	}()
+
 	p.logger.WithFields(logrus.Fields{
 		"event_type": event.Type,
 		"severity":   event.Severity,
@@ -71,8 +128,10 @@ func (p *DefaultEventProcessor) Process(event *KubernetesEvent) error {
 		if err != nil {
 			p.logger.WithError(err).Error("AI analysis failed")
 			analysis = fmt.Sprintf("AI analysis failed: %v", err)
+			aiAnalysisTotal.WithLabelValues("failure").Inc()
 		} else {
 			analysis = aiAnalysis
+			aiAnalysisTotal.WithLabelValues("success").Inc()
 		}
 	} else {
 		analysis = "AI analysis disabled"
@@ -162,6 +221,13 @@ func (p *DefaultEventProcessor) buildEventSummary(event *KubernetesEvent) string
 
 // analyzeWithAI performs AI analysis of the event
 func (p *DefaultEventProcessor) analyzeWithAI(event *KubernetesEvent, summary string) (string, error) {
+	// Record AI analysis metrics
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start).Seconds()
+		aiAnalysisDuration.Observe(duration)
+	}()
+
 	// Build prompt for AI
 	prompt := p.buildAIPrompt(event, summary)
 
@@ -259,8 +325,10 @@ func (p *DefaultEventProcessor) sendNotifications(event *KubernetesEvent, summar
 	for _, notifier := range p.notifiers {
 		if err := notifier.Send(ctx, notif); err != nil {
 			p.logger.WithError(err).WithField("notifier", notifier.Name()).Error("Failed to send notification")
+			notificationsSentTotal.WithLabelValues(notifier.Name(), "failure").Inc()
 			lastErr = err
 		} else {
+			notificationsSentTotal.WithLabelValues(notifier.Name(), "success").Inc()
 			successCount++
 		}
 	}
