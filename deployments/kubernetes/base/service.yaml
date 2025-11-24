@@ -1,47 +1,17 @@
 ---
-# Service for Lumo Agent Health Endpoints (DaemonSet)
-# Exposes health and metrics endpoints for node agents
+# Service for Lumo Agent Event-Driven Deployment
+# Exposes health and metrics endpoints for event-driven agents
 apiVersion: v1
 kind: Service
 metadata:
-  name: lumo-agent-node
+  name: lumo-agent
   namespace: lumo-system
   labels:
+    app: lumo-agent
     app.kubernetes.io/name: lumo-agent
-    app.kubernetes.io/component: node-monitor
+    app.kubernetes.io/component: event-driven
     app.kubernetes.io/part-of: lumo
-  annotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/port: "9090"
-    prometheus.io/path: "/metrics"
-spec:
-  type: ClusterIP
-  clusterIP: None  # Headless service for direct pod access
-  selector:
-    app.kubernetes.io/name: lumo-agent
-    app.kubernetes.io/component: node-monitor
-  ports:
-    - name: health
-      port: 8080
-      targetPort: 8080
-      protocol: TCP
-    - name: metrics
-      port: 9090
-      targetPort: 9090
-      protocol: TCP
-
----
-# Service for Lumo Agent Cluster Monitor
-# Exposes health and metrics endpoints for cluster monitoring
-apiVersion: v1
-kind: Service
-metadata:
-  name: lumo-agent-cluster
-  namespace: lumo-system
-  labels:
-    app.kubernetes.io/name: lumo-agent
-    app.kubernetes.io/component: cluster-monitor
-    app.kubernetes.io/part-of: lumo
+    mode: event-driven
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "9090"
@@ -49,8 +19,8 @@ metadata:
 spec:
   type: ClusterIP
   selector:
-    app.kubernetes.io/name: lumo-agent
-    app.kubernetes.io/component: cluster-monitor
+    app: lumo-agent
+    mode: event-driven
   ports:
     - name: health
       port: 8080
