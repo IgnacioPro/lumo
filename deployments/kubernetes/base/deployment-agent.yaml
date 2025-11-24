@@ -226,7 +226,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: lumo-agent-config-event-driven
+            name: lumo-agent-config
         - name: cache
           emptyDir:
             sizeLimit: 1Gi
