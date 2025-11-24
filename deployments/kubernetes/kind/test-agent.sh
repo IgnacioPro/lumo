@@ -106,10 +106,22 @@ deploy_infrastructure() {
     if [ "$pg_status" != "0" ]; then
         log_info "PostgreSQL deployment already exists, checking health..."
         local pod_name=$(kubectl get pods -n "${NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-        
-        if [ -n "$pod_name" ] && kubectl exec -n "${NAMESPACE}" "${pod_name}" -- psql -U lumo -d lumo -c "SELECT 1" >/dev/null 2>&1; then
-            log_success "✓ PostgreSQL already running and healthy, skipping deployment"
-            return 0
+
+        if [ -n "$pod_name" ]; then
+            # Try connection with retries (up to 15s)
+            local max_attempts=5
+            local attempt=1
+            while [ $attempt -le $max_attempts ]; do
+                if kubectl exec -n "${NAMESPACE}" "${pod_name}" -- psql -U lumo -d lumo -c "SELECT 1" >/dev/null 2>&1; then
+                    log_success "✓ PostgreSQL already running and healthy, skipping deployment"
+                    return 0
+                fi
+                if [ $attempt -lt $max_attempts ]; then
+                    sleep 3
+                fi
+                attempt=$((attempt + 1))
+            done
+            log_info "Existing PostgreSQL not responding, will redeploy..."
         fi
     fi
     
@@ -121,15 +133,29 @@ deploy_infrastructure() {
     log_info "Waiting for PostgreSQL to be ready (timeout: 120s)..."
     kubectl rollout status deployment/postgres -n "${NAMESPACE}" --timeout=120s
     
-    # Verify PostgreSQL is accessible
-    log_info "Verifying PostgreSQL connection..."
+    # Verify PostgreSQL is accessible with retries
+    log_info "Verifying PostgreSQL connection (will retry up to 30s)..."
     local pod_name=$(kubectl get pods -n "${NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}')
-    if kubectl exec -n "${NAMESPACE}" "${pod_name}" -- psql -U lumo -d lumo -c "SELECT 1" >/dev/null 2>&1; then
-        log_success "✓ PostgreSQL is ready and accepting connections"
-    else
-        log_error "✗ PostgreSQL connection test failed"
-        return 1
-    fi
+    local max_attempts=10
+    local attempt=1
+
+    while [ $attempt -le $max_attempts ]; do
+        if kubectl exec -n "${NAMESPACE}" "${pod_name}" -- psql -U lumo -d lumo -c "SELECT 1" >/dev/null 2>&1; then
+            log_success "✓ PostgreSQL is ready and accepting connections (attempt ${attempt}/${max_attempts})"
+            return 0
+        fi
+
+        if [ $attempt -lt $max_attempts ]; then
+            log_info "PostgreSQL not ready yet, waiting 3s before retry (attempt ${attempt}/${max_attempts})..."
+            sleep 3
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    log_error "✗ PostgreSQL connection test failed after ${max_attempts} attempts"
+    log_info "PostgreSQL pod logs (last 20 lines):"
+    kubectl logs -n "${NAMESPACE}" "${pod_name}" --tail=20
+    return 1
 }
 
 deploy_api_server() {
@@ -240,10 +266,26 @@ run_component_tests() {
     # Test 2: Check PostgreSQL
     log_info "Test 2: Checking PostgreSQL..."
     local pg_pod=$(kubectl get pods -n "${NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}')
-    if kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo -c "SELECT COUNT(*) FROM information_schema.tables" >/dev/null 2>&1; then
-        log_success "✓ PostgreSQL is accessible and functional"
-    else
-        log_error "✗ PostgreSQL connection failed"
+
+    # Retry connection check (up to 15s)
+    local max_attempts=5
+    local attempt=1
+    local connected=false
+
+    while [ $attempt -le $max_attempts ]; do
+        if kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo -c "SELECT COUNT(*) FROM information_schema.tables" >/dev/null 2>&1; then
+            log_success "✓ PostgreSQL is accessible and functional (attempt ${attempt}/${max_attempts})"
+            connected=true
+            break
+        fi
+        if [ $attempt -lt $max_attempts ]; then
+            sleep 3
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    if [ "$connected" = false ]; then
+        log_error "✗ PostgreSQL connection failed after ${max_attempts} attempts"
     fi
 
     # Test 3: Check API server health
