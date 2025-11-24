@@ -166,7 +166,7 @@ create_secret() {
 update_configmap() {
     print_header "Updating ConfigMap"
 
-    local configmap="$SCRIPT_DIR/base/configmap.yaml"
+    local configmap="$SCRIPT_DIR/base/configmap-agent.yaml"
     local temp_configmap=$(mktemp)
 
     # Update API endpoint in ConfigMap
@@ -240,26 +240,13 @@ deploy_components() {
         print_success "NetworkPolicy applied"
     fi
 
-    # Deploy DaemonSet
-    if [ "$DEPLOY_DAEMONSET" = true ]; then
-        if [ "$DRY_RUN" = true ]; then
-            print_info "Would apply DaemonSet (per-node monitoring)"
-            kubectl apply --dry-run=client -f "$base_dir/daemonset.yaml" --namespace="$NAMESPACE"
-        else
-            kubectl apply -f "$base_dir/daemonset.yaml" --namespace="$NAMESPACE"
-            print_success "DaemonSet applied (per-node monitoring)"
-        fi
-    fi
-
-    # Deploy Deployment
-    if [ "$DEPLOY_DEPLOYMENT" = true ]; then
-        if [ "$DRY_RUN" = true ]; then
-            print_info "Would apply Deployment (cluster-wide monitoring)"
-            kubectl apply --dry-run=client -f "$base_dir/deployment.yaml" --namespace="$NAMESPACE"
-        else
-            kubectl apply -f "$base_dir/deployment.yaml" --namespace="$NAMESPACE"
-            print_success "Deployment applied (cluster-wide monitoring)"
-        fi
+    # Deploy event-driven agent
+    if [ "$DRY_RUN" = true ]; then
+        print_info "Would apply event-driven agent deployment"
+        kubectl apply --dry-run=client -f "$base_dir/deployment-agent.yaml" --namespace="$NAMESPACE"
+    else
+        kubectl apply -f "$base_dir/deployment-agent.yaml" --namespace="$NAMESPACE"
+        print_success "Event-driven agent deployment applied"
     fi
 }
 
@@ -273,16 +260,9 @@ verify_deployment() {
 
     print_info "Waiting for pods to be ready (timeout: 60s)..."
 
-    # Wait for DaemonSet
-    if [ "$DEPLOY_DAEMONSET" = true ]; then
-        kubectl rollout status daemonset/lumo-agent-node --namespace="$NAMESPACE" --timeout=60s || \
-            print_warning "DaemonSet rollout did not complete within timeout"
-    fi
-
-    # Wait for Deployment
-    if [ "$DEPLOY_DEPLOYMENT" = true ]; then
-        kubectl rollout status deployment/lumo-agent-cluster --namespace="$NAMESPACE" --timeout=60s || \
-            print_warning "Deployment rollout did not complete within timeout"
+    # Wait for event-driven agent deployment
+    kubectl rollout status deployment/lumo-agent --namespace="$NAMESPACE" --timeout=60s || \
+        print_warning "Agent deployment rollout did not complete within timeout"
     fi
 
     echo ""
@@ -318,16 +298,16 @@ show_status() {
     echo "  # View logs (DaemonSet)"
     echo "  kubectl logs -n $NAMESPACE -l app.kubernetes.io/component=node-monitor --tail=50"
     echo ""
-    echo "  # View logs (Deployment)"
-    echo "  kubectl logs -n $NAMESPACE -l app.kubernetes.io/component=cluster-monitor --tail=50"
-    echo ""
-    echo "  # Access health endpoint"
-    echo "  kubectl port-forward -n $NAMESPACE service/lumo-agent-cluster 8080:8080"
-    echo "  curl http://localhost:8080/health"
-    echo ""
-    echo "  # Access metrics"
-    echo "  kubectl port-forward -n $NAMESPACE service/lumo-agent-cluster 9090:9090"
-    echo "  curl http://localhost:9090/metrics"
+  echo "  # View logs (Event-Driven Agent)"
+  echo "  kubectl logs -n $NAMESPACE -l mode=event-driven --tail=50"
+  echo ""
+  echo "  # Access health endpoint"
+  echo "  kubectl port-forward -n $NAMESPACE service/lumo-agent 8080:8080"
+  echo "  curl http://localhost:8080/health"
+  echo ""
+  echo "  # Access metrics"
+  echo "  kubectl port-forward -n $NAMESPACE service/lumo-agent 9090:9090"
+  echo "  curl http://localhost:9090/metrics"
     echo ""
 }
 
@@ -350,12 +330,11 @@ uninstall_lumo() {
     local base_dir="$SCRIPT_DIR/base"
 
     # Delete in reverse order
-    kubectl delete -f "$base_dir/deployment.yaml" --namespace="$NAMESPACE" --ignore-not-found=true
-    kubectl delete -f "$base_dir/daemonset.yaml" --namespace="$NAMESPACE" --ignore-not-found=true
+    kubectl delete -f "$base_dir/deployment-agent.yaml" --namespace="$NAMESPACE" --ignore-not-found=true
     kubectl delete -f "$base_dir/networkpolicy.yaml" --namespace="$NAMESPACE" --ignore-not-found=true
     kubectl delete -f "$base_dir/service.yaml" --namespace="$NAMESPACE" --ignore-not-found=true
     kubectl delete -f "$base_dir/rbac.yaml" --ignore-not-found=true
-    kubectl delete -f "$base_dir/configmap.yaml" --namespace="$NAMESPACE" --ignore-not-found=true
+    kubectl delete -f "$base_dir/configmap-agent.yaml" --namespace="$NAMESPACE" --ignore-not-found=true
     kubectl delete -f "$base_dir/secret.yaml" --namespace="$NAMESPACE" --ignore-not-found=true
 
     print_success "Lumo Agent uninstalled"
