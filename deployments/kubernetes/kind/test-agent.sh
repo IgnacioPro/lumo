@@ -266,8 +266,12 @@ deploy_agent() {
     local interval=5
 
     while [ $elapsed -lt $max_wait ]; do
-        local deploy_ready=$(kubectl get deployment -n "${NAMESPACE}" lumo-agent -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
-        local deploy_desired=$(kubectl get deployment -n "${NAMESPACE}" lumo-agent -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "0")
+        local deploy_ready=$(kubectl get deployment -n "${NAMESPACE}" lumo-agent -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
+        local deploy_desired=$(kubectl get deployment -n "${NAMESPACE}" lumo-agent -o jsonpath='{.spec.replicas}' 2>/dev/null)
+        
+        # Default to 0 if empty
+        deploy_ready=${deploy_ready:-0}
+        deploy_desired=${deploy_desired:-0}
 
         if [ "$deploy_ready" -eq "$deploy_desired" ] && [ "$deploy_ready" -gt "0" ]; then
             log_success "✓ Agent deployment ready: ${deploy_ready}/${deploy_desired} pods"
@@ -557,7 +561,8 @@ run_integration_tests() {
 
     # Test 3: Check for critical errors in any component
     log_info "Test 3: Checking for critical errors across all components..."
-    local error_count=$(kubectl logs -n "${NAMESPACE}" --all-containers --tail=200 2>/dev/null | grep -i "fatal\|panic" | wc -l || echo "0")
+    local error_count=$(kubectl logs -n "${NAMESPACE}" --all-containers --tail=200 2>/dev/null | grep -i "fatal\|panic" | wc -l | tr -d ' ')
+    error_count=${error_count:-0}
 
     if [ "$error_count" -eq 0 ]; then
         log_success "✓ No fatal errors found in any component"
