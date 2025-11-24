@@ -8,14 +8,16 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ignacio/lumo/internal/reliability"
 	"github.com/sirupsen/logrus"
 )
 
 // SlackNotifier sends notifications via Slack webhooks.
 type SlackNotifier struct {
-	config *NotifierConfig
-	log    *logrus.Logger
-	client *http.Client
+	config         *NotifierConfig
+	log            *logrus.Logger
+	client         *http.Client
+	circuitBreaker *reliability.CircuitBreaker
 }
 
 // slackMessage represents a Slack message payload.
@@ -59,6 +61,7 @@ func NewSlackNotifier(config *NotifierConfig, log *logrus.Logger) (*SlackNotifie
 		client: &http.Client{
 			Timeout: timeout,
 		},
+		circuitBreaker: reliability.NewCircuitBreaker(fmt.Sprintf("slack-%s", config.Name)),
 	}, nil
 }
 
@@ -69,6 +72,14 @@ func (s *SlackNotifier) Name() string {
 
 // Send sends a notification to Slack.
 func (s *SlackNotifier) Send(ctx context.Context, notification *Notification) error {
+	// Wrap execution in circuit breaker
+	_, err := s.circuitBreaker.Execute(func() (interface{}, error) {
+		return nil, s.sendInternal(ctx, notification)
+	})
+	return err
+}
+
+func (s *SlackNotifier) sendInternal(ctx context.Context, notification *Notification) error {
 	// Build Slack message
 	msg := s.buildMessage(notification)
 

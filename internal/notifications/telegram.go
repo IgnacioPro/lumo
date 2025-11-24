@@ -9,14 +9,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ignacio/lumo/internal/reliability"
 	"github.com/sirupsen/logrus"
 )
 
 // TelegramNotifier sends notifications via Telegram Bot API.
 type TelegramNotifier struct {
-	config *NotifierConfig
-	log    *logrus.Logger
-	client *http.Client
+	config         *NotifierConfig
+	log            *logrus.Logger
+	client         *http.Client
+	circuitBreaker *reliability.CircuitBreaker
 }
 
 // telegramMessage represents a Telegram message payload.
@@ -46,6 +48,7 @@ func NewTelegramNotifier(config *NotifierConfig, log *logrus.Logger) (*TelegramN
 		client: &http.Client{
 			Timeout: timeout,
 		},
+		circuitBreaker: reliability.NewCircuitBreaker(fmt.Sprintf("telegram-%s", config.Name)),
 	}, nil
 }
 
@@ -56,6 +59,14 @@ func (t *TelegramNotifier) Name() string {
 
 // Send sends a notification to Telegram.
 func (t *TelegramNotifier) Send(ctx context.Context, notification *Notification) error {
+	// Wrap execution in circuit breaker
+	_, err := t.circuitBreaker.Execute(func() (interface{}, error) {
+		return nil, t.sendInternal(ctx, notification)
+	})
+	return err
+}
+
+func (t *TelegramNotifier) sendInternal(ctx context.Context, notification *Notification) error {
 	// Build Telegram message
 	msg := t.buildMessage(notification)
 

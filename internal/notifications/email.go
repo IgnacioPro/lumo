@@ -9,13 +9,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ignacio/lumo/internal/reliability"
 	"github.com/sirupsen/logrus"
 )
 
 // EmailNotifier sends notifications via SMTP email.
 type EmailNotifier struct {
-	config *NotifierConfig
-	log    *logrus.Logger
+	config         *NotifierConfig
+	log            *logrus.Logger
+	circuitBreaker *reliability.CircuitBreaker
 }
 
 // NewEmailNotifier creates a new email notifier.
@@ -34,8 +36,9 @@ func NewEmailNotifier(config *NotifierConfig, log *logrus.Logger) (*EmailNotifie
 	}
 
 	return &EmailNotifier{
-		config: config,
-		log:    log,
+		config:         config,
+		log:            log,
+		circuitBreaker: reliability.NewCircuitBreaker(fmt.Sprintf("email-%s", config.Name)),
 	}, nil
 }
 
@@ -46,6 +49,14 @@ func (e *EmailNotifier) Name() string {
 
 // Send sends a notification via email.
 func (e *EmailNotifier) Send(ctx context.Context, notification *Notification) error {
+	// Wrap execution in circuit breaker
+	_, err := e.circuitBreaker.Execute(func() (interface{}, error) {
+		return nil, e.sendInternal(ctx, notification)
+	})
+	return err
+}
+
+func (e *EmailNotifier) sendInternal(ctx context.Context, notification *Notification) error {
 	// Build email message
 	msg := e.buildMessage(notification)
 

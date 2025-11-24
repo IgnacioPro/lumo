@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-24 | **Version:** 1.0.0 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Phase 15 In Progress 🔄 | Phase 16 Complete ✅ | **Full Stack K8s Deployment + Event-Driven Architecture + Code Review** 🚀
+> **Last Updated:** 2025-11-24 | **Version:** 1.0.0 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Phase 13 Complete ✅ | Phase 15 In Progress 🔄 | Phase 16 Complete ✅ | **Full Stack K8s + Event-Driven + Circuit Breakers** 🚀
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -544,9 +544,27 @@ See [EVENT_DRIVEN_IMPLEMENTATION.md](EVENT_DRIVEN_IMPLEMENTATION.md) for complet
 - Location: `internal/agent/eventdriven/` with full documentation in `EVENT_DRIVEN_IMPLEMENTATION.md`
 - All CI checks passed
 
-### Future (Phases 13+)
+### Completed (Phase 13)
 
-**Phase 13:** Advanced Production Features - Circuit breakers, operational runbooks
+**Phase 13: Circuit Breaker Integration** - COMPLETE ✅ (Nov 24, 2025)
+- Circuit breakers integrated into all external service calls for resilience
+- **AI Providers** (`internal/ai/base_provider.go`): Analyze(), Health(), Ask() methods protected
+- **Notification Providers** (`internal/notifications/`): All Send() methods wrapped
+  - Slack, Telegram, Webhook, Email notifiers with individual circuit breakers
+- **gRPC Client** (`internal/grpc/client/client.go`): Key RPC methods protected
+  - RunDiagnostics(), GetDiagnosticsResult(), RegisterAgent(), SendHeartbeat()
+- **Circuit Breaker Configuration** (`internal/reliability/circuit_breaker.go`):
+  - 3 requests minimum before evaluation
+  - 60% failure ratio triggers open state
+  - 30-second timeout before half-open state
+  - 3 max requests during half-open state
+- **Test Coverage**: 100% for circuit breaker package (6 test cases)
+- Location: `internal/reliability/circuit_breaker.go`, circuit_breaker_test.go
+- Benefits: Prevents cascading failures, fast-fail behavior, automatic recovery
+
+### Future (Phases 14+)
+
+**Phase 11c:** Messaging Integration - Pub/sub framework (NATS, Kafka, RabbitMQ, Redis Streams)
 **Phase 14:** Advanced Reporting - Multiple formats, historical data, trend analysis
 **Phase 17:** Advanced Features - Multi-cluster, anomaly detection, policy-as-code
 
