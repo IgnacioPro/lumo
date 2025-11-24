@@ -11,20 +11,20 @@ type EventType string
 
 const (
 	// Pod-related events
-	EventTypePodFailure          EventType = "pod-failure"
-	EventTypeImagePullBackOff    EventType = "image-pull-backoff"
-	EventTypeCrashLoopBackOff    EventType = "crash-loop-backoff"
-	EventTypeOOMKilled           EventType = "oom-killed"
-	EventTypePodEvicted          EventType = "pod-evicted"
-	EventTypePodPending          EventType = "pod-pending"
-	EventTypeContainerCreating   EventType = "container-creating"
+	EventTypePodFailure        EventType = "pod-failure"
+	EventTypeImagePullBackOff  EventType = "image-pull-backoff"
+	EventTypeCrashLoopBackOff  EventType = "crash-loop-backoff"
+	EventTypeOOMKilled         EventType = "oom-killed"
+	EventTypePodEvicted        EventType = "pod-evicted"
+	EventTypePodPending        EventType = "pod-pending"
+	EventTypeContainerCreating EventType = "container-creating"
 
 	// Workload events
-	EventTypeDeploymentFailed    EventType = "deployment-failed"
-	EventTypeStatefulSetFailed   EventType = "statefulset-failed"
-	EventTypeDaemonSetFailed     EventType = "daemonset-failed"
-	EventTypeJobFailed           EventType = "job-failed"
-	EventTypeReplicaSetFailed    EventType = "replicaset-failed"
+	EventTypeDeploymentFailed  EventType = "deployment-failed"
+	EventTypeStatefulSetFailed EventType = "statefulset-failed"
+	EventTypeDaemonSetFailed   EventType = "daemonset-failed"
+	EventTypeJobFailed         EventType = "job-failed"
+	EventTypeReplicaSetFailed  EventType = "replicaset-failed"
 
 	// Volume events
 	EventTypeVolumeFailedMount   EventType = "volume-failed-mount"
@@ -32,20 +32,20 @@ const (
 	EventTypePVCProvisionFailed  EventType = "pvc-provision-failed"
 
 	// Node events
-	EventTypeNodeNotReady        EventType = "node-not-ready"
-	EventTypeNodeMemoryPressure  EventType = "node-memory-pressure"
-	EventTypeNodeDiskPressure    EventType = "node-disk-pressure"
-	EventTypeNodePIDPressure     EventType = "node-pid-pressure"
-	EventTypeNodeNetworkUnavail  EventType = "node-network-unavailable"
+	EventTypeNodeNotReady       EventType = "node-not-ready"
+	EventTypeNodeMemoryPressure EventType = "node-memory-pressure"
+	EventTypeNodeDiskPressure   EventType = "node-disk-pressure"
+	EventTypeNodePIDPressure    EventType = "node-pid-pressure"
+	EventTypeNodeNetworkUnavail EventType = "node-network-unavailable"
 
 	// Scheduling events
-	EventTypeSchedulingFailed    EventType = "scheduling-failed"
-	EventTypeInsufficientMemory  EventType = "insufficient-memory"
-	EventTypeInsufficientCPU     EventType = "insufficient-cpu"
+	EventTypeSchedulingFailed   EventType = "scheduling-failed"
+	EventTypeInsufficientMemory EventType = "insufficient-memory"
+	EventTypeInsufficientCPU    EventType = "insufficient-cpu"
 
 	// Generic events
-	EventTypeWarning             EventType = "warning"
-	EventTypeError               EventType = "error"
+	EventTypeWarning EventType = "warning"
+	EventTypeError   EventType = "error"
 )
 
 // Severity represents the severity level of an event
@@ -168,14 +168,14 @@ func ClassifyEventSeverity(eventType EventType) Severity {
 
 // ResourceEventInfo extracts common event information from a Kubernetes object
 type ResourceEventInfo struct {
-	Kind       string
-	Name       string
-	Namespace  string
-	UID        string
-	Labels     map[string]string
+	Kind        string
+	Name        string
+	Namespace   string
+	UID         string
+	Labels      map[string]string
 	Annotations map[string]string
-	OwnerRefs  []metav1.OwnerReference
-	CreatedAt  time.Time
+	OwnerRefs   []metav1.OwnerReference
+	CreatedAt   time.Time
 }
 
 // GetOwnerInfo extracts owner information from OwnerReferences

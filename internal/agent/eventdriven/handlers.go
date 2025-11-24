@@ -8,11 +8,11 @@ import (
 
 // BaseHandler provides common functionality for event handlers
 type BaseHandler struct {
-	debouncer     *Debouncer
-	filter        *EventFilter
-	logger        *logrus.Entry
-	processor     EventProcessor
-	grouper       *EventGrouper
+	debouncer       *Debouncer
+	filter          *EventFilter
+	logger          *logrus.Entry
+	processor       EventProcessor
+	grouper         *EventGrouper
 	groupingEnabled bool
 }
 
@@ -80,9 +80,9 @@ func (h *BaseHandler) onDebounced(event *KubernetesEvent) {
 		if len(relatedEvents) > 0 {
 			event.RelatedEvents = relatedEvents
 			h.logger.WithFields(logrus.Fields{
-				"event_type":     event.Type,
-				"resource":       event.ResourceKind + "/" + event.ResourceName,
-				"related_count":  len(relatedEvents),
+				"event_type":    event.Type,
+				"resource":      event.ResourceKind + "/" + event.ResourceName,
+				"related_count": len(relatedEvents),
 			}).Info("Grouped related events")
 		}
 	}

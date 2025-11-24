@@ -87,7 +87,7 @@ func (w *DeploymentWatcher) checkDeployment(deployment *appsv1.Deployment, oldDe
 	}
 
 	// Check for replica mismatch (unavailable replicas)
-	if deployment.Status.UnavailableReplicas > 0 {
+	if deployment.Spec.Replicas != nil && deployment.Status.UnavailableReplicas > 0 {
 		// Only alert if this is new or has changed
 		if oldDeployment == nil || oldDeployment.Status.UnavailableReplicas != deployment.Status.UnavailableReplicas {
 			event := &eventdriven.KubernetesEvent{
@@ -171,7 +171,7 @@ func (w *StatefulSetWatcher) checkStatefulSet(sts *appsv1.StatefulSet, oldSts *a
 	events := make([]*eventdriven.KubernetesEvent, 0)
 
 	// Check if not all replicas are ready
-	if sts.Status.ReadyReplicas < *sts.Spec.Replicas {
+	if sts.Spec.Replicas != nil && sts.Status.ReadyReplicas < *sts.Spec.Replicas {
 		// Only alert if this is new or has gotten worse
 		shouldAlert := oldSts == nil || oldSts.Status.ReadyReplicas != sts.Status.ReadyReplicas
 
@@ -201,7 +201,7 @@ func (w *StatefulSetWatcher) checkStatefulSet(sts *appsv1.StatefulSet, oldSts *a
 	}
 
 	// Check for update failures
-	if sts.Status.CurrentRevision != sts.Status.UpdateRevision && sts.Status.UpdatedReplicas < *sts.Spec.Replicas {
+	if sts.Spec.Replicas != nil && sts.Status.CurrentRevision != sts.Status.UpdateRevision && sts.Status.UpdatedReplicas < *sts.Spec.Replicas {
 		event := &eventdriven.KubernetesEvent{
 			ID:                fmt.Sprintf("%s-update-stuck", string(sts.UID)),
 			Type:              eventdriven.EventTypeStatefulSetFailed,

@@ -60,6 +60,7 @@ var (
 
 // DefaultEventProcessor processes debounced events with AI analysis and notifications
 type DefaultEventProcessor struct {
+	ctx          context.Context
 	logger       *logrus.Entry
 	aiProvider   ai.Provider
 	notifiers    []notifications.Notifier
@@ -70,6 +71,7 @@ type DefaultEventProcessor struct {
 
 // ProcessorConfig holds configuration for the event processor
 type ProcessorConfig struct {
+	Context     context.Context
 	Config      *config.Config
 	AIProvider  ai.Provider
 	Notifiers   []notifications.Notifier
@@ -82,8 +84,12 @@ func NewDefaultEventProcessor(cfg *ProcessorConfig, logger *logrus.Logger) (*Def
 	if cfg == nil {
 		return nil, fmt.Errorf("processor config cannot be nil")
 	}
+	if cfg.Context == nil {
+		return nil, fmt.Errorf("context cannot be nil")
+	}
 
 	return &DefaultEventProcessor{
+		ctx:          cfg.Context,
 		logger:       logger.WithField("component", "event-processor"),
 		aiProvider:   cfg.AIProvider,
 		notifiers:    cfg.Notifiers,
@@ -232,7 +238,8 @@ func (p *DefaultEventProcessor) analyzeWithAI(event *KubernetesEvent, summary st
 	prompt := p.buildAIPrompt(event, summary)
 
 	// Call AI provider using Ask method (simpler than full Analyze for event analysis)
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	// Use processor context with timeout to respect parent context cancellation
+	ctx, cancel := context.WithTimeout(p.ctx, 60*time.Second)
 	defer cancel()
 
 	response, _, err := p.aiProvider.Ask(ctx, "You are a Kubernetes SRE expert analyzing cluster events.", prompt)
@@ -338,9 +345,9 @@ func (p *DefaultEventProcessor) sendNotifications(event *KubernetesEvent, summar
 	}
 
 	p.logger.WithFields(logrus.Fields{
-		"event_type":     event.Type,
-		"severity":       event.Severity,
-		"notifiers_sent": successCount,
+		"event_type":      event.Type,
+		"severity":        event.Severity,
+		"notifiers_sent":  successCount,
 		"notifiers_total": len(p.notifiers),
 	}).Info("Notifications sent")
 
