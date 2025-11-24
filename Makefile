@@ -19,7 +19,7 @@ COLOR_GREEN=\033[32m
 COLOR_YELLOW=\033[33m
 COLOR_BLUE=\033[34m
 
-.PHONY: help build run clean test test-verbose test-ci test-ssh fmt fmt-check vet lint install coverage coverage-report coverage-html deps check ci ci-lint ci-test ci-build all diagnose-local diagnose-local-json version proto proto-gen proto-clean proto-fmt proto-lint
+.PHONY: help build run clean test test-verbose test-ci test-ssh fmt fmt-check vet lint install coverage coverage-report coverage-html deps check ci ci-lint ci-test ci-build all diagnose-local diagnose-local-json version proto proto-gen proto-clean proto-fmt proto-lint docker-build-cli docker-build-agent docker-build docker-push-cli docker-push-agent docker-push
 
 # Default target
 .DEFAULT_GOAL := help
@@ -228,3 +228,47 @@ proto-lint:
 		echo "$(COLOR_YELLOW)⚠ buf not installed. Skipping proto lint...$(COLOR_RESET)"; \
 		echo "Install with: brew install buf or go install github.com/bufbuild/buf/cmd/buf@latest"; \
 	fi
+
+# Docker build targets
+
+# Docker image name and tag configuration
+DOCKER_REGISTRY?=
+DOCKER_IMAGE_CLI?=lumo
+DOCKER_IMAGE_AGENT?=lumo-agent
+DOCKER_TAG?=$(VERSION)
+
+## docker-build-cli: Build Docker image for lumo CLI
+docker-build-cli:
+	@echo "$(COLOR_BLUE)Building Docker image for lumo CLI...$(COLOR_RESET)"
+	@docker build -t $(DOCKER_REGISTRY)$(DOCKER_IMAGE_CLI):$(DOCKER_TAG) -f Dockerfile .
+	@docker tag $(DOCKER_REGISTRY)$(DOCKER_IMAGE_CLI):$(DOCKER_TAG) $(DOCKER_REGISTRY)$(DOCKER_IMAGE_CLI):latest
+	@echo "$(COLOR_GREEN)✓ Built $(DOCKER_REGISTRY)$(DOCKER_IMAGE_CLI):$(DOCKER_TAG)$(COLOR_RESET)"
+
+## docker-build-agent: Build Docker image for lumo-agent
+docker-build-agent:
+	@echo "$(COLOR_BLUE)Building Docker image for lumo-agent...$(COLOR_RESET)"
+	@docker build -t $(DOCKER_REGISTRY)$(DOCKER_IMAGE_AGENT):$(DOCKER_TAG) -f Dockerfile.agent .
+	@docker tag $(DOCKER_REGISTRY)$(DOCKER_IMAGE_AGENT):$(DOCKER_TAG) $(DOCKER_REGISTRY)$(DOCKER_IMAGE_AGENT):latest
+	@echo "$(COLOR_GREEN)✓ Built $(DOCKER_REGISTRY)$(DOCKER_IMAGE_AGENT):$(DOCKER_TAG)$(COLOR_RESET)"
+
+## docker-build: Build both CLI and agent Docker images
+docker-build: docker-build-cli docker-build-agent
+	@echo "$(COLOR_GREEN)✓ All Docker images built$(COLOR_RESET)"
+
+## docker-push-cli: Push lumo CLI Docker image to registry
+docker-push-cli:
+	@echo "$(COLOR_BLUE)Pushing Docker image for lumo CLI...$(COLOR_RESET)"
+	@docker push $(DOCKER_REGISTRY)$(DOCKER_IMAGE_CLI):$(DOCKER_TAG)
+	@docker push $(DOCKER_REGISTRY)$(DOCKER_IMAGE_CLI):latest
+	@echo "$(COLOR_GREEN)✓ Pushed $(DOCKER_REGISTRY)$(DOCKER_IMAGE_CLI):$(DOCKER_TAG)$(COLOR_RESET)"
+
+## docker-push-agent: Push lumo-agent Docker image to registry
+docker-push-agent:
+	@echo "$(COLOR_BLUE)Pushing Docker image for lumo-agent...$(COLOR_RESET)"
+	@docker push $(DOCKER_REGISTRY)$(DOCKER_IMAGE_AGENT):$(DOCKER_TAG)
+	@docker push $(DOCKER_REGISTRY)$(DOCKER_IMAGE_AGENT):latest
+	@echo "$(COLOR_GREEN)✓ Pushed $(DOCKER_REGISTRY)$(DOCKER_IMAGE_AGENT):$(DOCKER_TAG)$(COLOR_RESET)"
+
+## docker-push: Push both CLI and agent Docker images to registry
+docker-push: docker-push-cli docker-push-agent
+	@echo "$(COLOR_GREEN)✓ All Docker images pushed$(COLOR_RESET)"

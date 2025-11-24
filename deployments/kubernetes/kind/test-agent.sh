@@ -197,26 +197,43 @@ deploy_api_server() {
     log_info "Waiting for API server to be ready (timeout: 120s)..."
     kubectl rollout status deployment/lumo-api -n "${NAMESPACE}" --timeout=120s
     
-    # Verify API server health
-    log_info "Verifying API server health..."
+    # Verify API server health with retries
+    log_info "Verifying API server health (will retry up to 30s)..."
     local pod_name=$(kubectl get pods -n "${NAMESPACE}" -l app=lumo-api -o jsonpath='{.items[0].metadata.name}')
-    
+
     # Port-forward in background for health check
     kubectl port-forward -n "${NAMESPACE}" "pod/${pod_name}" 8081:8080 >/dev/null 2>&1 &
     local pf_pid=$!
     sleep 3
-    
-    if curl -s http://localhost:8081/api/v1/health >/dev/null 2>&1; then
-        log_success "✓ API server is healthy and responding"
-    else
-        log_error "✗ API server health check failed"
-        kill $pf_pid 2>/dev/null || true
-        return 1
-    fi
-    
+
+    local max_attempts=10
+    local attempt=1
+    local health_ok=false
+
+    while [ $attempt -le $max_attempts ]; do
+        if curl -s http://localhost:8081/api/v1/health >/dev/null 2>&1; then
+            log_success "✓ API server is healthy and responding (attempt ${attempt}/${max_attempts})"
+            health_ok=true
+            break
+        fi
+
+        if [ $attempt -lt $max_attempts ]; then
+            log_info "API server not ready yet, waiting 3s before retry (attempt ${attempt}/${max_attempts})..."
+            sleep 3
+        fi
+        attempt=$((attempt + 1))
+    done
+
     # Kill port-forward
     kill $pf_pid 2>/dev/null || true
     wait $pf_pid 2>/dev/null || true
+
+    if [ "$health_ok" = false ]; then
+        log_error "✗ API server health check failed after ${max_attempts} attempts"
+        log_info "API server logs (last 20 lines):"
+        kubectl logs -n "${NAMESPACE}" "${pod_name}" --tail=20
+        return 1
+    fi
 }
 
 deploy_agent() {
@@ -226,31 +243,91 @@ deploy_agent() {
     fi
 
     log_info "Step 5/7: Deploying agents (DaemonSet + Deployment)..."
-    
+
     # Check if agents are already deployed and running
-    local ds_ready=$(kubectl get daemonset -n "${NAMESPACE}" lumo-agent-node -o jsonpath='{.status.numberReady}' 2>/dev/null || echo "0")
-    local node_count=$(kubectl get nodes -o json | jq -r '.items | length')
-    local deploy_ready=$(kubectl get deployment -n "${NAMESPACE}" lumo-agent-cluster -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
-    
-    if [ "$ds_ready" -eq "$node_count" ] && [ "$ds_ready" -gt "0" ] && [ "$deploy_ready" -gt "0" ]; then
-        log_success "✓ Agents already deployed and running (DaemonSet: ${ds_ready}/${node_count}, Deployment: ${deploy_ready} ready), skipping deployment"
+    local deploy_ready=$(kubectl get deployment -n "${NAMESPACE}" lumo-agent -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+
+    if [ "$deploy_ready" -gt "0" ]; then
+        log_success "✓ Agent already deployed and running (${deploy_ready} replicas ready), skipping deployment"
         return 0
     fi
-    
+
     # Set API endpoint to point to our in-cluster API server
     export LUMO_API_ENDPOINT="http://lumo-api.${NAMESPACE}.svc.cluster.local:8080"
     export SKIP_CLUSTER_SETUP=true
     export SKIP_BUILD=true
-    
+
     ./deploy-to-kind.sh
+
+    # Wait for event-driven agent deployment to be ready
+    log_info "Waiting for agent deployment to be ready (timeout: 120s)..."
+    local max_wait=120
+    local elapsed=0
+    local interval=5
+
+    while [ $elapsed -lt $max_wait ]; do
+        local deploy_ready=$(kubectl get deployment -n "${NAMESPACE}" lumo-agent -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+        local deploy_desired=$(kubectl get deployment -n "${NAMESPACE}" lumo-agent -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "0")
+
+        if [ "$deploy_ready" -eq "$deploy_desired" ] && [ "$deploy_ready" -gt "0" ]; then
+            log_success "✓ Agent deployment ready: ${deploy_ready}/${deploy_desired} pods"
+            break
+        fi
+
+        log_info "DaemonSet not ready yet: ${ds_ready}/${ds_desired} pods ready (${elapsed}s/${max_wait}s)"
+        sleep $interval
+        elapsed=$((elapsed + interval))
+    done
+
+    if [ $elapsed -ge $max_wait ]; then
+        log_error "✗ Agent deployment did not become ready within ${max_wait}s"
+        kubectl get deployment -n "${NAMESPACE}" lumo-agent -o wide
+        return 1
+    fi
+
+    # Give agents a moment to fully initialize
+    log_info "Waiting for agents to initialize (5s)..."
+    sleep 5
 }
 
 run_component_tests() {
     log_info "Step 6/7: Running component tests..."
     echo ""
 
+    # Wait for all pods to be stable
+    log_info "Waiting for all pods to stabilize (max 60s)..."
+    local max_wait=60
+    local elapsed=0
+    local interval=5
+    local all_running=false
+
+    while [ $elapsed -lt $max_wait ]; do
+        local running_pods=$(kubectl get pods -n "${NAMESPACE}" -o json | jq -r '.items[] | select(.status.phase=="Running") | .metadata.name' | wc -l)
+        local total_pods=$(kubectl get pods -n "${NAMESPACE}" -o json | jq -r '.items | length')
+
+        if [ "$running_pods" -eq "$total_pods" ] && [ "$running_pods" -gt 0 ]; then
+            log_success "✓ All pods stabilized (${running_pods}/${total_pods}) after ${elapsed}s"
+            all_running=true
+            break
+        fi
+
+        log_info "Pods not all running yet: ${running_pods}/${total_pods} (${elapsed}s/${max_wait}s)"
+        sleep $interval
+        elapsed=$((elapsed + interval))
+    done
+
+    if [ "$all_running" = false ]; then
+        log_error "✗ Not all pods running after ${max_wait}s"
+        kubectl get pods -n "${NAMESPACE}"
+        return 1
+    fi
+
+    # Give pods a moment to fully initialize
+    log_info "Waiting for pod initialization (5s)..."
+    sleep 5
+
     # Test 1: Check if all pods are running
-    log_info "Test 1: Checking pod status..."
+    log_info "Test 1: Verifying final pod status..."
     local running_pods=$(kubectl get pods -n "${NAMESPACE}" -o json | jq -r '.items[] | select(.status.phase=="Running") | .metadata.name' | wc -l)
     local total_pods=$(kubectl get pods -n "${NAMESPACE}" -o json | jq -r '.items | length')
 
@@ -314,18 +391,47 @@ run_component_tests() {
     if [ -n "$agent_pod" ]; then
         kubectl port-forward -n "${NAMESPACE}" pod/"${agent_pod}" 8082:8080 >/dev/null 2>&1 &
         local pf_pid=$!
-        sleep 2
+        sleep 3
 
-        if curl -s http://localhost:8082/health >/dev/null 2>&1; then
-            log_success "✓ Agent health endpoint responding"
-        else
-            log_error "✗ Agent health endpoint not responding"
+        # Check health endpoint with retries
+        local max_attempts=5
+        local attempt=1
+        local health_ok=false
+
+        while [ $attempt -le $max_attempts ]; do
+            if curl -s http://localhost:8082/health >/dev/null 2>&1; then
+                log_success "✓ Agent health endpoint responding (attempt ${attempt}/${max_attempts})"
+                health_ok=true
+                break
+            fi
+            if [ $attempt -lt $max_attempts ]; then
+                sleep 2
+            fi
+            attempt=$((attempt + 1))
+        done
+
+        if [ "$health_ok" = false ]; then
+            log_error "✗ Agent health endpoint not responding after ${max_attempts} attempts"
         fi
 
-        if curl -s http://localhost:8082/ready >/dev/null 2>&1; then
-            log_success "✓ Agent ready endpoint responding"
-        else
-            log_error "✗ Agent ready endpoint not responding"
+        # Check ready endpoint with retries
+        attempt=1
+        local ready_ok=false
+
+        while [ $attempt -le $max_attempts ]; do
+            if curl -s http://localhost:8082/ready >/dev/null 2>&1; then
+                log_success "✓ Agent ready endpoint responding (attempt ${attempt}/${max_attempts})"
+                ready_ok=true
+                break
+            fi
+            if [ $attempt -lt $max_attempts ]; then
+                sleep 2
+            fi
+            attempt=$((attempt + 1))
+        done
+
+        if [ "$ready_ok" = false ]; then
+            log_error "✗ Agent ready endpoint not responding after ${max_attempts} attempts"
         fi
 
         kill $pf_pid 2>/dev/null || true
@@ -339,12 +445,27 @@ run_component_tests() {
     if [ -n "$agent_pod" ]; then
         kubectl port-forward -n "${NAMESPACE}" pod/"${agent_pod}" 9090:9090 >/dev/null 2>&1 &
         local pf_pid=$!
-        sleep 2
+        sleep 3
 
-        if curl -s http://localhost:9090/metrics | grep -q "lumo_agent"; then
-            log_success "✓ Metrics endpoint responding with lumo_agent metrics"
-        else
-            log_error "✗ Metrics endpoint not responding correctly"
+        # Check metrics endpoint with retries
+        local max_attempts=5
+        local attempt=1
+        local metrics_ok=false
+
+        while [ $attempt -le $max_attempts ]; do
+            if curl -s http://localhost:9090/metrics | grep -q "lumo_agent"; then
+                log_success "✓ Metrics endpoint responding with lumo_agent metrics (attempt ${attempt}/${max_attempts})"
+                metrics_ok=true
+                break
+            fi
+            if [ $attempt -lt $max_attempts ]; then
+                sleep 2
+            fi
+            attempt=$((attempt + 1))
+        done
+
+        if [ "$metrics_ok" = false ]; then
+            log_error "✗ Metrics endpoint not responding correctly after ${max_attempts} attempts"
         fi
 
         kill $pf_pid 2>/dev/null || true
@@ -359,15 +480,15 @@ run_component_tests() {
         log_error "✗ ServiceAccount missing required permissions"
     fi
 
-    # Test 7: Check DaemonSet scheduling
-    log_info "Test 7: Checking DaemonSet scheduling..."
-    local node_count=$(kubectl get nodes -o json | jq -r '.items | length')
-    local ds_scheduled=$(kubectl get daemonset -n "${NAMESPACE}" lumo-agent-node -o json | jq -r '.status.numberReady // 0')
+    # Test 7: Check agent deployment replicas
+    log_info "Test 7: Checking agent deployment replicas..."
+    local deploy_ready=$(kubectl get deployment -n "${NAMESPACE}" lumo-agent -o json | jq -r '.status.readyReplicas // 0')
+    local deploy_desired=$(kubectl get deployment -n "${NAMESPACE}" lumo-agent -o json | jq -r '.spec.replicas // 0')
 
-    if [ "$ds_scheduled" -eq "$node_count" ]; then
-        log_success "✓ DaemonSet scheduled on all nodes (${ds_scheduled}/${node_count})"
+    if [ "$deploy_ready" -eq "$deploy_desired" ] && [ "$deploy_ready" -gt "0" ]; then
+        log_success "✓ Agent deployment has all replicas ready (${deploy_ready}/${deploy_desired})"
     else
-        log_error "✗ DaemonSet not fully scheduled (${ds_scheduled}/${node_count})"
+        log_error "✗ Agent deployment replicas not ready (${deploy_ready}/${deploy_desired})"
     fi
 }
 
@@ -376,32 +497,62 @@ run_integration_tests() {
     echo ""
 
     # Test 1: Check agent registration with API
-    log_info "Test 1: Checking agent registration..."
-    
-    # Give agents time to register
-    sleep 5
-    
+    log_info "Test 1: Checking agent registration (will retry up to 30s)..."
+
     local api_pod=$(kubectl get pods -n "${NAMESPACE}" -l app=lumo-api -o jsonpath='{.items[0].metadata.name}')
-    
-    # Check API logs for agent registration
-    if kubectl logs -n "${NAMESPACE}" "${api_pod}" --tail=100 | grep -iq "agent.*register"; then
-        log_success "✓ Agent registration activity found in API logs"
-    else
-        log_error "✗ No agent registration found in API logs"
-        log_info "API server logs (last 20 lines):"
-        kubectl logs -n "${NAMESPACE}" "${api_pod}" --tail=20
+
+    # Wait for agent registration with retries
+    local max_attempts=10
+    local attempt=1
+    local registration_found=false
+
+    while [ $attempt -le $max_attempts ]; do
+        # Check API logs for agent registration
+        if kubectl logs -n "${NAMESPACE}" "${api_pod}" --tail=100 | grep -iq "agent.*register"; then
+            log_success "✓ Agent registration activity found in API logs (attempt ${attempt}/${max_attempts})"
+            registration_found=true
+            break
+        fi
+
+        if [ $attempt -lt $max_attempts ]; then
+            log_info "No agent registration yet, waiting 3s before retry (attempt ${attempt}/${max_attempts})..."
+            sleep 3
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    if [ "$registration_found" = false ]; then
+        log_error "✗ No agent registration found in API logs after ${max_attempts} attempts"
+        log_info "API server logs (last 30 lines):"
+        kubectl logs -n "${NAMESPACE}" "${api_pod}" --tail=30
     fi
 
     # Test 2: Check agent is attempting to communicate with API
-    log_info "Test 2: Checking agent → API communication..."
+    log_info "Test 2: Checking agent → API communication (will retry up to 20s)..."
     local agent_pod=$(kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/component=cluster-monitor -o jsonpath='{.items[0].metadata.name}')
-    
-    if kubectl logs -n "${NAMESPACE}" "${agent_pod}" --tail=50 | grep -iq "api\|register\|heartbeat"; then
-        log_success "✓ Agent is attempting API communication"
-    else
-        log_error "✗ No API communication attempts in agent logs"
-        log_info "Agent logs (last 20 lines):"
-        kubectl logs -n "${NAMESPACE}" "${agent_pod}" --tail=20
+
+    max_attempts=7
+    attempt=1
+    local comm_found=false
+
+    while [ $attempt -le $max_attempts ]; do
+        if kubectl logs -n "${NAMESPACE}" "${agent_pod}" --tail=50 | grep -iq "api\|register\|heartbeat"; then
+            log_success "✓ Agent is attempting API communication (attempt ${attempt}/${max_attempts})"
+            comm_found=true
+            break
+        fi
+
+        if [ $attempt -lt $max_attempts ]; then
+            log_info "No API communication yet, waiting 3s before retry (attempt ${attempt}/${max_attempts})..."
+            sleep 3
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    if [ "$comm_found" = false ]; then
+        log_error "✗ No API communication attempts in agent logs after ${max_attempts} attempts"
+        log_info "Agent logs (last 30 lines):"
+        kubectl logs -n "${NAMESPACE}" "${agent_pod}" --tail=30
     fi
 
     # Test 3: Check for critical errors in any component

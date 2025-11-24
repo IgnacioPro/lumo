@@ -124,8 +124,7 @@ print_next_steps() {
     echo "     ${BLUE}./deploy-to-kind.sh${NC}"
     echo ""
     echo "  2. Or update existing deployment:"
-    echo "     ${BLUE}kubectl rollout restart daemonset/lumo-agent-node -n lumo-system${NC}"
-    echo "     ${BLUE}kubectl rollout restart deployment/lumo-agent-cluster -n lumo-system${NC}"
+    echo "     ${BLUE}kubectl rollout restart deployment/lumo-agent -n lumo-system${NC}"
     echo ""
 }
 

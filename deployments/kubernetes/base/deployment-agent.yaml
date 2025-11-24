@@ -153,30 +153,9 @@ spec:
                   name: lumo-agent-config-event-driven
                   key: cache.redis-url
 
-            # AI provider configuration
-            - name: LUMO_AI_ENABLED
-              valueFrom:
-                configMapKeyRef:
-                  name: lumo-agent-config-event-driven
-                  key: ai.enabled
-            - name: LUMO_AI_PROVIDER
-              valueFrom:
-                configMapKeyRef:
-                  name: lumo-agent-config-event-driven
-                  key: ai.provider
-            # API keys via secrets
-            - name: LUMO_ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: lumo-ai-secrets
-                  key: anthropic-api-key
-                  optional: true
-            - name: LUMO_OPENAI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: lumo-ai-secrets
-                  key: openai-api-key
-                  optional: true
+            # NOTE: AI and notification configuration removed
+            # Events are submitted to API server for AI analysis and notifications
+            # Configure AI/notifications in the API server deployment instead
 
             # Logging
             - name: LUMO_LOGGING_LEVEL

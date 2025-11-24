@@ -22,8 +22,6 @@ import (
 
 	"github.com/ignacio/lumo/internal/agent/eventdriven"
 	"github.com/ignacio/lumo/internal/agent/eventdriven/watchers"
-	"github.com/ignacio/lumo/internal/ai"
-	"github.com/ignacio/lumo/internal/notifications"
 )
 
 // Agent represents the Lumo agent daemon
@@ -376,80 +374,10 @@ func (a *Agent) setupEventDrivenMode(ctx context.Context) error {
 	}
 	a.redisClient = redisClient // Store for cleanup in Stop()
 
-	// Step 3: Create AI provider (if enabled)
-	var aiProvider ai.Provider
-	if a.cfg.AI.Enabled {
-		a.logger.WithField("provider", a.cfg.AI.Provider).Info("Initializing AI provider")
+	// Note: AI analysis and notifications now handled by API server
+	a.logger.Info("Events will be submitted to API server for centralized AI analysis and notifications")
 
-		// Parse provider type
-		providerType, err := ai.ParseProviderType(a.cfg.AI.Provider)
-		if err != nil {
-			a.logger.WithError(err).Warn("Invalid AI provider type, continuing without AI")
-			aiProvider = nil
-		} else {
-			// Create provider config
-			providerConfig := &ai.ProviderConfig{
-				Name:        a.cfg.AI.Provider,
-				APIKey:      a.cfg.AI.APIKey,
-				Model:       a.cfg.AI.Model,
-				Endpoint:    a.cfg.AI.Endpoint,
-				Timeout:     a.cfg.AI.Timeout,
-				MaxRetries:  a.cfg.AI.MaxRetries,
-				Temperature: a.cfg.AI.Temperature,
-			}
-
-			aiProvider, err = ai.NewProvider(providerType, providerConfig, a.logger)
-			if err != nil {
-				a.logger.WithError(err).Warn("Failed to initialize AI provider, continuing without AI")
-				aiProvider = nil
-			}
-		}
-	} else {
-		a.logger.Info("AI analysis disabled")
-	}
-
-	// Step 4: Create notifiers (if enabled)
-	var notifiers []notifications.Notifier
-	if a.cfg.Notifications.Enabled && len(a.cfg.Notifications.Notifiers) > 0 {
-		a.logger.WithField("notifier_count", len(a.cfg.Notifications.Notifiers)).Info("Initializing notifiers")
-		for _, notifCfg := range a.cfg.Notifications.Notifiers {
-			if !notifCfg.Enabled {
-				continue
-			}
-
-			// Convert config.NotifierConfig to notifications.NotifierConfig
-			nc := &notifications.NotifierConfig{
-				Name:         notifCfg.Name,
-				Type:         notifications.NotifierType(notifCfg.Type),
-				Enabled:      notifCfg.Enabled,
-				WebhookURL:   notifCfg.WebhookURL,
-				BotToken:     notifCfg.BotToken,
-				ChatID:       notifCfg.ChatID,
-				Headers:      notifCfg.Headers,
-				Method:       notifCfg.Method,
-				SMTPHost:     notifCfg.SMTPHost,
-				SMTPPort:     notifCfg.SMTPPort,
-				SMTPUsername: notifCfg.SMTPUser,
-				SMTPPassword: notifCfg.SMTPPass,
-				From:         notifCfg.From,
-				To:           notifCfg.To,
-				UseTLS:       notifCfg.UseTLS,
-				Timeout:      notifCfg.Timeout,
-			}
-
-			notifier, err := notifications.NewNotifier(nc, a.logger)
-			if err != nil {
-				a.logger.WithError(err).WithField("notifier", notifCfg.Name).Warn("Failed to create notifier")
-				continue
-			}
-			notifiers = append(notifiers, notifier)
-		}
-		a.logger.WithField("active_notifiers", len(notifiers)).Info("Notifiers initialized")
-	} else {
-		a.logger.Info("Notifications disabled")
-	}
-
-	// Step 5: Create debouncer
+	// Step 3: Create debouncer
 	a.logger.WithField("debounce_window", a.cfg.Agent.EventDriven.DebounceWindow).Info("Creating event debouncer")
 	debouncer, err := eventdriven.NewDebouncer(ctx, &eventdriven.DebouncerConfig{
 		DebounceWindow: a.cfg.Agent.EventDriven.DebounceWindow,
@@ -459,23 +387,23 @@ func (a *Agent) setupEventDrivenMode(ctx context.Context) error {
 		return fmt.Errorf("failed to create debouncer: %w", err)
 	}
 
-	// Step 6: Create event grouper
+	// Step 4: Create event grouper
 	grouper := eventdriven.NewEventGrouper(a.logger)
 
-	// Step 7: Create event processor
-	processor, err := eventdriven.NewDefaultEventProcessor(&eventdriven.ProcessorConfig{
+	// Step 5: Create event processor (now submits to API instead of analyzing locally)
+	processor, err := eventdriven.NewAPIEventProcessor(&eventdriven.APIProcessorConfig{
 		Context:     ctx,
 		Config:      a.cfg,
-		AIProvider:  aiProvider,
-		Notifiers:   notifiers,
-		EnableAI:    a.cfg.AI.Enabled && aiProvider != nil,
-		EnableNotif: a.cfg.Notifications.Enabled && len(notifiers) > 0,
+		AgentID:     a.ID,
+		APIEndpoint: a.cfg.Agent.APIEndpoint,
+		APIToken:    a.cfg.Agent.Token,
+		RedisClient: redisClient,
 	}, a.logger)
 	if err != nil {
 		return fmt.Errorf("failed to create event processor: %w", err)
 	}
 
-	// Step 8: Create event filter
+	// Step 6: Create event filter
 	minSeverity := eventdriven.SeverityLow
 	switch a.cfg.Agent.EventDriven.MinSeverity {
 	case "medium":
@@ -597,9 +525,8 @@ func (a *Agent) setupEventDrivenMode(ctx context.Context) error {
 		"resync_period":   a.cfg.Agent.EventDriven.ResyncPeriod,
 		"group_events":    a.cfg.Agent.EventDriven.GroupRelatedEvents,
 		"min_severity":    a.cfg.Agent.EventDriven.MinSeverity,
-		"ai_enabled":      a.cfg.AI.Enabled && aiProvider != nil,
-		"notifiers":       len(notifiers),
-	}).Info("Starting event-driven manager")
+		"api_endpoint":    a.cfg.Agent.APIEndpoint,
+	}).Info("Starting event-driven manager - events will be submitted to API for AI analysis and notifications")
 
 	if err := manager.Start(); err != nil {
 		return fmt.Errorf("failed to start event-driven manager: %w", err)
