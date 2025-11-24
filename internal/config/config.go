@@ -209,11 +209,11 @@ type EventDrivenConfig struct {
 	WatchNamespaces    []string      `mapstructure:"watch_namespaces"`     // Namespaces to watch (empty = all)
 
 	// Event type filters (empty = watch all)
-	WatchPodEvents      bool `mapstructure:"watch_pod_events"`       // Watch pod failures (ImagePullBackOff, CrashLoopBackOff, OOMKilled)
-	WatchWorkloads      bool `mapstructure:"watch_workloads"`        // Watch workload failures (Deployments, StatefulSets, DaemonSets, Jobs)
-	WatchVolumes        bool `mapstructure:"watch_volumes"`          // Watch volume issues (FailedMount, FailedBinding)
-	WatchNodes          bool `mapstructure:"watch_nodes"`            // Watch node issues (NotReady, pressure events)
-	WatchEvents         bool `mapstructure:"watch_events"`           // Watch Kubernetes Event resources
+	WatchPodEvents bool `mapstructure:"watch_pod_events"` // Watch pod failures (ImagePullBackOff, CrashLoopBackOff, OOMKilled)
+	WatchWorkloads bool `mapstructure:"watch_workloads"`  // Watch workload failures (Deployments, StatefulSets, DaemonSets, Jobs)
+	WatchVolumes   bool `mapstructure:"watch_volumes"`    // Watch volume issues (FailedMount, FailedBinding)
+	WatchNodes     bool `mapstructure:"watch_nodes"`      // Watch node issues (NotReady, pressure events)
+	WatchEvents    bool `mapstructure:"watch_events"`     // Watch Kubernetes Event resources
 }
 
 // NotificationsConfig contains notification system settings
@@ -393,18 +393,18 @@ func DefaultConfig() *Config {
 				PodName:   "",
 			},
 			EventDriven: EventDrivenConfig{
-				Enabled:            false,              // Disabled by default (use scheduled mode)
-				DebounceWindow:     45 * time.Second,   // 45 second debounce window
-				ResyncPeriod:       0,                  // No resync - pure event-driven
-				GroupRelatedEvents: true,               // Group related events for batch analysis
-				MaxEventsPerMinute: 100,                // Process up to 100 events per minute
-				MinSeverity:        "low",              // Process all severity levels
-				WatchNamespaces:    []string{},         // Watch all namespaces
-				WatchPodEvents:     true,               // Watch pod failures
-				WatchWorkloads:     true,               // Watch workload failures
-				WatchVolumes:       true,               // Watch volume issues
-				WatchNodes:         true,               // Watch node issues
-				WatchEvents:        true,               // Watch Kubernetes Event resources
+				Enabled:            false,            // Disabled by default (use scheduled mode)
+				DebounceWindow:     45 * time.Second, // 45 second debounce window
+				ResyncPeriod:       0,                // No resync - pure event-driven
+				GroupRelatedEvents: true,             // Group related events for batch analysis
+				MaxEventsPerMinute: 100,              // Process up to 100 events per minute
+				MinSeverity:        "low",            // Process all severity levels
+				WatchNamespaces:    []string{},       // Watch all namespaces
+				WatchPodEvents:     true,             // Watch pod failures
+				WatchWorkloads:     true,             // Watch workload failures
+				WatchVolumes:       true,             // Watch volume issues
+				WatchNodes:         true,             // Watch node issues
+				WatchEvents:        true,             // Watch Kubernetes Event resources
 			},
 		},
 		Notifications: NotificationsConfig{
@@ -665,13 +665,14 @@ func (c *Config) Validate() error {
 	// Agent validation
 	if c.Agent.Mode != "" {
 		validModes := map[string]bool{
-			"scheduled":  true,
-			"on-demand":  true,
-			"continuous": true,
-			"hybrid":     true,
+			"scheduled":    true,
+			"on-demand":    true,
+			"continuous":   true,
+			"hybrid":       true,
+			"event-driven": true,
 		}
 		if !validModes[c.Agent.Mode] {
-			return fmt.Errorf("invalid agent mode: %s (must be scheduled, on-demand, continuous, or hybrid)", c.Agent.Mode)
+			return fmt.Errorf("invalid agent mode: %s (must be scheduled, on-demand, continuous, hybrid, or event-driven)", c.Agent.Mode)
 		}
 	}
 
