@@ -466,6 +466,10 @@ func Load() (*Config, error) {
 
 	// Kubernetes agent metadata binding (for K8s deployments)
 	// These map to POD_NAME, NODE_NAME, POD_NAMESPACE env vars set by K8s
+	_ = viper.BindEnv("agent.kubernetes.enabled", "LUMO_AGENT_KUBERNETES_ENABLED")
+	viper.SetDefault("agent.kubernetes.enabled", false)
+	_ = viper.BindEnv("agent.kubernetes.scope", "LUMO_AGENT_KUBERNETES_SCOPE")
+	viper.SetDefault("agent.kubernetes.scope", "node")
 	viper.SetDefault("agent.kubernetes.cluster", "")
 	viper.SetDefault("agent.kubernetes.namespace", "")
 	viper.SetDefault("agent.kubernetes.node_name", "")
