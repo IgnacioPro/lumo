@@ -30,17 +30,20 @@ type DebouncerConfig struct {
 
 const (
 	// Redis key prefixes
-	redisEventPrefix      = "lumo:event-driven:event:"
-	redisSeenPrefix       = "lumo:event-driven:seen:"
-	redisTimestampPrefix  = "lumo:event-driven:timestamp:"
-	redisCountPrefix      = "lumo:event-driven:count:"
+	redisEventPrefix     = "lumo:event-driven:event:"
+	redisSeenPrefix      = "lumo:event-driven:seen:"
+	redisTimestampPrefix = "lumo:event-driven:timestamp:"
+	redisCountPrefix     = "lumo:event-driven:count:"
 
 	// TTL for Redis keys
 	eventStateTTL = 24 * time.Hour
 )
 
 // NewDebouncer creates a new event debouncer
-func NewDebouncer(config *DebouncerConfig, logger *logrus.Logger) (*Debouncer, error) {
+func NewDebouncer(ctx context.Context, config *DebouncerConfig, logger *logrus.Logger) (*Debouncer, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("context cannot be nil")
+	}
 	if config == nil {
 		return nil, fmt.Errorf("debouncer config cannot be nil")
 	}
@@ -57,7 +60,7 @@ func NewDebouncer(config *DebouncerConfig, logger *logrus.Logger) (*Debouncer, e
 		debounceWindow: config.DebounceWindow,
 		timers:         make(map[string]*time.Timer),
 		callbacks:      make(map[string]func(*KubernetesEvent)),
-		ctx:            context.Background(),
+		ctx:            ctx,
 	}, nil
 }
 
@@ -122,13 +125,13 @@ func (d *Debouncer) Debounce(event *KubernetesEvent, callback func(*KubernetesEv
 	d.callbacks[eventKey] = callback
 
 	d.logger.WithFields(logrus.Fields{
-		"event_key":      eventKey,
-		"event_type":     event.Type,
-		"resource":       event.ResourceKind + "/" + event.ResourceName,
-		"namespace":      event.ResourceNamespace,
+		"event_key":       eventKey,
+		"event_type":      event.Type,
+		"resource":        event.ResourceKind + "/" + event.ResourceName,
+		"namespace":       event.ResourceNamespace,
 		"debounce_window": d.debounceWindow,
-		"seen_before":    seen,
-		"count":          count,
+		"seen_before":     seen,
+		"count":           count,
 	}).Debug("Event debounce timer started")
 
 	return nil
@@ -155,14 +158,14 @@ func (d *Debouncer) processDebounced(eventKey string, callback func(*KubernetesE
 	}
 
 	d.logger.WithFields(logrus.Fields{
-		"event_key":   eventKey,
-		"event_type":  event.Type,
-		"severity":    event.Severity,
-		"resource":    event.ResourceKind + "/" + event.ResourceName,
-		"namespace":   event.ResourceNamespace,
-		"count":       event.Count,
-		"first_seen":  event.FirstSeen,
-		"last_seen":   event.LastSeen,
+		"event_key":  eventKey,
+		"event_type": event.Type,
+		"severity":   event.Severity,
+		"resource":   event.ResourceKind + "/" + event.ResourceName,
+		"namespace":  event.ResourceNamespace,
+		"count":      event.Count,
+		"first_seen": event.FirstSeen,
+		"last_seen":  event.LastSeen,
 	}).Info("Debounce window expired, processing event")
 
 	// Mark as seen to prevent duplicate processing

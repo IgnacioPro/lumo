@@ -173,10 +173,10 @@ func (m *Manager) Start() error {
 	}
 
 	m.logger.WithFields(logrus.Fields{
-		"watchers":       len(m.watchers),
-		"resync_period":  m.config.ResyncPeriod,
-		"debounce":       m.config.DebounceWindow,
-		"group_events":   m.config.GroupRelatedEvents,
+		"watchers":      len(m.watchers),
+		"resync_period": m.config.ResyncPeriod,
+		"debounce":      m.config.DebounceWindow,
+		"group_events":  m.config.GroupRelatedEvents,
 	}).Info("Event-driven manager started successfully")
 
 	return nil

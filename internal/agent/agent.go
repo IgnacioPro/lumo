@@ -33,14 +33,15 @@ type Agent struct {
 	Mode      string
 	StartTime time.Time
 
-	cfg              *config.Config
-	logger           *logrus.Logger
-	reporter         *Reporter
-	cache            *Cache
-	scheduler        *Scheduler
-	healthCheck      *HealthCheck
-	metrics          *Metrics
-	eventDrivenMgr   *eventdriven.Manager // Kubernetes event-driven manager
+	cfg            *config.Config
+	logger         *logrus.Logger
+	reporter       *Reporter
+	cache          *Cache
+	scheduler      *Scheduler
+	healthCheck    *HealthCheck
+	metrics        *Metrics
+	eventDrivenMgr *eventdriven.Manager // Kubernetes event-driven manager
+	redisClient    *redis.Client        // Redis client for event-driven mode
 
 	stopCh chan struct{}
 }
@@ -148,6 +149,14 @@ func (a *Agent) Stop() error {
 		a.logger.Info("Stopping event-driven manager")
 		if err := a.eventDrivenMgr.Stop(); err != nil {
 			a.logger.WithError(err).Warn("Failed to stop event-driven manager")
+		}
+	}
+
+	// Close Redis client if it was created for event-driven mode
+	if a.redisClient != nil {
+		a.logger.Info("Closing Redis client")
+		if err := a.redisClient.Close(); err != nil {
+			a.logger.WithError(err).Warn("Failed to close Redis client")
 		}
 	}
 
@@ -365,6 +374,7 @@ func (a *Agent) setupEventDrivenMode(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create Redis client: %w", err)
 	}
+	a.redisClient = redisClient // Store for cleanup in Stop()
 
 	// Step 3: Create AI provider (if enabled)
 	var aiProvider ai.Provider
@@ -441,7 +451,7 @@ func (a *Agent) setupEventDrivenMode(ctx context.Context) error {
 
 	// Step 5: Create debouncer
 	a.logger.WithField("debounce_window", a.cfg.Agent.EventDriven.DebounceWindow).Info("Creating event debouncer")
-	debouncer, err := eventdriven.NewDebouncer(&eventdriven.DebouncerConfig{
+	debouncer, err := eventdriven.NewDebouncer(ctx, &eventdriven.DebouncerConfig{
 		DebounceWindow: a.cfg.Agent.EventDriven.DebounceWindow,
 		RedisClient:    redisClient,
 	}, a.logger)
@@ -454,6 +464,7 @@ func (a *Agent) setupEventDrivenMode(ctx context.Context) error {
 
 	// Step 7: Create event processor
 	processor, err := eventdriven.NewDefaultEventProcessor(&eventdriven.ProcessorConfig{
+		Context:     ctx,
 		Config:      a.cfg,
 		AIProvider:  aiProvider,
 		Notifiers:   notifiers,
@@ -581,13 +592,13 @@ func (a *Agent) setupEventDrivenMode(ctx context.Context) error {
 
 	// Step 12: Start the event-driven manager
 	a.logger.WithFields(logrus.Fields{
-		"watchers":         watcherCount,
-		"debounce_window":  a.cfg.Agent.EventDriven.DebounceWindow,
-		"resync_period":    a.cfg.Agent.EventDriven.ResyncPeriod,
-		"group_events":     a.cfg.Agent.EventDriven.GroupRelatedEvents,
-		"min_severity":     a.cfg.Agent.EventDriven.MinSeverity,
-		"ai_enabled":       a.cfg.AI.Enabled && aiProvider != nil,
-		"notifiers":        len(notifiers),
+		"watchers":        watcherCount,
+		"debounce_window": a.cfg.Agent.EventDriven.DebounceWindow,
+		"resync_period":   a.cfg.Agent.EventDriven.ResyncPeriod,
+		"group_events":    a.cfg.Agent.EventDriven.GroupRelatedEvents,
+		"min_severity":    a.cfg.Agent.EventDriven.MinSeverity,
+		"ai_enabled":      a.cfg.AI.Enabled && aiProvider != nil,
+		"notifiers":       len(notifiers),
 	}).Info("Starting event-driven manager")
 
 	if err := manager.Start(); err != nil {
