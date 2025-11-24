@@ -270,12 +270,51 @@ kubectl delete namespace lumo-system
 
 ---
 
+## Failure Scenario Testing
+
+### Test All Scenarios
+```bash
+./test-failure-scenarios.sh
+# Tests: ImagePullBackOff, CrashLoopBackOff, OOMKilled,
+#        Deployment Failed, Job Failed, PVC Failed, Scheduling Failed
+```
+
+### List Available Scenarios
+```bash
+./test-failure-scenarios.sh --list
+```
+
+### Test Specific Scenario
+```bash
+./test-failure-scenarios.sh --scenario image-pull-backoff
+./test-failure-scenarios.sh --scenario crash-loop-backoff
+./test-failure-scenarios.sh --scenario oom-killed
+./test-failure-scenarios.sh --scenario deployment-failed
+./test-failure-scenarios.sh --scenario job-failed
+./test-failure-scenarios.sh --scenario pvc-provision-failed
+./test-failure-scenarios.sh --scenario scheduling-failed
+```
+
+### View Events
+```bash
+# Recent events
+kubectl exec -n lumo-system $(kubectl get pods -n lumo-system -l app=postgres -o jsonpath='{.items[0].metadata.name}') -- \
+  psql -U lumo -d lumo -c "SELECT event_type, severity, resource_name, created_at FROM events ORDER BY created_at DESC LIMIT 10;"
+
+# Count by type
+kubectl exec -n lumo-system $(kubectl get pods -n lumo-system -l app=postgres -o jsonpath='{.items[0].metadata.name}') -- \
+  psql -U lumo -d lumo -c "SELECT event_type, COUNT(*) FROM events GROUP BY event_type ORDER BY COUNT(*) DESC;"
+```
+
+---
+
 ## Next Steps
 
 1. **Read**: [FULL_STACK_DEPLOYMENT.md](FULL_STACK_DEPLOYMENT.md)
 2. **Deploy**: `./test-agent.sh`
-3. **Explore**: Access services and view logs
-4. **Develop**: Make changes and iterate
+3. **Test Failures**: `./test-failure-scenarios.sh`
+4. **Explore**: Access services and view logs
+5. **Develop**: Make changes and iterate
 
 ---
 
