@@ -54,12 +54,12 @@ func NewEventsHandler(
 // SubmitEvents handles POST /api/v1/events
 // This is the main endpoint for agents to submit Kubernetes events
 func (h *EventsHandler) SubmitEvents(w http.ResponseWriter, r *http.Request) {
-	// Get agent ID from context (set by auth middleware)
+	// Get agent ID from context (optional - may be Nil for API key auth)
 	agentID, err := h.getAgentIDFromContext(r.Context())
 	if err != nil {
-		h.logger.WithError(err).Warn("Missing or invalid agent ID in context")
-		response.Unauthorized(w, "Agent authentication required")
-		return
+		// Agent ID is optional - use Nil UUID for events submitted via API key
+		h.logger.Debug("No agent ID in context, using API key authentication")
+		agentID = uuid.Nil
 	}
 
 	// Parse request
@@ -81,10 +81,13 @@ func (h *EventsHandler) SubmitEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.logger.WithFields(logrus.Fields{
-		"agent_id":    agentID,
+	logFields := logrus.Fields{
 		"event_count": len(req.Events),
-	}).Info("Received event submission request")
+	}
+	if agentID != uuid.Nil {
+		logFields["agent_id"] = agentID
+	}
+	h.logger.WithFields(logFields).Info("Received event submission request")
 
 	// Convert submissions to events
 	events := make([]*models.Event, 0, len(req.Events))

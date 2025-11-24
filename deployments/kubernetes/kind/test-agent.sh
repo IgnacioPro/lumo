@@ -228,6 +228,97 @@ deploy_infrastructure() {
     return 1
 }
 
+bootstrap_api_key() {
+    log_info "Step 3.5/7: Bootstrapping API key and system agent..."
+    
+    # Token that agents will use (matches deploy-to-kind.sh)
+    local AGENT_TOKEN="test-token-for-kind"
+    
+    # Hash the token using SHA-256 (matches internal/database/models/api_key.go)
+    local KEY_HASH=$(echo -n "$AGENT_TOKEN" | sha256sum | awk '{print $1}')
+    
+    log_info "Creating API key with hash: ${KEY_HASH:0:16}..."
+    
+    # Get PostgreSQL pod name
+    local pg_pod=$(kubectl get pods -n "${NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+    
+    # Check if API key already exists
+    local existing_key=$(kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+        psql -U lumo -d lumo -t -c "SELECT COUNT(*) FROM api_keys WHERE key_hash = '$KEY_HASH';" 2>/dev/null | tr -d ' ')
+    
+    if [ "$existing_key" -gt 0 ]; then
+        log_success "✓ API key already exists in database, skipping creation"
+    else
+        # Create API key in database with full agent permissions
+        # Scopes: agents:read, agents:write, events:write, jobs:read, diagnostics:write
+        kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo <<-EOF
+            INSERT INTO api_keys (
+                id,
+                key_hash,
+                name,
+                scopes,
+                created_at,
+                revoked
+            ) VALUES (
+                gen_random_uuid(),
+                '$KEY_HASH',
+                'kind-test-agent-key',
+                ARRAY['agents:read', 'agents:write', 'events:write', 'jobs:read', 'diagnostics:write'],
+                NOW(),
+                false
+            );
+EOF
+        
+        if [ $? -eq 0 ]; then
+            log_success "✓ API key created successfully"
+        else
+            log_error "✗ Failed to create API key"
+            return 1
+        fi
+    fi
+    
+    # Create system agent for API key authenticated events
+    log_info "Creating system agent for API key authentication..."
+    kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo <<-EOF
+        INSERT INTO agents (
+            id,
+            name,
+            hostname,
+            ip_address,
+            platform,
+            architecture,
+            version,
+            status,
+            capabilities,
+            labels,
+            registered_at,
+            last_heartbeat_at
+        ) VALUES (
+            '00000000-0000-0000-0000-000000000000',
+            'system-api-key',
+            'api-server',
+            '0.0.0.0',
+            'kubernetes',
+            'any',
+            'n/a',
+            'online',
+            ARRAY[]::text[],
+            '{"type": "system", "auth": "api-key"}'::jsonb,
+            NOW(),
+            NOW()
+        ) ON CONFLICT (id) DO UPDATE SET
+            last_heartbeat_at = NOW(),
+            status = 'online';
+EOF
+    
+    if [ $? -eq 0 ]; then
+        log_success "✓ System agent created successfully"
+    else
+        log_error "✗ Failed to create system agent"
+        return 1
+    fi
+}
+
 deploy_api_server() {
     if [ "$SKIP_API" = "true" ]; then
         log_info "Skipping API server deployment (SKIP_API=true)"
@@ -777,6 +868,9 @@ main() {
     echo ""
 
     deploy_infrastructure
+    echo ""
+
+    bootstrap_api_key
     echo ""
 
     deploy_api_server
