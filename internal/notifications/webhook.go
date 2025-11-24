@@ -9,14 +9,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ignacio/lumo/internal/reliability"
 	"github.com/sirupsen/logrus"
 )
 
 // WebhookNotifier sends notifications via generic webhooks (Discord, Teams, Mattermost, etc.).
 type WebhookNotifier struct {
-	config *NotifierConfig
-	log    *logrus.Logger
-	client *http.Client
+	config         *NotifierConfig
+	log            *logrus.Logger
+	client         *http.Client
+	circuitBreaker *reliability.CircuitBreaker
 }
 
 // webhookMessage represents a generic webhook message payload.
@@ -84,6 +86,7 @@ func NewWebhookNotifier(config *NotifierConfig, log *logrus.Logger) (*WebhookNot
 		client: &http.Client{
 			Timeout: timeout,
 		},
+		circuitBreaker: reliability.NewCircuitBreaker(fmt.Sprintf("webhook-%s", config.Name)),
 	}, nil
 }
 
@@ -94,6 +97,14 @@ func (w *WebhookNotifier) Name() string {
 
 // Send sends a notification to the webhook.
 func (w *WebhookNotifier) Send(ctx context.Context, notification *Notification) error {
+	// Wrap execution in circuit breaker
+	_, err := w.circuitBreaker.Execute(func() (interface{}, error) {
+		return nil, w.sendInternal(ctx, notification)
+	})
+	return err
+}
+
+func (w *WebhookNotifier) sendInternal(ctx context.Context, notification *Notification) error {
 	// Build webhook message based on URL patterns
 	var msg interface{}
 

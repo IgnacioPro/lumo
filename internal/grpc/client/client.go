@@ -16,15 +16,17 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	lumov1 "github.com/ignacio/lumo/api/proto/v1"
+	"github.com/ignacio/lumo/internal/reliability"
 )
 
 // Client wraps the gRPC client connections for Lumo services
 type Client struct {
-	conn        *grpc.ClientConn
-	diagnostics lumov1.DiagnosticsServiceClient
-	agents      lumov1.AgentsServiceClient
-	health      lumov1.HealthServiceClient
-	token       string
+	conn           *grpc.ClientConn
+	diagnostics    lumov1.DiagnosticsServiceClient
+	agents         lumov1.AgentsServiceClient
+	health         lumov1.HealthServiceClient
+	token          string
+	circuitBreaker *reliability.CircuitBreaker
 }
 
 // ClientOptions contains configuration for the gRPC client
@@ -120,11 +122,12 @@ func NewClient(opts ClientOptions) (*Client, error) {
 	}
 
 	return &Client{
-		conn:        conn,
-		diagnostics: lumov1.NewDiagnosticsServiceClient(conn),
-		agents:      lumov1.NewAgentsServiceClient(conn),
-		health:      lumov1.NewHealthServiceClient(conn),
-		token:       opts.Token,
+		conn:           conn,
+		diagnostics:    lumov1.NewDiagnosticsServiceClient(conn),
+		agents:         lumov1.NewAgentsServiceClient(conn),
+		health:         lumov1.NewHealthServiceClient(conn),
+		token:          opts.Token,
+		circuitBreaker: reliability.NewCircuitBreaker(fmt.Sprintf("grpc-%s", opts.Address)),
 	}, nil
 }
 
@@ -149,16 +152,28 @@ func (c *Client) withAuth(ctx context.Context) context.Context {
 
 // RunDiagnostics initiates a new diagnostic run
 func (c *Client) RunDiagnostics(ctx context.Context, req *lumov1.RunDiagnosticsRequest) (*lumov1.RunDiagnosticsResponse, error) {
-	ctx = c.withAuth(ctx)
-	return c.diagnostics.RunDiagnostics(ctx, req)
+	result, err := c.circuitBreaker.Execute(func() (interface{}, error) {
+		authCtx := c.withAuth(ctx)
+		return c.diagnostics.RunDiagnostics(authCtx, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.(*lumov1.RunDiagnosticsResponse), nil
 }
 
 // GetDiagnosticsResult retrieves the result of a diagnostic job
 func (c *Client) GetDiagnosticsResult(ctx context.Context, jobID string) (*lumov1.GetDiagnosticsResultResponse, error) {
-	ctx = c.withAuth(ctx)
-	return c.diagnostics.GetDiagnosticsResult(ctx, &lumov1.GetDiagnosticsResultRequest{
-		JobId: jobID,
+	result, err := c.circuitBreaker.Execute(func() (interface{}, error) {
+		authCtx := c.withAuth(ctx)
+		return c.diagnostics.GetDiagnosticsResult(authCtx, &lumov1.GetDiagnosticsResultRequest{
+			JobId: jobID,
+		})
 	})
+	if err != nil {
+		return nil, err
+	}
+	return result.(*lumov1.GetDiagnosticsResultResponse), nil
 }
 
 // StreamDiagnostics streams diagnostic progress in real-time
@@ -197,17 +212,29 @@ func (c *Client) ListDiagnostics(ctx context.Context, req *lumov1.ListDiagnostic
 
 // RegisterAgent registers a new agent with the server
 func (c *Client) RegisterAgent(ctx context.Context, req *lumov1.RegisterAgentRequest) (*lumov1.RegisterAgentResponse, error) {
-	ctx = c.withAuth(ctx)
-	return c.agents.RegisterAgent(ctx, req)
+	result, err := c.circuitBreaker.Execute(func() (interface{}, error) {
+		authCtx := c.withAuth(ctx)
+		return c.agents.RegisterAgent(authCtx, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.(*lumov1.RegisterAgentResponse), nil
 }
 
 // SendHeartbeat updates agent heartbeat and health status
 func (c *Client) SendHeartbeat(ctx context.Context, agentID string, health *lumov1.AgentHealth) (*lumov1.SendHeartbeatResponse, error) {
-	ctx = c.withAuth(ctx)
-	return c.agents.SendHeartbeat(ctx, &lumov1.SendHeartbeatRequest{
-		AgentId: agentID,
-		Health:  health,
+	result, err := c.circuitBreaker.Execute(func() (interface{}, error) {
+		authCtx := c.withAuth(ctx)
+		return c.agents.SendHeartbeat(authCtx, &lumov1.SendHeartbeatRequest{
+			AgentId: agentID,
+			Health:  health,
+		})
 	})
+	if err != nil {
+		return nil, err
+	}
+	return result.(*lumov1.SendHeartbeatResponse), nil
 }
 
 // ListAgents lists registered agents with optional filtering
