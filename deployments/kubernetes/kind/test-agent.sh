@@ -242,7 +242,7 @@ deploy_agent() {
         return 0
     fi
 
-    log_info "Step 5/7: Deploying agents (DaemonSet + Deployment)..."
+    log_info "Step 5/7: Deploying event-driven agent..."
 
     # Check if agents are already deployed and running
     local deploy_ready=$(kubectl get deployment -n "${NAMESPACE}" lumo-agent -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
@@ -274,7 +274,7 @@ deploy_agent() {
             break
         fi
 
-        log_info "DaemonSet not ready yet: ${ds_ready}/${ds_desired} pods ready (${elapsed}s/${max_wait}s)"
+        log_info "Agent deployment not ready yet: ${deploy_ready}/${deploy_desired} pods ready (${elapsed}s/${max_wait}s)"
         sleep $interval
         elapsed=$((elapsed + interval))
     done
@@ -386,7 +386,7 @@ run_component_tests() {
 
     # Test 4: Check agent health endpoints
     log_info "Test 4: Checking agent health endpoints..."
-    local agent_pod=$(kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/component=cluster-monitor -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+    local agent_pod=$(kubectl get pods -n "${NAMESPACE}" -l mode=event-driven -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
 
     if [ -n "$agent_pod" ]; then
         kubectl port-forward -n "${NAMESPACE}" pod/"${agent_pod}" 8082:8080 >/dev/null 2>&1 &
@@ -437,7 +437,7 @@ run_component_tests() {
         kill $pf_pid 2>/dev/null || true
         wait $pf_pid 2>/dev/null || true
     else
-        log_error "✗ No cluster-monitor pod found"
+        log_error "✗ No event-driven agent pod found"
     fi
 
     # Test 5: Check agent metrics
@@ -529,7 +529,7 @@ run_integration_tests() {
 
     # Test 2: Check agent is attempting to communicate with API
     log_info "Test 2: Checking agent → API communication (will retry up to 20s)..."
-    local agent_pod=$(kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/component=cluster-monitor -o jsonpath='{.items[0].metadata.name}')
+    local agent_pod=$(kubectl get pods -n "${NAMESPACE}" -l mode=event-driven -o jsonpath='{.items[0].metadata.name}')
 
     max_attempts=7
     attempt=1
@@ -580,7 +580,7 @@ print_summary() {
     echo "Deployed Components:"
     echo "  ✓ PostgreSQL (Database)"
     echo "  ✓ Lumo API Server"
-    echo "  ✓ Lumo Agents (DaemonSet + Deployment)"
+    echo "  ✓ Lumo Event-Driven Agent (Deployment)"
     echo ""
     log_info "View component logs:"
     echo "  PostgreSQL:  ${BLUE}kubectl logs -n ${NAMESPACE} -l app=postgres -f${NC}"

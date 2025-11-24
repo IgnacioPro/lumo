@@ -145,7 +145,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: lumo-agent-secret
-                  key: token
+                  key: agent-token
                   optional: true
 
             # Redis configuration (required for event-driven mode)
