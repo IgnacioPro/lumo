@@ -308,13 +308,38 @@ kubectl exec -n lumo-system $(kubectl get pods -n lumo-system -l app=postgres -o
 
 ---
 
+## CI Verification
+
+### Run All Checks (Linters, Tests, Builds)
+```bash
+cd /Users/ignacio/Code/lumo
+make ci
+```
+
+**What It Runs:**
+- ✅ golangci-lint (50+ linters, code quality)
+- ✅ govulncheck (vulnerability scanning)
+- ✅ go test with race detector
+- ✅ Build CLI and Agent binaries
+
+**Expected Output:**
+```
+✓ Lint and security checks passed
+✓ Tests passed
+✓ Build complete
+✓ All CI checks passed
+```
+
+---
+
 ## Next Steps
 
 1. **Read**: [FULL_STACK_DEPLOYMENT.md](FULL_STACK_DEPLOYMENT.md)
-2. **Deploy**: `./test-agent.sh`
-3. **Test Failures**: `./test-failure-scenarios.sh`
-4. **Explore**: Access services and view logs
-5. **Develop**: Make changes and iterate
+2. **Verify**: `make ci` (linters, tests, builds)
+3. **Deploy**: `./test-agent.sh`
+4. **Test Failures**: `./test-failure-scenarios.sh`
+5. **Explore**: Access services and view logs
+6. **Develop**: Make changes and iterate
 
 ---
 
