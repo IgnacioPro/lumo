@@ -459,6 +459,12 @@ func Load() (*Config, error) {
 	viper.SetDefault("openrouter_api_key", "")
 	viper.SetDefault("ai_api_key", "")
 
+	// Cache (Redis) config binding (required for event-driven agents)
+	_ = viper.BindEnv("cache.enabled", "LUMO_CACHE_ENABLED")
+	viper.SetDefault("cache.enabled", false)
+	_ = viper.BindEnv("cache.redis_url", "LUMO_CACHE_REDIS_URL")
+	viper.SetDefault("cache.redis_url", "redis://localhost:6379/0")
+
 	// Agent config binding (required for K8s deployment)
 	viper.SetDefault("agent.cache_path", "/var/lib/lumo-agent/cache")
 	viper.SetDefault("agent.cache_max_size", 1073741824)
