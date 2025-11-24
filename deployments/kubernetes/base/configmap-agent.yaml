@@ -57,13 +57,6 @@ data:
   cache.enabled: "true"
   cache.redis-url: "redis://lumo-redis:6379/0"
 
-  # AI configuration (will be set via environment variables)
-  ai.enabled: "true"
-  ai.provider: "anthropic"  # Set via LUMO_AI_PROVIDER env var
-
-  # Notifications configuration
-  notifications.enabled: "false"  # Set to true and configure notifiers for alerts
-
   # Logging configuration
   logging.level: "info"  # debug, info, warn, error
   logging.format: "json"  # text, json
@@ -72,14 +65,9 @@ data:
   config.yaml: |
     # Lumo Agent Event-Driven Configuration
     # Optimized for real-time Kubernetes event monitoring
-
-    ai:
-      # AI provider configured via environment variables
-      # Required: LUMO_AI_PROVIDER, LUMO_*_API_KEY
-      provider: anthropic
-      enabled: true
-      max_tokens: 4096
-      temperature: 0.7
+    # 
+    # NOTE: AI analysis and notifications are handled by the API server
+    # Agents report events via POST /api/v1/events endpoint
 
     logging:
       level: info
@@ -90,7 +78,7 @@ data:
       kubernetes:
         enabled: true
         # Event-driven mode handles Kubernetes resources via informers
-        # Traditional diagnostic checks are not used
+        # Traditional diagnostic checks are not used in event-driven agents
 
     cache:
       enabled: true
@@ -125,18 +113,3 @@ data:
         watch_volumes: true          # Volume issues (FailedMount, FailedBinding, PVC problems)
         watch_nodes: true            # Node issues (NotReady, pressure events)
         watch_events: true           # Kubernetes Event resource aggregation
-
-    notifications:
-      enabled: false  # Enable and configure notifiers for event alerts
-      notifiers: []
-      # Example Slack notifier:
-      # - name: slack-sre
-      #   type: slack
-      #   enabled: true
-      #   webhook_url: ""  # Set via LUMO_SLACK_WEBHOOK_URL
-      # Example Telegram notifier:
-      # - name: telegram-alerts
-      #   type: telegram
-      #   enabled: true
-      #   bot_token: ""    # Set via LUMO_TELEGRAM_BOT_TOKEN
-      #   chat_id: ""      # Set via LUMO_TELEGRAM_CHAT_ID

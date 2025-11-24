@@ -108,18 +108,11 @@ uninstall_resources() {
 
     local base_dir="$SCRIPT_DIR/base"
 
-    # Delete Deployment first (graceful shutdown)
-    if kubectl get deployment lumo-agent-cluster -n "$NAMESPACE" &> /dev/null; then
-        print_info "Deleting Deployment..."
-        kubectl delete -f "$base_dir/deployment.yaml" --namespace="$NAMESPACE" --ignore-not-found=true
-        print_success "Deployment deleted"
-    fi
-
-    # Delete DaemonSet
-    if kubectl get daemonset lumo-agent-node -n "$NAMESPACE" &> /dev/null; then
-        print_info "Deleting DaemonSet..."
-        kubectl delete -f "$base_dir/daemonset.yaml" --namespace="$NAMESPACE" --ignore-not-found=true
-        print_success "DaemonSet deleted"
+    # Delete event-driven agent deployment
+    if kubectl get deployment lumo-agent -n "$NAMESPACE" &> /dev/null; then
+        print_info "Deleting event-driven agent deployment..."
+        kubectl delete -f "$base_dir/deployment-agent.yaml" --namespace="$NAMESPACE" --ignore-not-found=true
+        print_success "Agent deployment deleted"
     fi
 
     # Wait for pods to terminate

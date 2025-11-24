@@ -1,21 +1,45 @@
 # Event-Driven Kubernetes Agent - Implementation Summary
 
-> **Completion Date:** November 23, 2025
-> **Status:** ✅ Complete and Tested
+> **Completion Date:** November 23, 2025 (Initial) | November 24, 2025 (Architecture Refactor)
+> **Status:** ✅ Complete and Production-Ready
 > **Lines of Code:** ~3,500 lines (11 new files, 3 modified files)
+
+---
+
+## Architectural Update (November 24, 2025)
+
+### Centralized Intelligence Model
+
+The event-driven agent architecture has been **refactored to centralize AI analysis and notifications** in the API server:
+
+**Before:**
+- Agents contained AI providers and notifiers
+- Each agent processed events locally
+- ~2,000 LOC in agent for AI/notification logic
+
+**After:**
+- **Agents:** Pure event reporters (no AI, no notifications)
+- **API Server:** Receives events, performs AI analysis, sends notifications
+- **Benefits:** Easier scaling, single source of truth, ~2,000 LOC reduction
+
+**Key Changes:**
+- Removed `processor.go` (local AI processing)
+- Added `api_processor.go` (HTTP POST to API server)
+- API server handles all intelligence via `internal/api/handlers/events.go`
+- Single K8s deployment model (event-driven only, DaemonSet removed)
 
 ---
 
 ## Executive Summary
 
-We successfully transformed Lumo's Kubernetes agent from a **periodic polling architecture** (5-minute intervals) to a **pure event-driven architecture** using Kubernetes informers. This enables **real-time monitoring** with <60s detection latency, 90%+ reduction in API load, and intelligent debouncing to filter transient issues.
+We successfully transformed Lumo's Kubernetes agent from a **periodic polling architecture** (5-minute intervals) to a **pure event-driven architecture** using Kubernetes informers, with **centralized AI analysis and notifications** in the API server. This enables **real-time monitoring** with <60s detection latency, 90%+ reduction in API load, and intelligent debouncing to filter transient issues.
 
 ### Key Achievements
 
 ✅ **Zero polling** - Pure event-driven using Kubernetes SharedInformerFactory
 ✅ **9 specialized watchers** - Pods, Workloads, Volumes, Nodes, Events
 ✅ **45s intelligent debouncing** - Filters transient failures with Redis state tracking
-✅ **AI-powered analysis** - Integrates with existing AI providers (Anthropic, OpenAI, etc.)
+✅ **Centralized intelligence** - API server performs AI analysis and sends notifications
 ✅ **Multi-channel notifications** - Slack, Telegram, Email, Webhooks
 ✅ **Production-ready** - All CI checks passed, full error handling, observability
 
@@ -42,9 +66,11 @@ Still failing? → Yes → Continue
                  ↓
 Event Grouper (batch related events)
        ↓
-Event Processor
-       ├→ AI Analysis (Anthropic/OpenAI)
-       └→ Notifications (Slack/Telegram/Email)
+API Processor (HTTP POST to API server)
+       ↓
+Lumo API Server
+       ├→ AI Analysis (Anthropic/OpenAI/Gemini/Ollama/OpenRouter)
+       └→ Notifications (Slack/Telegram/Email/Webhook)
        ↓
 User receives actionable alert
 ```
@@ -56,9 +82,10 @@ User receives actionable alert
 | **Manager** | SharedInformerFactory lifecycle | `manager.go` (271 lines) |
 | **Debouncer** | 45s wait window + Redis state | `debouncer.go` (274 lines) |
 | **Watchers** | 9 K8s resource monitors | `watchers/*.go` (1,417 lines) |
-| **Processor** | AI analysis + notifications | `processor.go` (281 lines) |
+| **API Processor** | Submit events to API server | `api_processor.go` (320 lines) |
 | **Handlers** | Event routing + grouping | `handlers.go` (191 lines) |
 | **Types** | 17 event types + severity | `types.go` (277 lines) |
+| **API Server** | AI analysis + notifications | `internal/api/handlers/events.go` (468 lines) |
 
 ---
 
@@ -92,11 +119,12 @@ User receives actionable alert
 - Event grouping by owner (batch related failures)
 - Integration with debouncer and processor
 
-**processor.go** (281 lines)
-- AI analysis integration (Ask API)
-- Multi-notifier support (Slack, Telegram, Email, Webhook)
-- Structured notification formatting
-- Error resilience (continues if AI/notifications fail)
+**api_processor.go** (320 lines)
+- Submits events to Lumo API server via HTTP POST
+- API server performs AI analysis and sends notifications
+- Retry logic with exponential backoff
+- Redis caching for deduplication
+- Batch processing support
 
 #### Kubernetes Resource Watchers (`internal/agent/eventdriven/watchers/`)
 

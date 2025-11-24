@@ -21,17 +21,18 @@ Deploy Lumo Agent to Kubernetes clusters for intelligent SRE/DevOps automation.
 
 ## Overview
 
-Lumo Agent can be deployed in two modes:
+Lumo Agent runs in **event-driven mode** for Kubernetes monitoring. Agents are pure event reporters that submit events to the Lumo API server for centralized AI analysis and multi-channel notifications.
 
-1. **DaemonSet** (per-node monitoring) - Runs on every node for node-level diagnostics
-2. **Deployment** (cluster-wide monitoring) - Monitors cluster-level resources via K8s API
+**Architecture (Nov 24, 2025):**
+- **Agents:** Real-time Kubernetes monitoring with SharedInformerFactory (no AI, no notifications)
+- **API Server:** Receives events, performs AI analysis, sends notifications
+- **Benefits:** ~2,000 LOC reduction, easier scaling, single source of truth
 
 ## Deployment Options
 
 | Component | Purpose | Resource Usage | Scope |
 |-----------|---------|----------------|-------|
-| **DaemonSet** | Node-level monitoring | 100m CPU, 128Mi RAM | CPU, Memory, Disk, Processes, Services, Network |
-| **Deployment** | Cluster monitoring | 50m CPU, 64Mi RAM | Pods, Deployments, StatefulSets, Jobs, Services |
+| **Event-Driven Deployment** | Real-time K8s monitoring | 50m CPU, 64Mi RAM | Pods, Deployments, StatefulSets, Jobs, Volumes, Nodes |
 
 ## Prerequisites
 
@@ -50,23 +51,13 @@ The installation script handles everything automatically:
 ```bash
 cd deployments/kubernetes
 
-# Install with minimal configuration
+# Install event-driven agent
 ./install.sh \
   --api-endpoint "https://your-lumo-api.example.com" \
   --agent-token "your-jwt-token-here"
 
-# Install with AI provider
-./install.sh \
-  --api-endpoint "https://your-lumo-api.example.com" \
-  --agent-token "your-jwt-token-here" \
-  --ai-provider anthropic \
-  --ai-api-key "sk-ant-..."
-
-# DaemonSet only (node monitoring)
-./install.sh \
-  --api-endpoint "https://your-lumo-api.example.com" \
-  --agent-token "your-jwt-token-here" \
-  --daemonset-only
+# Note: AI provider configuration is set on the API server, not the agent
+# Agents are pure event reporters that submit to the API for analysis
 
 # Dry run (preview changes)
 ./install.sh \
@@ -98,8 +89,9 @@ kubectl create namespace lumo-system
 kubectl create secret generic lumo-agent-secret \
   --namespace=lumo-system \
   --from-literal=agent-token="your-jwt-token-here" \
-  --from-literal=anthropic-api-key="sk-ant-..." \
   --dry-run=client -o yaml | kubectl apply -f -
+
+# Note: AI API keys are configured on the API server, not the agent
 ```
 
 #### 3. Deploy with Helm
@@ -157,7 +149,6 @@ Features:
 ./install.sh \
   --api-endpoint "https://lumo-api.example.com" \
   --agent-token "your-jwt-token" \
-  --daemonset-only      # Only DaemonSet
   --skip-secret         # Use existing secret
   --dry-run             # Preview changes
 ```
@@ -431,11 +422,8 @@ kubectl get pods -n lumo-system -l app.kubernetes.io/component=cluster-monitor
 ### View Logs
 
 ```bash
-# DaemonSet logs
-kubectl logs -n lumo-system -l app.kubernetes.io/component=node-monitor --tail=100 -f
-
-# Deployment logs
-kubectl logs -n lumo-system -l app.kubernetes.io/component=cluster-monitor --tail=100 -f
+# Event-driven agent logs
+kubectl logs -n lumo-system -l mode=event-driven --tail=100 -f
 
 # Specific pod
 kubectl logs -n lumo-system <pod-name> -f
@@ -452,9 +440,6 @@ kubectl get events -n lumo-system --sort-by='.lastTimestamp'
 ```bash
 # Describe pod
 kubectl describe pod -n lumo-system <pod-name>
-
-# Describe daemonset
-kubectl describe daemonset -n lumo-system lumo-agent-node
 
 # Describe deployment
 kubectl describe deployment -n lumo-system lumo-agent-cluster
@@ -576,10 +561,9 @@ deployments/kubernetes/
 ├── README.md               # This file
 ├── base/                   # Base Kubernetes manifests
 │   ├── rbac.yaml           # ServiceAccount, ClusterRole, ClusterRoleBinding
-│   ├── configmap.yaml      # Agent configuration
+│   ├── configmap-agent.yaml # Agent configuration
 │   ├── secret.yaml         # Secret template (with external secret examples)
-│   ├── daemonset.yaml      # DaemonSet for per-node monitoring
-│   ├── deployment.yaml     # Deployment for cluster-wide monitoring
+│   ├── deployment-agent.yaml # Event-driven agent deployment
 │   ├── service.yaml        # Services + ServiceMonitor
 │   ├── networkpolicy.yaml  # NetworkPolicy for security
 │   └── kustomization.yaml  # Kustomize configuration
@@ -609,8 +593,8 @@ deployments/kubernetes/
 
 **Base Manifests:**
 - `rbac.yaml` - Least-privilege RBAC (read-only by default)
-- `daemonset.yaml` - Per-node monitoring (100m CPU, 128Mi RAM)
-- `deployment.yaml` - Cluster monitoring (50m CPU, 64Mi RAM)
+- `deployment-agent.yaml` - Event-driven agent (50m CPU, 64Mi RAM)
+- `configmap-agent.yaml` - Event-driven configuration
 - `configmap.yaml` - Full agent configuration with config.yaml
 - `secret.yaml` - Template + external secret manager examples
 - `service.yaml` - Health/metrics endpoints + ServiceMonitor

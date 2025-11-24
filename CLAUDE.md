@@ -287,20 +287,26 @@ For rate limiting and DB pool config, see [configs/config.example.yaml](configs/
 
 ## Agent Architecture
 
-**Three Deployment Models:**
-1. **K8s DaemonSet:** Per-node monitoring (hostNetwork, hostPID, RBAC)
-2. **K8s Deployment:** Cluster-wide monitoring (2+ replicas for HA, K8s API access)
-3. **VM systemd:** System-level monitoring (non-root, CAP_NET_RAW, ProtectSystem=strict)
+**Two Deployment Models:**
+1. **K8s Event-Driven Deployment:** Real-time Kubernetes monitoring (2+ replicas for HA, pure event reporting to API server)
+2. **VM systemd:** System-level monitoring (non-root, CAP_NET_RAW, ProtectSystem=strict)
 
-**Operational Modes:** scheduled, on-demand, continuous, hybrid (recommended for VMs), event-driven (recommended for K8s)
+**Operational Modes:** 
+- **K8s:** event-driven only (real-time informers, <60s detection)
+- **VMs:** scheduled, on-demand, continuous, hybrid
 
-**Communication:** Agents → API Server (registration, heartbeats, reports) + Message Queue (pending Phase 11c)
+**Communication:** Agents → API Server (registration, heartbeats, event submission)
+
+**Architecture (Nov 24, 2025):** Centralized intelligence model
+- **Agents:** Pure event reporters (no AI, no notifications)
+- **API Server:** AI analysis + multi-channel notifications
+- **Benefits:** ~2,000 LOC reduction, easier scaling, single source of truth
 
 **Security:** JWT + mTLS, K8s RBAC (least-privilege), TLS 1.3, external secrets (Vault, AWS Secrets Manager)
 
 **Resource Target:** 64-128 MB memory, <5% CPU avg, 1-10 KB/s network
 
-**Status (Nov 23, 2025):** ✅ **Fully operational!** All 5 agents running (3 DaemonSet + 2 Deployment), 7 diagnostic checks executing including Kubernetes checker, successfully detecting cluster issues.
+**Status (Nov 24, 2025):** ✅ **Refactored to centralized architecture!** Single event-driven deployment model for K8s, all AI/notifications handled by API server.
 
 **Deployment:**
 ```bash
@@ -308,8 +314,8 @@ For rate limiting and DB pool config, see [configs/config.example.yaml](configs/
 cd deployments/kubernetes/kind
 ./test-agent.sh  # Complete stack: DB + API + Agents + Tests
 
-# K8s - Production
-kubectl apply -f deployments/kubernetes/base/daemonset.yaml
+# K8s - Production (Event-Driven Only)
+kubectl apply -f deployments/kubernetes/base/deployment-agent.yaml
 helm install lumo-agent deployments/kubernetes/helm/lumo-agent
 
 # VM
@@ -345,10 +351,14 @@ Event-driven mode transforms Kubernetes monitoring from periodic polling (5-minu
 ### Architecture
 
 ```
-K8s Event → Informer → Watcher → Debouncer → Processor → AI Analysis → Notifications
+K8s Event → Informer → Watcher → Debouncer → API Processor → API Server
+                                                                 ↓
+                                                      AI Analysis + Notifications
 ```
 
 ### Components
+
+**Agent-Side (Pure Event Reporting):**
 
 **Manager** (`internal/agent/eventdriven/manager.go` - 271 lines)
 - SharedInformerFactory lifecycle management
@@ -366,10 +376,19 @@ K8s Event → Informer → Watcher → Debouncer → Processor → AI Analysis �
 - Redis-backed state tracking for deduplication
 - Automatic event count tracking
 
-**Processor** (`internal/agent/eventdriven/processor.go` - 281 lines)
+**API Processor** (`internal/agent/eventdriven/api_processor.go` - 320 lines)
+- Submits events to API server via HTTP POST
+- Retry logic with exponential backoff
+- Redis caching for deduplication
+- Batch processing support
+
+**API Server-Side (Centralized Intelligence):**
+
+**Event Handler** (`internal/api/handlers/events.go` - 468 lines)
+- Receives event submissions from agents
 - AI-powered event analysis (all 5 providers supported)
 - Multi-channel notifications (Slack, Telegram, Email, Webhook)
-- Structured event formatting
+- Structured event storage and retrieval
 
 **Types** (`internal/agent/eventdriven/types.go` - 277 lines)
 - 17 event types with severity classification
@@ -398,7 +417,7 @@ K8s Event → Informer → Watcher → Debouncer → Processor → AI Analysis �
 
 ### Configuration
 
-See `deployments/kubernetes/base/configmap-event-driven.yaml` for complete configuration options.
+See `deployments/kubernetes/base/configmap-agent.yaml` for complete configuration options.
 
 **Key Settings:**
 - `debounce_window: 45s` - Wait before processing (filters transients)
@@ -424,8 +443,8 @@ kubectl create secret generic lumo-ai-secrets \
   -n lumo-system
 
 # Deploy event-driven agent (2-replica HA)
-kubectl apply -f deployments/kubernetes/base/configmap-event-driven.yaml
-kubectl apply -f deployments/kubernetes/base/deployment-event-driven.yaml
+kubectl apply -f deployments/kubernetes/base/configmap-agent.yaml
+kubectl apply -f deployments/kubernetes/base/deployment-agent.yaml
 
 # Verify
 kubectl logs -f -n lumo-system -l mode=event-driven
@@ -589,13 +608,10 @@ curl http://localhost:8080/api/v1/health
 
 **Agent Deployment:**
 ```bash
-# Kubernetes - Scheduled/Hybrid Mode (DaemonSet)
-kubectl apply -f deployments/kubernetes/base/daemonset.yaml
+# Kubernetes - Event-Driven Mode (Single Deployment Model)
+kubectl apply -f deployments/kubernetes/base/configmap-agent.yaml
+kubectl apply -f deployments/kubernetes/base/deployment-agent.yaml
 helm install lumo-agent deployments/kubernetes/helm/lumo-agent
-
-# Kubernetes - Event-Driven Mode (Deployment)
-kubectl apply -f deployments/kubernetes/base/configmap-event-driven.yaml
-kubectl apply -f deployments/kubernetes/base/deployment-event-driven.yaml
 
 # VM
 ./deployments/systemd/install.sh

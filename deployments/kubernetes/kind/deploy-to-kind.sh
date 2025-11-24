@@ -128,41 +128,26 @@ update_manifests() {
     # Copy base manifests
     cp -r "$(dirname "$0")/../base/"*.yaml "${temp_dir}/"
 
-    # Update image references in DaemonSet and Deployment
-    for file in "${temp_dir}/daemonset.yaml" "${temp_dir}/deployment.yaml"; do
-        if [ -f "$file" ]; then
-            # Update image
-            sed -i.bak "s|image:.*lumo-agent.*|image: ${FULL_IMAGE}|g" "$file"
-            # Set imagePullPolicy to Never for kind
-            sed -i.bak "s|imagePullPolicy:.*|imagePullPolicy: Never|g" "$file"
-            # If no imagePullPolicy line exists, add it after image line
-            if ! grep -q "imagePullPolicy:" "$file"; then
-                sed -i.bak "/image: ${IMAGE_NAME}:${IMAGE_TAG}/a\        imagePullPolicy: Never" "$file"
-            fi
-            
-            # Inject LUMO_AI_PROVIDER environment variable
-            # Find the line with "# Secrets from Secret" and add the env var before it
-            sed -i.bak "/# Secrets from Secret/i\\
-            # AI Provider\\
-            - name: LUMO_AI_PROVIDER\\
-              value: \"${AI_PROVIDER}\"\\
-" "$file"
-            
-            # Inject --config flag to tell agent to read from /etc/lumo/config.yaml
-            # Find imagePullPolicy and add args section after it
-            sed -i.bak "/imagePullPolicy:/a\\
+    # Update image references in event-driven agent deployment
+    local agent_file="${temp_dir}/deployment-agent.yaml"
+    if [ -f "$agent_file" ]; then
+        # Update image
+        sed -i.bak "s|image:.*lumo-agent.*|image: ${FULL_IMAGE}|g" "$agent_file"
+        # Set imagePullPolicy to Never for kind
+        sed -i.bak "s|imagePullPolicy:.*|imagePullPolicy: Never|g" "$agent_file"
+        # If no imagePullPolicy line exists, add it after image line
+        if ! grep -q "imagePullPolicy:" "$agent_file"; then
+            sed -i.bak "/image: ${IMAGE_NAME}:${IMAGE_TAG}/a\        imagePullPolicy: Never" "$agent_file"
+        fi
+        
+        # Inject --config flag to tell agent to read from /etc/lumo/config.yaml
+        # Find imagePullPolicy and add args section after it
+        sed -i.bak "/imagePullPolicy:/a\\
           args:\\
             - --config=/etc/lumo/config.yaml\\
-" "$file"
-            
-            rm -f "$file.bak"
-        fi
-    done
-
-    # Update ConfigMap with API endpoint
-    if [ -f "${temp_dir}/configmap.yaml" ]; then
-        sed -i.bak "s|api_endpoint:.*|api_endpoint: \"${API_ENDPOINT}\"|g" "${temp_dir}/configmap.yaml"
-        rm -f "${temp_dir}/configmap.yaml.bak"
+" "$agent_file"
+        
+        rm -f "$agent_file.bak"
     fi
 
     # Remove ServiceMonitor from service.yaml for kind (CRD not present)
@@ -171,15 +156,14 @@ update_manifests() {
         rm -f "${temp_dir}/service.yaml.bak"
     fi
 
-    # Update AI provider in ConfigMap
-    if [ -f "${temp_dir}/configmap.yaml" ]; then
-        # Update the provider field in the config.yaml section
-        sed -i.bak "s|provider: \"\"|provider: \"${AI_PROVIDER}\"|g" "${temp_dir}/configmap.yaml"
+    # Update ConfigMap with API endpoint
+    if [ -f "${temp_dir}/configmap-agent.yaml" ]; then
+        sed -i.bak "s|api_endpoint:.*|api_endpoint: \"${API_ENDPOINT}\"|g" "${temp_dir}/configmap-agent.yaml"
         # Add cache_path to agent section (after offline_mode line)
         sed -i.bak "/offline_mode: true/a\\
       cache_path: /var/cache/lumo\\
-" "${temp_dir}/configmap.yaml"
-        rm -f "${temp_dir}/configmap.yaml.bak"
+" "${temp_dir}/configmap-agent.yaml"
+        rm -f "${temp_dir}/configmap-agent.yaml.bak"
     fi
 
     echo "$temp_dir"
@@ -194,10 +178,9 @@ deploy_manifests() {
     # Deploy in order
     local manifests=(
         "rbac.yaml"
-        "configmap.yaml"
+        "configmap-agent.yaml"
         "service.yaml"
-        "daemonset.yaml"
-        "deployment.yaml"
+        "deployment-agent.yaml"
     )
 
     for manifest in "${manifests[@]}"; do
@@ -214,20 +197,15 @@ deploy_manifests() {
 
     # Force restart to pick up new secrets/config
     log_info "Restarting pods to pick up configuration changes..."
-    kubectl rollout restart daemonset/lumo-agent-node -n "${NAMESPACE}"
-    kubectl rollout restart deployment/lumo-agent-cluster -n "${NAMESPACE}"
+    kubectl rollout restart deployment/lumo-agent -n "${NAMESPACE}"
 }
 
 wait_for_pods() {
     log_info "Waiting for pods to be ready..."
 
-    # Wait for DaemonSet
-    log_info "Waiting for DaemonSet pods..."
-    kubectl rollout status daemonset/lumo-agent-node -n "${NAMESPACE}" --timeout=300s || true
-
-    # Wait for Deployment
-    log_info "Waiting for Deployment pods..."
-    kubectl rollout status deployment/lumo-agent-cluster -n "${NAMESPACE}" --timeout=300s || true
+    # Wait for event-driven agent deployment
+    log_info "Waiting for agent deployment pods..."
+    kubectl rollout status deployment/lumo-agent -n "${NAMESPACE}" --timeout=300s || true
 
     echo ""
     log_info "Pod status:"
@@ -275,14 +253,14 @@ print_next_steps() {
     echo "    ${BLUE}kubectl logs -n ${NAMESPACE} -l app.kubernetes.io/component=node-monitor -f${NC}"
     echo ""
     echo "  View Deployment logs:"
-    echo "    ${BLUE}kubectl logs -n ${NAMESPACE} -l app.kubernetes.io/component=cluster-monitor -f${NC}"
+    echo "    ${BLUE}kubectl logs -n ${NAMESPACE} -l mode=event-driven -f${NC}"
     echo ""
     echo "  Check health endpoint:"
-    echo "    ${BLUE}kubectl port-forward -n ${NAMESPACE} svc/lumo-agent-cluster 8080:8080${NC}"
+    echo "    ${BLUE}kubectl port-forward -n ${NAMESPACE} svc/lumo-agent 8080:8080${NC}"
     echo "    ${BLUE}curl http://localhost:8080/health${NC}"
     echo ""
     echo "  Check metrics:"
-    echo "    ${BLUE}kubectl port-forward -n ${NAMESPACE} svc/lumo-agent-cluster 9090:9090${NC}"
+    echo "    ${BLUE}kubectl port-forward -n ${NAMESPACE} svc/lumo-agent 9090:9090${NC}"
     echo "    ${BLUE}curl http://localhost:9090/metrics${NC}"
     echo ""
     echo "  Exec into a pod:"
