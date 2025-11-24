@@ -4,7 +4,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: lumo-agent-event-driven
+  name: lumo-agent
   namespace: lumo-system
   labels:
     app.kubernetes.io/name: lumo-agent
@@ -88,54 +88,54 @@ spec:
             - name: LUMO_AGENT_EVENT_DRIVEN_ENABLED
               valueFrom:
                 configMapKeyRef:
-                  name: lumo-agent-config-event-driven
+                  name: lumo-agent-config
                   key: agent.event-driven.enabled
             - name: LUMO_AGENT_EVENT_DRIVEN_DEBOUNCE_WINDOW
               valueFrom:
                 configMapKeyRef:
-                  name: lumo-agent-config-event-driven
+                  name: lumo-agent-config
                   key: agent.event-driven.debounce-window
             - name: LUMO_AGENT_EVENT_DRIVEN_RESYNC_PERIOD
               valueFrom:
                 configMapKeyRef:
-                  name: lumo-agent-config-event-driven
+                  name: lumo-agent-config
                   key: agent.event-driven.resync-period
             - name: LUMO_AGENT_EVENT_DRIVEN_GROUP_RELATED_EVENTS
               valueFrom:
                 configMapKeyRef:
-                  name: lumo-agent-config-event-driven
+                  name: lumo-agent-config
                   key: agent.event-driven.group-related-events
             - name: LUMO_AGENT_EVENT_DRIVEN_WATCH_POD_EVENTS
               valueFrom:
                 configMapKeyRef:
-                  name: lumo-agent-config-event-driven
+                  name: lumo-agent-config
                   key: agent.event-driven.watch-pod-events
             - name: LUMO_AGENT_EVENT_DRIVEN_WATCH_WORKLOADS
               valueFrom:
                 configMapKeyRef:
-                  name: lumo-agent-config-event-driven
+                  name: lumo-agent-config
                   key: agent.event-driven.watch-workloads
             - name: LUMO_AGENT_EVENT_DRIVEN_WATCH_VOLUMES
               valueFrom:
                 configMapKeyRef:
-                  name: lumo-agent-config-event-driven
+                  name: lumo-agent-config
                   key: agent.event-driven.watch-volumes
             - name: LUMO_AGENT_EVENT_DRIVEN_WATCH_NODES
               valueFrom:
                 configMapKeyRef:
-                  name: lumo-agent-config-event-driven
+                  name: lumo-agent-config
                   key: agent.event-driven.watch-nodes
             - name: LUMO_AGENT_EVENT_DRIVEN_WATCH_EVENTS
               valueFrom:
                 configMapKeyRef:
-                  name: lumo-agent-config-event-driven
+                  name: lumo-agent-config
                   key: agent.event-driven.watch-events
 
             # API configuration
             - name: LUMO_AGENT_API_ENDPOINT
               valueFrom:
                 configMapKeyRef:
-                  name: lumo-agent-config-event-driven
+                  name: lumo-agent-config
                   key: agent.api-endpoint
             - name: LUMO_AGENT_TOKEN
               valueFrom:
@@ -150,7 +150,7 @@ spec:
             - name: LUMO_CACHE_REDIS_URL
               valueFrom:
                 configMapKeyRef:
-                  name: lumo-agent-config-event-driven
+                  name: lumo-agent-config
                   key: cache.redis-url
 
             # NOTE: AI and notification configuration removed
@@ -161,12 +161,12 @@ spec:
             - name: LUMO_LOGGING_LEVEL
               valueFrom:
                 configMapKeyRef:
-                  name: lumo-agent-config-event-driven
+                  name: lumo-agent-config
                   key: logging.level
             - name: LUMO_LOGGING_FORMAT
               valueFrom:
                 configMapKeyRef:
-                  name: lumo-agent-config-event-driven
+                  name: lumo-agent-config
                   key: logging.format
 
           ports:
