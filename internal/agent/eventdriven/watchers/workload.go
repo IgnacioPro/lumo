@@ -117,7 +117,7 @@ func (w *DeploymentWatcher) checkDeployment(deployment *appsv1.Deployment, oldDe
 
 	// Send events to handler
 	for _, event := range events {
-		handler.(*eventdriven.BaseHandler).HandleEvent(event)
+		handler.HandleEvent(event)
 	}
 }
 
@@ -227,7 +227,7 @@ func (w *StatefulSetWatcher) checkStatefulSet(sts *appsv1.StatefulSet, oldSts *a
 
 	// Send events to handler
 	for _, event := range events {
-		handler.(*eventdriven.BaseHandler).HandleEvent(event)
+		handler.HandleEvent(event)
 	}
 }
 
@@ -340,7 +340,7 @@ func (w *DaemonSetWatcher) checkDaemonSet(ds *appsv1.DaemonSet, oldDs *appsv1.Da
 
 	// Send events to handler
 	for _, event := range events {
-		handler.(*eventdriven.BaseHandler).HandleEvent(event)
+		handler.HandleEvent(event)
 	}
 }
 
@@ -444,6 +444,6 @@ func (w *JobWatcher) checkJob(job *batchv1.Job, oldJob *batchv1.Job, handler eve
 
 	// Send events to handler
 	for _, event := range events {
-		handler.(*eventdriven.BaseHandler).HandleEvent(event)
+		handler.HandleEvent(event)
 	}
 }

@@ -57,6 +57,8 @@ type EventHandler interface {
 	OnUpdate(oldObj, newObj interface{})
 	// OnDelete is called when a resource is deleted
 	OnDelete(obj interface{})
+	// HandleEvent processes a Kubernetes event
+	HandleEvent(event *KubernetesEvent)
 }
 
 // NewManager creates a new event-driven manager

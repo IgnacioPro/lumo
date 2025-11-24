@@ -76,7 +76,7 @@ func (w *PodWatcher) handlePodEvent(pod *corev1.Pod, oldPod *corev1.Pod, handler
 
 	// Send events to handler
 	for _, event := range events {
-		handler.(*eventdriven.BaseHandler).HandleEvent(event)
+		handler.HandleEvent(event)
 	}
 }
 

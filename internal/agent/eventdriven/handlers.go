@@ -1,6 +1,8 @@
 package eventdriven
 
 import (
+	"sync"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -115,6 +117,7 @@ func (h *BaseHandler) OnDelete(obj interface{}) {
 
 // EventGrouper groups related events
 type EventGrouper struct {
+	mu     sync.RWMutex
 	events map[string][]*KubernetesEvent
 	logger *logrus.Entry
 }
@@ -129,6 +132,9 @@ func NewEventGrouper(logger *logrus.Logger) *EventGrouper {
 
 // AddEvent adds an event to the grouper
 func (g *EventGrouper) AddEvent(event *KubernetesEvent) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
 	// Group by owner UID
 	key := event.OwnerUID
 	if key == "" {
@@ -146,6 +152,9 @@ func (g *EventGrouper) AddEvent(event *KubernetesEvent) {
 
 // GetRelatedEvents retrieves events related to the given event
 func (g *EventGrouper) GetRelatedEvents(event *KubernetesEvent) []*KubernetesEvent {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
 	key := event.OwnerUID
 	if key == "" {
 		key = event.ResourceUID
@@ -166,6 +175,9 @@ func (g *EventGrouper) GetRelatedEvents(event *KubernetesEvent) []*KubernetesEve
 
 // Cleanup removes old events from the grouper
 func (g *EventGrouper) Cleanup(olderThan int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
 	// Remove groups with no events
 	for key, events := range g.events {
 		if len(events) == 0 {
@@ -178,5 +190,7 @@ func (g *EventGrouper) Cleanup(olderThan int) {
 
 // GroupCount returns the number of event groups
 func (g *EventGrouper) GroupCount() int {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
 	return len(g.events)
 }

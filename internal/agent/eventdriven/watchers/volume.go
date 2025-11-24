@@ -149,7 +149,7 @@ func (w *PVCWatcher) checkPVC(pvc *corev1.PersistentVolumeClaim, oldPVC *corev1.
 
 	// Send events to handler
 	for _, event := range events {
-		handler.(*eventdriven.BaseHandler).HandleEvent(event)
+		handler.HandleEvent(event)
 	}
 }
 
@@ -265,5 +265,5 @@ func (w *EventWatcher) processEvent(k8sEvent *corev1.Event, handler eventdriven.
 	}
 
 	// Process through handler
-	handler.(*eventdriven.BaseHandler).HandleEvent(lumoEvent)
+	handler.HandleEvent(lumoEvent)
 }
