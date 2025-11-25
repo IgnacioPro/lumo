@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-25 | **Version:** 1.0.0 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Phase 13 Complete ✅ | Phase 15 In Progress 🔄 | Phase 16 Complete ✅ | **Full Stack K8s + Event-Driven + Circuit Breakers** 🚀
+> **Last Updated:** 2025-11-25 (Max Debounce Window) | **Version:** 1.0.0 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Phase 13 Complete ✅ | Phase 15 In Progress 🔄 | Phase 16 Complete ✅ | **Full Stack K8s + Event-Driven + Circuit Breakers** 🚀
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -115,6 +115,7 @@ export LUMO_DATABASE_PASSWORD=password              # DB password
 # Event-driven mode configuration (K8s only)
 export LUMO_AGENT_EVENT_DRIVEN_ENABLED=true         # Enable event-driven monitoring
 export LUMO_AGENT_EVENT_DRIVEN_DEBOUNCE_WINDOW=45s  # Wait before processing events
+export LUMO_AGENT_EVENT_DRIVEN_MAX_DEBOUNCE_WINDOW=3m  # Max wait (prevents infinite debouncing of continuous events)
 export LUMO_AGENT_EVENT_DRIVEN_RESYNC_PERIOD=0s     # 0 = pure event-driven (no polling)
 export LUMO_AGENT_EVENT_DRIVEN_GROUP_RELATED_EVENTS=true  # Batch related events
 export LUMO_AGENT_EVENT_DRIVEN_MAX_EVENTS_PER_MIN=100     # Rate limiting
@@ -408,6 +409,11 @@ K8s Event → Informer → Watcher → Debouncer → API Processor → API Serve
   - Location: `internal/agent/eventdriven/watchers/volume.go:66-112`
   - Issue: Required status change to trigger, missing PVCs that stayed in Pending state during informer sync
   - Note: EventWatcher also detects these via Kubernetes "ProvisioningFailed" events as a backup detection method
+- **Infinite Debouncing**: Added max debounce window (3 minutes) to prevent continuous events (like PVC ProvisioningFailed repeating every 15s) from infinitely resetting the debounce timer
+  - Location: `internal/agent/eventdriven/debouncer.go` (MaxDebounceWindow field and logic), `internal/config/config.go` (config field), `internal/agent/agent.go` (initialization)
+  - Issue: Events arriving frequently would reset the 45s debounce window continuously, preventing processing of persistent failures
+  - Solution: If debounce timer is reset multiple times, max window ensures processing within 3 minutes while still filtering transient issues
+  - Latency: OOMKilled (~50s), CrashLoopBackOff (~75s), ImagePullBackOff (~65s), PVC ProvisioningFailed (~240s with 3m max window)
 
 ### Event Types & Severity
 
@@ -430,6 +436,7 @@ See `deployments/kubernetes/base/configmap-agent.yaml` for complete configuratio
 
 **Key Settings:**
 - `debounce_window: 45s` - Wait before processing (filters transients)
+- `max_debounce_window: 3m` - Maximum wait before processing (prevents infinite debouncing of continuous events)
 - `resync_period: 0s` - Pure event-driven (no polling)
 - `group_related_events: true` - Batch related failures
 - `max_events_per_min: 100` - Rate limiting
