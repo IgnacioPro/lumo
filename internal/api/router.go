@@ -82,7 +82,7 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 	aiEnabled := cfg.AI.Enabled
 	if aiEnabled {
 		providerConfig := &ai.ProviderConfig{
-			APIKey:      cfg.AI.APIKey,
+			APIKey:      cfg.AI.GetAPIKeyForProvider(cfg.AI.Provider),
 			Model:       cfg.AI.Model,
 			Endpoint:    cfg.AI.Endpoint,
 			Timeout:     cfg.AI.Timeout,

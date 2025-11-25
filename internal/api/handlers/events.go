@@ -126,9 +126,15 @@ func (h *EventsHandler) SubmitEvents(w http.ResponseWriter, r *http.Request) {
 		}
 
 		h.logger.WithField("stored_count", len(events)).Info("Events stored successfully")
+		eventsProcessedTotal.WithLabelValues("accepted").Add(float64(len(events)))
 
 		// Process events asynchronously (AI analysis + notifications)
 		go h.processEventsAsync(events)
+	}
+
+	// Record rejected events
+	if len(validationErrors) > 0 {
+		eventsProcessedTotal.WithLabelValues("rejected").Add(float64(len(validationErrors)))
 	}
 
 	// Build response
@@ -331,6 +337,7 @@ func (h *EventsHandler) processEventsAsync(events []*models.Event) {
 		if h.aiEnabled && h.aiProvider != nil && event.IsHighPriority() {
 			if err := h.analyzeEventWithAI(ctx, event); err != nil {
 				h.logger.WithError(err).WithField("event_id", event.ID).Error("AI analysis failed")
+				asyncProcessingErrors.WithLabelValues("ai_analysis").Inc()
 			}
 		}
 
@@ -338,6 +345,7 @@ func (h *EventsHandler) processEventsAsync(events []*models.Event) {
 		if h.notifEnabled && len(h.notifiers) > 0 && event.IsHighPriority() {
 			if err := h.sendEventNotifications(ctx, event); err != nil {
 				h.logger.WithError(err).WithField("event_id", event.ID).Error("Notification failed")
+				asyncProcessingErrors.WithLabelValues("notification").Inc()
 			}
 		}
 	}
@@ -346,6 +354,7 @@ func (h *EventsHandler) processEventsAsync(events []*models.Event) {
 // analyzeEventWithAI performs AI analysis on an event
 func (h *EventsHandler) analyzeEventWithAI(ctx context.Context, event *models.Event) error {
 	h.logger.WithField("event_id", event.ID).Info("Starting AI analysis")
+	startTime := time.Now()
 
 	// Build prompt for AI analysis
 	prompt := fmt.Sprintf(`A Kubernetes event has been detected:
@@ -377,8 +386,13 @@ Keep the response concise and actionable.`,
 
 	response, _, err := h.aiProvider.Ask(analysisCtx, "You are a Kubernetes SRE expert. Analyze the following event and provide actionable insights.", prompt)
 	if err != nil {
+		aiAnalysisTotal.WithLabelValues("failure").Inc()
 		return fmt.Errorf("AI provider analysis failed: %w", err)
 	}
+
+	// Record metrics
+	aiAnalysisDuration.WithLabelValues(h.aiProvider.Name()).Observe(time.Since(startTime).Seconds())
+	aiAnalysisTotal.WithLabelValues("success").Inc()
 
 	// Store AI analysis
 	if err := h.eventRepo.UpdateAIAnalysis(ctx, event.ID, response); err != nil {
@@ -397,17 +411,30 @@ func (h *EventsHandler) sendEventNotifications(ctx context.Context, event *model
 	message := h.buildNotificationMessage(event)
 
 	sentChannels := []string{}
+	failedChannels := []string{}
 	var lastErr error
 
 	// Send to all configured notifiers
 	for _, notifier := range h.notifiers {
 		if err := notifier.Send(ctx, &message); err != nil {
 			h.logger.WithError(err).WithField("provider", notifier.Name()).Error("Failed to send notification")
+			notificationsSentTotal.WithLabelValues(notifier.Name(), "failure").Inc()
+			failedChannels = append(failedChannels, notifier.Name())
 			lastErr = err
 		} else {
 			sentChannels = append(sentChannels, notifier.Name())
+			notificationsSentTotal.WithLabelValues(notifier.Name(), "success").Inc()
 			h.logger.WithField("provider", notifier.Name()).Info("Notification sent successfully")
 		}
+	}
+
+	// Log partial failures for visibility
+	if len(failedChannels) > 0 && len(sentChannels) > 0 {
+		h.logger.WithFields(logrus.Fields{
+			"event_id":        event.ID,
+			"sent_channels":   sentChannels,
+			"failed_channels": failedChannels,
+		}).Warn("Partial notification failure - some channels succeeded")
 	}
 
 	// Update notification status

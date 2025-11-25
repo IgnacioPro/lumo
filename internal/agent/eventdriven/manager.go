@@ -80,7 +80,9 @@ func NewManager(clientset *kubernetes.Clientset, config *Config, logger *logrus.
 		factory = informers.NewSharedInformerFactory(clientset, config.ResyncPeriod)
 	} else {
 		// Watch specific namespaces (use first namespace for factory)
-		// TODO: Support multiple namespace factories if needed
+		// Note: Multi-namespace support would require multiple factories and merging events.
+		// Current design uses single namespace filter; for multi-namespace monitoring,
+		// configure empty Namespaces to watch all and filter in event handlers.
 		factory = informers.NewSharedInformerFactoryWithOptions(
 			clientset,
 			config.ResyncPeriod,
