@@ -75,17 +75,10 @@ func NewWebhookNotifier(config *NotifierConfig, log *logrus.Logger) (*WebhookNot
 		config.Method = "POST"
 	}
 
-	timeout := 30 * time.Second
-	if config.Timeout > 0 {
-		timeout = time.Duration(config.Timeout) * time.Second
-	}
-
 	return &WebhookNotifier{
-		config: config,
-		log:    log,
-		client: &http.Client{
-			Timeout: timeout,
-		},
+		config:         config,
+		log:            log,
+		client:         NewHTTPClientFromSeconds(config.Timeout),
 		circuitBreaker: reliability.NewCircuitBreaker(fmt.Sprintf("webhook-%s", config.Name)),
 	}, nil
 }

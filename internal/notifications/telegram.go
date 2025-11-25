@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/ignacio/lumo/internal/reliability"
 	"github.com/sirupsen/logrus"
@@ -37,17 +36,10 @@ func NewTelegramNotifier(config *NotifierConfig, log *logrus.Logger) (*TelegramN
 		return nil, fmt.Errorf("telegram chat ID is required")
 	}
 
-	timeout := 30 * time.Second
-	if config.Timeout > 0 {
-		timeout = time.Duration(config.Timeout) * time.Second
-	}
-
 	return &TelegramNotifier{
-		config: config,
-		log:    log,
-		client: &http.Client{
-			Timeout: timeout,
-		},
+		config:         config,
+		log:            log,
+		client:         NewHTTPClientFromSeconds(config.Timeout),
 		circuitBreaker: reliability.NewCircuitBreaker(fmt.Sprintf("telegram-%s", config.Name)),
 	}, nil
 }

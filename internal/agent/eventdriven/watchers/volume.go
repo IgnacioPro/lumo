@@ -64,9 +64,9 @@ func (w *PVCWatcher) checkPVC(pvc *corev1.PersistentVolumeClaim, oldPVC *corev1.
 	// Check PVC phase
 	switch pvc.Status.Phase {
 	case corev1.ClaimPending:
-		// Only alert if pending for more than 2 minutes
+		// Only alert if pending for more than PVCPendingTimeout
 		pendingDuration := time.Since(pvc.CreationTimestamp.Time)
-		if pendingDuration > 2*time.Minute {
+		if pendingDuration > PVCPendingTimeout {
 			// Check if we should trigger an event:
 			// 1. New PVC (oldPVC == nil) that's been pending too long
 			// 2. Status changed to Pending (oldPVC.Status.Phase != corev1.ClaimPending)
@@ -82,8 +82,8 @@ func (w *PVCWatcher) checkPVC(pvc *corev1.PersistentVolumeClaim, oldPVC *corev1.
 			} else {
 				// PVC was already pending - check if old one was under threshold
 				oldPendingDuration := time.Since(oldPVC.CreationTimestamp.Time)
-				if oldPendingDuration <= 2*time.Minute {
-					// Just crossed the 2-minute threshold - trigger
+				if oldPendingDuration <= PVCPendingTimeout {
+					// Just crossed the threshold - trigger
 					shouldTrigger = true
 				}
 			}

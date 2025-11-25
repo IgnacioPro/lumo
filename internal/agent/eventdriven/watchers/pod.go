@@ -138,7 +138,7 @@ func (w *PodWatcher) detectPodIssues(pod *corev1.Pod, oldPod *corev1.Pod, info *
 		}
 
 		// Check for high restart count
-		if containerStatus.RestartCount > 5 {
+		if containerStatus.RestartCount > HighRestartThreshold {
 			// Only trigger if restart count changed
 			if oldPod != nil {
 				oldStatus := findContainerStatus(oldPod, containerStatus.Name)
@@ -179,9 +179,9 @@ func (w *PodWatcher) detectPodIssues(pod *corev1.Pod, oldPod *corev1.Pod, info *
 		}
 	}
 
-	// Check for pending timeout (pending > 5 minutes)
+	// Check for pending timeout (pending > PendingTimeoutDuration)
 	if pod.Status.Phase == corev1.PodPending {
-		if time.Since(pod.CreationTimestamp.Time) > 5*time.Minute {
+		if time.Since(pod.CreationTimestamp.Time) > PendingTimeoutDuration {
 			// Only trigger if it's a new pending timeout
 			if oldPod == nil || oldPod.Status.Phase != corev1.PodPending {
 				event := w.createPendingTimeoutEvent(pod, info)

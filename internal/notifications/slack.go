@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/ignacio/lumo/internal/reliability"
 	"github.com/sirupsen/logrus"
@@ -50,17 +49,10 @@ func NewSlackNotifier(config *NotifierConfig, log *logrus.Logger) (*SlackNotifie
 		return nil, fmt.Errorf("slack webhook URL is required")
 	}
 
-	timeout := 30 * time.Second
-	if config.Timeout > 0 {
-		timeout = time.Duration(config.Timeout) * time.Second
-	}
-
 	return &SlackNotifier{
-		config: config,
-		log:    log,
-		client: &http.Client{
-			Timeout: timeout,
-		},
+		config:         config,
+		log:            log,
+		client:         NewHTTPClientFromSeconds(config.Timeout),
 		circuitBreaker: reliability.NewCircuitBreaker(fmt.Sprintf("slack-%s", config.Name)),
 	}, nil
 }

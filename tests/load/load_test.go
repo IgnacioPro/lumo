@@ -12,6 +12,7 @@ import (
 	"github.com/ignacio/lumo/internal/api/auth"
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/database"
+	"github.com/ignacio/lumo/tests/testutil"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,7 +26,7 @@ func setupTestServer(t *testing.T) (*httptest.Server, func()) {
 
 	// Configure for testing
 	cfg.Logging.Level = "error"                              // Reduce noise
-	cfg.API.JWTSecret = "test-secret-for-load-testing-12345" // Required for JWT Manager
+	cfg.API.JWTSecret = testutil.TestJWTSecret // Required for JWT Manager
 
 	// Disable rate limiting for load testing stability, or set very high
 	// The user wants to test rate limiting, but for a "pass/fail" load test

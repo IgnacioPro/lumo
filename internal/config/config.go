@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"testing"
 	"time"
 
 	"github.com/spf13/viper"
@@ -436,24 +435,43 @@ func Load() (*Config, error) {
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
-	// Explicitly bind keys to ensure AutomaticEnv works for them
-	// This is necessary because we're using a struct for defaults, not viper.SetDefault
+	// ==========================================================================
+	// Viper Defaults for Environment Variable Binding
+	// ==========================================================================
+	// These SetDefault calls are REQUIRED for viper.AutomaticEnv() to work.
+	// Without them, environment variables like LUMO_DATABASE_HOST won't be read.
+	// The DefaultConfig() struct provides default values, but viper needs these
+	// bindings to know which keys to check in the environment.
+	//
+	// Note: Values here should match DefaultConfig() unless intentionally different
+	// for environment-specific behavior.
+	// ==========================================================================
+
+	// API rate limiting defaults
 	viper.SetDefault("api.rate_limit_enabled", true)
 	viper.SetDefault("api.rate_limit_requests_per_min", 60)
 	viper.SetDefault("api.rate_limit_requests_per_hour", 3600)
 	viper.SetDefault("api.rate_limit_burst_size", 10)
 
-	// Database config binding (required for K8s deployment)
+	// Database defaults (required for K8s deployment env var binding)
 	viper.SetDefault("database.host", "localhost")
 	viper.SetDefault("database.port", 5432)
 	viper.SetDefault("database.name", "lumo")
 	viper.SetDefault("database.user", "lumo")
-	viper.SetDefault("database.password", "")
+	viper.SetDefault("database.password", "") // Empty: must be set via LUMO_DATABASE_PASSWORD
 	viper.SetDefault("database.sslmode", "disable")
 
-	// AI config binding (required for K8s deployment)
+	// AI provider defaults (required for K8s deployment env var binding)
 	viper.SetDefault("ai.provider", "anthropic")
 	viper.SetDefault("ai.enabled", true)
+	// API keys: empty by default, set via LUMO_*_API_KEY env vars
+	// Explicit BindEnv required for non-nested keys with underscores
+	_ = viper.BindEnv("anthropic_api_key", "LUMO_ANTHROPIC_API_KEY")
+	_ = viper.BindEnv("openai_api_key", "LUMO_OPENAI_API_KEY")
+	_ = viper.BindEnv("gemini_api_key", "LUMO_GEMINI_API_KEY")
+	_ = viper.BindEnv("ollama_api_key", "LUMO_OLLAMA_API_KEY")
+	_ = viper.BindEnv("openrouter_api_key", "LUMO_OPENROUTER_API_KEY")
+	_ = viper.BindEnv("ai_api_key", "LUMO_AI_API_KEY")
 	viper.SetDefault("anthropic_api_key", "")
 	viper.SetDefault("openai_api_key", "")
 	viper.SetDefault("gemini_api_key", "")
@@ -461,19 +479,18 @@ func Load() (*Config, error) {
 	viper.SetDefault("openrouter_api_key", "")
 	viper.SetDefault("ai_api_key", "")
 
-	// Cache (Redis) config binding (required for event-driven agents)
+	// Cache (Redis) defaults (required for event-driven agents)
 	_ = viper.BindEnv("cache.enabled", "LUMO_CACHE_ENABLED")
 	viper.SetDefault("cache.enabled", false)
 	_ = viper.BindEnv("cache.redis_url", "LUMO_CACHE_REDIS_URL")
 	viper.SetDefault("cache.redis_url", "redis://localhost:6379/0")
 
-	// Agent config binding (required for K8s deployment)
+	// Agent defaults (required for K8s deployment)
 	viper.SetDefault("agent.cache_path", "/var/lib/lumo-agent/cache")
-	viper.SetDefault("agent.cache_max_size", 1073741824)
+	viper.SetDefault("agent.cache_max_size", 1073741824) // 1GB
 	viper.SetDefault("agent.cache_ttl", "24h")
 
-	// Kubernetes agent metadata binding (for K8s deployments)
-	// These map to POD_NAME, NODE_NAME, POD_NAMESPACE env vars set by K8s
+	// Kubernetes agent metadata (bind to K8s downward API env vars)
 	_ = viper.BindEnv("agent.kubernetes.enabled", "LUMO_AGENT_KUBERNETES_ENABLED")
 	viper.SetDefault("agent.kubernetes.enabled", false)
 	_ = viper.BindEnv("agent.kubernetes.scope", "LUMO_AGENT_KUBERNETES_SCOPE")
@@ -483,16 +500,14 @@ func Load() (*Config, error) {
 	viper.SetDefault("agent.kubernetes.node_name", "")
 	viper.SetDefault("agent.kubernetes.pod_name", "")
 
-	// Kubernetes diagnostics config - bind LUMO_AGENT_KUBERNETES_* to diagnostics.kubernetes.*
-	// This allows agents to use LUMO_AGENT_KUBERNETES_ENABLED instead of LUMO_DIAGNOSTICS_KUBERNETES_ENABLED
-	// Note: viper.BindEnv with multiple env vars checks them in order (first found wins)
+	// Kubernetes diagnostics (bind both agent and diagnostics env vars for flexibility)
 	_ = viper.BindEnv("diagnostics.kubernetes.enabled", "LUMO_AGENT_KUBERNETES_ENABLED", "LUMO_DIAGNOSTICS_KUBERNETES_ENABLED")
 	viper.SetDefault("diagnostics.kubernetes.enabled", false)
 
-	// Event-driven config binding (for K8s agents)
+	// Event-driven mode defaults (K8s real-time monitoring)
 	viper.SetDefault("agent.event_driven.enabled", false)
 	viper.SetDefault("agent.event_driven.debounce_window", "45s")
-	viper.SetDefault("agent.event_driven.resync_period", "0s")
+	viper.SetDefault("agent.event_driven.resync_period", "0s") // Pure event-driven
 	viper.SetDefault("agent.event_driven.group_related_events", true)
 	viper.SetDefault("agent.event_driven.max_events_per_min", 100)
 	viper.SetDefault("agent.event_driven.min_severity", "low")
@@ -523,26 +538,11 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// isDevEnvironment checks if we're running in a development or test environment.
-// Returns true when LUMO_ENV is set to "development"/"dev"/"test", or when
-// running under `go test` (detected via test flag presence).
-func isDevEnvironment() bool {
-	env := os.Getenv("LUMO_ENV")
-	if env == "development" || env == "dev" || env == "test" {
-		return true
-	}
-	// Check if running under go test
-	if testing.Testing() {
-		return true
-	}
-	return false
-}
-
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
 	// SSH validation
-	if c.SSH.Port < 1 || c.SSH.Port > 65535 {
-		return fmt.Errorf("invalid SSH port: %d", c.SSH.Port)
+	if err := validatePort(c.SSH.Port, "SSH"); err != nil {
+		return err
 	}
 	if c.SSH.Timeout < 0 {
 		return fmt.Errorf("SSH timeout must be positive")
@@ -550,16 +550,7 @@ func (c *Config) Validate() error {
 
 	// AI validation
 	if c.AI.Enabled {
-		validProviders := map[string]bool{
-			"anthropic":  true,
-			"openai":     true,
-			"ollama":     true,
-			"gemini":     true,
-			"openrouter": true,
-			"local":      true, // Alias for ollama
-			"google":     true, // Alias for gemini
-		}
-		if !validProviders[c.AI.Provider] {
+		if !isOneOf(c.AI.Provider, validAIProviders) {
 			return fmt.Errorf("unsupported AI provider: %s (supported: anthropic, openai, ollama, gemini, openrouter)", c.AI.Provider)
 		}
 
@@ -574,15 +565,8 @@ func (c *Config) Validate() error {
 		}
 
 		// Validate reasoning effort (if specified)
-		if c.AI.ReasoningEffort != "" {
-			validEfforts := map[string]bool{
-				"low":    true,
-				"medium": true,
-				"high":   true,
-			}
-			if !validEfforts[c.AI.ReasoningEffort] {
-				return fmt.Errorf("AI reasoning_effort must be 'low', 'medium', or 'high', got: %s", c.AI.ReasoningEffort)
-			}
+		if c.AI.ReasoningEffort != "" && !isOneOf(c.AI.ReasoningEffort, validReasoningEfforts) {
+			return fmt.Errorf("AI reasoning_effort must be 'low', 'medium', or 'high', got: %s", c.AI.ReasoningEffort)
 		}
 
 		// Validate API key for cloud providers
@@ -603,56 +587,37 @@ func (c *Config) Validate() error {
 	}
 
 	// Logging validation
-	validLevels := map[string]bool{
-		"debug": true,
-		"info":  true,
-		"warn":  true,
-		"error": true,
+	if !isOneOf(c.Logging.Level, validLogLevels) {
+		return fmt.Errorf("invalid log level: %s (supported: debug, info, warn, error)", c.Logging.Level)
 	}
-	if !validLevels[c.Logging.Level] {
-		return fmt.Errorf("invalid log level: %s", c.Logging.Level)
-	}
-
-	validFormats := map[string]bool{
-		"text": true,
-		"json": true,
-	}
-	if !validFormats[c.Logging.Format] {
+	if !isOneOf(c.Logging.Format, validLogFormats) {
 		return fmt.Errorf("invalid log format: %s", c.Logging.Format)
 	}
 
 	// API validation
-	if c.API.Port < 1 || c.API.Port > 65535 {
-		return fmt.Errorf("invalid API port: %d", c.API.Port)
+	if err := validatePort(c.API.Port, "API"); err != nil {
+		return err
 	}
 	if c.API.TLS && (c.API.CertFile == "" || c.API.KeyFile == "") {
 		return fmt.Errorf("TLS enabled but cert_file or key_file not specified")
 	}
 
 	// Database validation
-	if c.Database.Port < 1 || c.Database.Port > 65535 {
-		return fmt.Errorf("invalid database port: %d", c.Database.Port)
+	if err := validatePort(c.Database.Port, "database"); err != nil {
+		return err
 	}
-	if c.Database.Host == "" {
-		return fmt.Errorf("database host cannot be empty")
+	if err := validateRequired(c.Database.Host, "database host"); err != nil {
+		return err
 	}
-	if c.Database.Name == "" {
-		return fmt.Errorf("database name cannot be empty")
+	if err := validateRequired(c.Database.Name, "database name"); err != nil {
+		return err
 	}
-	if c.Database.User == "" {
-		return fmt.Errorf("database user cannot be empty")
+	if err := validateRequired(c.Database.User, "database user"); err != nil {
+		return err
 	}
-	// In production environments, require database password
-	if c.Database.Password == "" && !isDevEnvironment() {
-		return fmt.Errorf("database password required (set LUMO_DATABASE_PASSWORD environment variable)")
-	}
-	validSSLModes := map[string]bool{
-		"disable":     true,
-		"require":     true,
-		"verify-ca":   true,
-		"verify-full": true,
-	}
-	if !validSSLModes[c.Database.SSLMode] {
+	// Note: Database password is optional - required only when actually connecting to DB.
+	// CLI commands like 'diagnose' and 'ask' don't need database access.
+	if !isOneOf(c.Database.SSLMode, validSSLModes) {
 		return fmt.Errorf("invalid database ssl_mode: %s (must be disable, require, verify-ca, or verify-full)", c.Database.SSLMode)
 	}
 
