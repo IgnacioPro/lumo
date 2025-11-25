@@ -45,10 +45,7 @@ func (r *AgentRepository) Create(ctx context.Context, agent *models.Agent) error
 		}
 		if val != nil {
 			labelsJSON = val.([]byte)
-			fmt.Printf("DEBUG: Labels JSON from Value(): %s\n", string(labelsJSON))
 		}
-	} else {
-		fmt.Printf("DEBUG: Labels is nil\n")
 	}
 
 	// Serialize Kubernetes metadata if present
@@ -59,10 +56,6 @@ func (r *AgentRepository) Create(ctx context.Context, agent *models.Agent) error
 			return fmt.Errorf("failed to marshal kubernetes metadata: %w", err)
 		}
 		k8sMetadataJSON = k8sJSON
-		// Debug: Log marshaled K8s metadata
-		fmt.Printf("DEBUG: K8s metadata JSON: %s\n", string(k8sJSON))
-	} else {
-		fmt.Printf("DEBUG: K8s metadata is nil - passing NULL\n")
 	}
 
 	query := `
@@ -74,11 +67,10 @@ func (r *AgentRepository) Create(ctx context.Context, agent *models.Agent) error
 		RETURNING id, registered_at, updated_at, last_heartbeat_at
 	`
 
-	// Try passing labels as string instead of []byte for debugging
+	// Pass labels as string for PostgreSQL JSONB compatibility
 	var labelsStr interface{} = nil
 	if labelsJSON != nil {
 		labelsStr = string(labelsJSON)
-		fmt.Printf("DEBUG: Passing labels as string: %s\n", labelsStr)
 	}
 
 	err = r.db.QueryRowContext(
