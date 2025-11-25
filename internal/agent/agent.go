@@ -255,6 +255,8 @@ func (a *Agent) heartbeatLoop(ctx context.Context) {
 			} else {
 				a.metrics.RecordHeartbeat(true)
 				a.metrics.UpdateAPIAvailability(true)
+				// Keep health check alive
+				a.healthCheck.KeepAlive()
 			}
 		}
 	}

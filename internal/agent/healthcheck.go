@@ -97,6 +97,15 @@ func (hc *HealthCheck) UpdateStatus(status HealthStatus, errors []string) {
 	hc.errors = errors
 }
 
+// KeepAlive updates the last run time without changing the status
+// This is useful for long-running processes or event loops to indicate they are still active
+func (hc *HealthCheck) KeepAlive() {
+	hc.mu.Lock()
+	defer hc.mu.Unlock()
+
+	hc.lastRun = time.Now()
+}
+
 // healthHandler handles GET /health
 func (hc *HealthCheck) healthHandler(w http.ResponseWriter, r *http.Request) {
 	hc.mu.RLock()

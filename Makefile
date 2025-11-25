@@ -31,11 +31,14 @@ help:
 	@grep -E '^##' $(MAKEFILE_LIST) | sed -e 's/^## /  /' -e 's/:/\t/'
 	@echo ""
 
-## build: Build the lumo binary
+## build: Build both CLI and Agent binaries
 build:
 	@echo "$(COLOR_BLUE)Building $(BINARY_NAME)...$(COLOR_RESET)"
 	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) $(MAIN_PATH)
 	@echo "$(COLOR_GREEN)✓ Build complete: $(BINARY_NAME)$(COLOR_RESET)"
+	@echo "$(COLOR_BLUE)Building $(BINARY_NAME)-agent...$(COLOR_RESET)"
+	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME)-agent ./cmd/lumo-agent
+	@echo "$(COLOR_GREEN)✓ Build complete: $(BINARY_NAME)-agent$(COLOR_RESET)"
 
 ## run: Run the application (use ARGS to pass arguments, e.g., make run ARGS="diagnose localhost")
 run: build
@@ -45,7 +48,7 @@ run: build
 ## clean: Remove build artifacts and temporary files
 clean:
 	@echo "$(COLOR_YELLOW)Cleaning build artifacts...$(COLOR_RESET)"
-	@rm -f $(BINARY_NAME)
+	@rm -f $(BINARY_NAME) $(BINARY_NAME)-agent
 	@rm -f coverage.out coverage.html
 	@$(GO) clean -cache -testcache
 	@echo "$(COLOR_GREEN)✓ Clean complete$(COLOR_RESET)"
