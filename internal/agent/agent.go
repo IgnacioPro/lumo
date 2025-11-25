@@ -380,10 +380,14 @@ func (a *Agent) setupEventDrivenMode(ctx context.Context) error {
 	a.logger.Info("Events will be submitted to API server for centralized AI analysis and notifications")
 
 	// Step 3: Create debouncer
-	a.logger.WithField("debounce_window", a.cfg.Agent.EventDriven.DebounceWindow).Info("Creating event debouncer")
+	a.logger.WithFields(logrus.Fields{
+		"debounce_window":     a.cfg.Agent.EventDriven.DebounceWindow,
+		"max_debounce_window": a.cfg.Agent.EventDriven.MaxDebounceWindow,
+	}).Info("Creating event debouncer")
 	debouncer, err := eventdriven.NewDebouncer(ctx, &eventdriven.DebouncerConfig{
-		DebounceWindow: a.cfg.Agent.EventDriven.DebounceWindow,
-		RedisClient:    redisClient,
+		DebounceWindow:    a.cfg.Agent.EventDriven.DebounceWindow,
+		MaxDebounceWindow: a.cfg.Agent.EventDriven.MaxDebounceWindow,
+		RedisClient:       redisClient,
 	}, a.logger)
 	if err != nil {
 		return fmt.Errorf("failed to create debouncer: %w", err)

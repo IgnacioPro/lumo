@@ -13,19 +13,21 @@ import (
 
 // Debouncer handles event debouncing with state tracking
 type Debouncer struct {
-	cache          *redis.Client
-	logger         *logrus.Entry
-	debounceWindow time.Duration
-	mu             sync.RWMutex
-	timers         map[string]*time.Timer
-	callbacks      map[string]func(*KubernetesEvent)
-	ctx            context.Context
+	cache             *redis.Client
+	logger            *logrus.Entry
+	debounceWindow    time.Duration
+	maxDebounceWindow time.Duration
+	mu                sync.RWMutex
+	timers            map[string]*time.Timer
+	callbacks         map[string]func(*KubernetesEvent)
+	ctx               context.Context
 }
 
 // DebouncerConfig holds configuration for the debouncer
 type DebouncerConfig struct {
-	DebounceWindow time.Duration
-	RedisClient    *redis.Client
+	DebounceWindow    time.Duration
+	MaxDebounceWindow time.Duration // Maximum time to wait before processing (even if events keep coming)
+	RedisClient       *redis.Client
 }
 
 const (
@@ -53,14 +55,18 @@ func NewDebouncer(ctx context.Context, config *DebouncerConfig, logger *logrus.L
 	if config.DebounceWindow == 0 {
 		config.DebounceWindow = 45 * time.Second // Default
 	}
+	if config.MaxDebounceWindow == 0 {
+		config.MaxDebounceWindow = 3 * time.Minute // Default: max 3 minutes even if events keep coming
+	}
 
 	return &Debouncer{
-		cache:          config.RedisClient,
-		logger:         logger.WithField("component", "debouncer"),
-		debounceWindow: config.DebounceWindow,
-		timers:         make(map[string]*time.Timer),
-		callbacks:      make(map[string]func(*KubernetesEvent)),
-		ctx:            ctx,
+		cache:             config.RedisClient,
+		logger:            logger.WithField("component", "debouncer"),
+		debounceWindow:    config.DebounceWindow,
+		maxDebounceWindow: config.MaxDebounceWindow,
+		timers:            make(map[string]*time.Timer),
+		callbacks:         make(map[string]func(*KubernetesEvent)),
+		ctx:               ctx,
 	}, nil
 }
 
@@ -99,6 +105,41 @@ func (d *Debouncer) Debounce(event *KubernetesEvent, callback func(*KubernetesEv
 		}
 	}
 	event.LastSeen = event.Timestamp
+
+	// Check if we've exceeded the maximum debounce window
+	// This prevents infinite debouncing for events that keep repeating
+	timeSinceFirstSeen := event.Timestamp.Sub(event.FirstSeen)
+	if seen && timeSinceFirstSeen >= d.maxDebounceWindow {
+		d.logger.WithFields(logrus.Fields{
+			"event_key":            eventKey,
+			"event_type":           event.Type,
+			"resource":             event.ResourceKind + "/" + event.ResourceName,
+			"namespace":            event.ResourceNamespace,
+			"time_since_first":     timeSinceFirstSeen,
+			"max_debounce_window":  d.maxDebounceWindow,
+			"count":                count,
+		}).Info("Maximum debounce window exceeded - processing event immediately")
+
+		// Store event in Redis first
+		if err := d.storeEvent(eventKey, event); err != nil {
+			d.logger.WithError(err).Error("Failed to store event in Redis")
+			return err
+		}
+
+		// Cancel existing timer if present
+		if timer, exists := d.timers[eventKey]; exists {
+			timer.Stop()
+			delete(d.timers, eventKey)
+			delete(d.callbacks, eventKey)
+		}
+
+		// Process immediately
+		go func() {
+			d.processDebounced(eventKey, callback)
+		}()
+
+		return nil
+	}
 
 	// Cancel existing timer if present
 	if timer, exists := d.timers[eventKey]; exists {

@@ -200,13 +200,14 @@ type KubernetesAgentConfig struct {
 
 // EventDrivenConfig contains event-driven mode settings for Kubernetes agents
 type EventDrivenConfig struct {
-	Enabled            bool          `mapstructure:"enabled"`              // Enable event-driven mode
-	DebounceWindow     time.Duration `mapstructure:"debounce_window"`      // Debounce window (30-60s)
-	ResyncPeriod       time.Duration `mapstructure:"resync_period"`        // Informer resync period (0 = no resync)
-	GroupRelatedEvents bool          `mapstructure:"group_related_events"` // Group related events for batch analysis
-	MaxEventsPerMinute int           `mapstructure:"max_events_per_min"`   // Rate limit for event processing
-	MinSeverity        string        `mapstructure:"min_severity"`         // Minimum severity to process (low|medium|high|critical)
-	WatchNamespaces    []string      `mapstructure:"watch_namespaces"`     // Namespaces to watch (empty = all)
+	Enabled            bool          `mapstructure:"enabled"`                 // Enable event-driven mode
+	DebounceWindow     time.Duration `mapstructure:"debounce_window"`         // Debounce window (30-60s)
+	MaxDebounceWindow  time.Duration `mapstructure:"max_debounce_window"`     // Maximum debounce time (prevents infinite debouncing)
+	ResyncPeriod       time.Duration `mapstructure:"resync_period"`           // Informer resync period (0 = no resync)
+	GroupRelatedEvents bool          `mapstructure:"group_related_events"`    // Group related events for batch analysis
+	MaxEventsPerMinute int           `mapstructure:"max_events_per_min"`      // Rate limit for event processing
+	MinSeverity        string        `mapstructure:"min_severity"`            // Minimum severity to process (low|medium|high|critical)
+	WatchNamespaces    []string      `mapstructure:"watch_namespaces"`        // Namespaces to watch (empty = all)
 
 	// Event type filters (empty = watch all)
 	WatchPodEvents bool `mapstructure:"watch_pod_events"` // Watch pod failures (ImagePullBackOff, CrashLoopBackOff, OOMKilled)
