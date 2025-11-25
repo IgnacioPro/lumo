@@ -39,6 +39,12 @@ spec:
           value: "8080"
         - name: LUMO_API_HOST
           value: "0.0.0.0"
+        - name: SLACK_WEBHOOK_URL
+          valueFrom:
+            secretKeyRef:
+              name: lumo-secrets
+              key: slack-webhook-url
+              optional: true  # Allow API to start even without Slack configured
         volumeMounts:
         - name: config
           mountPath: /etc/lumo
@@ -88,3 +94,11 @@ data:
     api:
       port: 8080
       host: 0.0.0.0
+    notifications:
+      enabled: true
+      notifiers:
+        - name: slack-alerts
+          type: slack
+          enabled: true
+          webhook_url: ${SLACK_WEBHOOK_URL}
+          timeout: 30

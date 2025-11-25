@@ -2,6 +2,8 @@ package api
 
 import (
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -16,6 +18,29 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
+
+// expandEnvVar expands environment variables in the format ${VAR} or $VAR
+// If the value doesn't contain a variable reference, it's returned as-is
+func expandEnvVar(value string) string {
+	if value == "" {
+		return value
+	}
+
+	// Handle ${VAR} syntax
+	if strings.Contains(value, "${") && strings.Contains(value, "}") {
+		return os.ExpandEnv(value)
+	}
+
+	// Handle $VAR syntax (but not if it's just a literal string starting with $)
+	if strings.HasPrefix(value, "$") && !strings.Contains(value, "/") {
+		varName := strings.TrimPrefix(value, "$")
+		if envVal := os.Getenv(varName); envVal != "" {
+			return envVal
+		}
+	}
+
+	return value
+}
 
 // NewRouter creates and configures the HTTP router
 func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager, logger *logrus.Logger) *chi.Mux {
@@ -85,15 +110,15 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 				Name:         cfgNotifier.Name,
 				Type:         notifications.NotifierType(cfgNotifier.Type),
 				Enabled:      cfgNotifier.Enabled,
-				WebhookURL:   cfgNotifier.WebhookURL,
-				BotToken:     cfgNotifier.BotToken,
-				ChatID:       cfgNotifier.ChatID,
+				WebhookURL:   expandEnvVar(cfgNotifier.WebhookURL),
+				BotToken:     expandEnvVar(cfgNotifier.BotToken),
+				ChatID:       expandEnvVar(cfgNotifier.ChatID),
 				Headers:      cfgNotifier.Headers,
 				Method:       cfgNotifier.Method,
 				SMTPHost:     cfgNotifier.SMTPHost,
 				SMTPPort:     cfgNotifier.SMTPPort,
 				SMTPUsername: cfgNotifier.SMTPUser,
-				SMTPPassword: cfgNotifier.SMTPPass,
+				SMTPPassword: expandEnvVar(cfgNotifier.SMTPPass),
 				From:         cfgNotifier.From,
 				To:           cfgNotifier.To,
 			}
@@ -103,10 +128,16 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 				continue
 			}
 			notifiers = append(notifiers, notifier)
+			logger.WithFields(logrus.Fields{
+				"provider": notifier.Name(),
+				"type":     cfgNotifier.Type,
+			}).Info("Notification provider initialized successfully")
 		}
 		if len(notifiers) == 0 {
 			logger.Warn("No notification providers initialized")
 			notifEnabled = false
+		} else {
+			logger.WithField("count", len(notifiers)).Info("Notification system enabled")
 		}
 	}
 
