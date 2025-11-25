@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-24 | **Version:** 1.0.0 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Phase 13 Complete ✅ | Phase 15 In Progress 🔄 | Phase 16 Complete ✅ | **Full Stack K8s + Event-Driven + Circuit Breakers** 🚀
+> **Last Updated:** 2025-11-25 | **Version:** 1.0.0 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Phase 13 Complete ✅ | Phase 15 In Progress 🔄 | Phase 16 Complete ✅ | **Full Stack K8s + Event-Driven + Circuit Breakers** 🚀
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -399,6 +399,15 @@ K8s Event → Informer → Watcher → Debouncer → API Processor → API Serve
 - Fixed EventGrouper race condition with sync.RWMutex
 - Eliminated unsafe type assertions in all watchers (proper interface methods)
 - Added 5 Prometheus metrics: events_processed_total, event_processing_duration_seconds, ai_analysis_total, ai_analysis_duration_seconds, notifications_sent_total
+
+**Bug Fixes (Nov 25, 2025):**
+- **OOMKilled Detection**: Fixed PodWatcher to check BOTH `State.Terminated` (for restartPolicy: Never) and `LastTerminationState.Terminated` (after restart), with restart count tracking to prevent duplicate events
+  - Location: `internal/agent/eventdriven/watchers/pod.go:106-138`
+  - Issue: Only checked LastTerminationState, missing OOMKilled containers with restartPolicy: Never
+- **PVC Provision Failed**: Enhanced detection logic to trigger on first observation if already pending >2 minutes, or when crossing the 2-minute threshold
+  - Location: `internal/agent/eventdriven/watchers/volume.go:66-112`
+  - Issue: Required status change to trigger, missing PVCs that stayed in Pending state during informer sync
+  - Note: EventWatcher also detects these via Kubernetes "ProvisioningFailed" events as a backup detection method
 
 ### Event Types & Severity
 

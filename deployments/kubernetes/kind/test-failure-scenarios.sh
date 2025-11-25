@@ -57,15 +57,15 @@ log_test() {
 log_result() {
     local result=$1
     local message=$2
-    
-    ((TESTS_RUN++))
-    
+
+    TESTS_RUN=$((TESTS_RUN + 1))
+
     if [ "$result" = "PASS" ]; then
         log_success "$message"
-        ((TESTS_PASSED++))
+        TESTS_PASSED=$((TESTS_PASSED + 1))
     else
         log_error "$message"
-        ((TESTS_FAILED++))
+        TESTS_FAILED=$((TESTS_FAILED + 1))
     fi
 }
 
@@ -157,21 +157,73 @@ wait_for_event() {
 verify_event_in_database() {
     local event_type=$1
     local resource_name=$2
-    
+
     log_info "Verifying event in database: ${event_type}"
-    
+
     local pg_pod=$(kubectl get pods -n "${NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}')
-    
+
+    if [ -z "$pg_pod" ]; then
+        log_error "PostgreSQL pod not found"
+        return 1
+    fi
+
     local count=$(kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
         psql -U lumo -d lumo -t -c \
         "SELECT COUNT(*) FROM events WHERE event_type = '${event_type}' AND resource_name LIKE '%${resource_name}%';" \
-        2>/dev/null | tr -d ' ')
-    
-    if [ "${count:-0}" -gt 0 ]; then
+        2>/dev/null | tr -d ' \n')
+
+    # Default to 0 if empty
+    count=${count:-0}
+
+    if [ "$count" -gt 0 ]; then
         log_success "Event stored in database: ${event_type} (${count} records)"
+
+        # Show the actual event details
+        log_info "Event details:"
+        kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+            psql -U lumo -d lumo -c \
+            "SELECT event_type, severity, resource_kind, resource_name, namespace, created_at FROM events WHERE event_type = '${event_type}' AND resource_name LIKE '%${resource_name}%' ORDER BY created_at DESC LIMIT 1;" \
+            2>/dev/null | head -4 || true
+
         return 0
     else
         log_error "Event NOT found in database: ${event_type}"
+
+        # Diagnostic: Check if ANY events exist
+        log_info "Checking total events in database..."
+        local total_events=$(kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+            psql -U lumo -d lumo -t -c "SELECT COUNT(*) FROM events;" 2>/dev/null | tr -d ' \n')
+        total_events=${total_events:-0}
+
+        log_info "Total events in database: ${total_events}"
+
+        if [ "$total_events" -eq 0 ]; then
+            log_error "No events found in database at all - possible authentication or API issue"
+
+            # Check API key
+            log_info "Checking API key configuration..."
+            local api_key_count=$(kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+                psql -U lumo -d lumo -t -c "SELECT COUNT(*) FROM api_keys WHERE revoked = false;" 2>/dev/null | tr -d ' \n')
+            api_key_count=${api_key_count:-0}
+
+            if [ "$api_key_count" -eq 0 ]; then
+                log_error "No active API keys found - agents cannot authenticate!"
+                log_info "Run: kubectl logs -n ${NAMESPACE} -l mode=event-driven --tail=50"
+            else
+                log_info "Found ${api_key_count} active API key(s)"
+            fi
+
+            # Check recent agent logs for errors (|| true prevents script exit if grep finds nothing)
+            log_info "Recent agent errors:"
+            kubectl logs -n "${NAMESPACE}" -l mode=event-driven --tail=20 2>/dev/null | grep -i "error\|401\|unauthorized" | tail -5 || true
+        else
+            log_info "Other events exist - showing recent events:"
+            kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+                psql -U lumo -d lumo -c \
+                "SELECT event_type, severity, resource_name, created_at FROM events ORDER BY created_at DESC LIMIT 5;" \
+                2>/dev/null | head -7 || true
+        fi
+
         return 1
     fi
 }
