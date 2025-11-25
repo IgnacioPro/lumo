@@ -100,10 +100,8 @@ func (rl *RateLimiter) PerUserMiddleware() func(http.Handler) http.Handler {
 			// Priority: API key > JWT user ID > IP address (fallback)
 
 			// Check for API key in context (set by APIKeyAuth middleware)
-			if apiKey := r.Context().Value("api_key"); apiKey != nil {
-				if key, ok := apiKey.(string); ok && key != "" {
-					return "apikey:" + key, nil
-				}
+			if apiKey, ok := GetAPIKeyFromContext(r.Context()); ok && apiKey != nil {
+				return "apikey:" + apiKey.ID.String(), nil
 			}
 
 			// Check for JWT user ID in context (set by JWT middleware)
@@ -120,14 +118,13 @@ func (rl *RateLimiter) PerUserMiddleware() func(http.Handler) http.Handler {
 		}),
 		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
 			userKey := "unknown"
-			if apiKey := r.Context().Value("api_key"); apiKey != nil {
-				if key, ok := apiKey.(string); ok {
-					// Only log first 8 chars for security
-					if len(key) > 8 {
-						userKey = key[:8] + "..."
-					} else {
-						userKey = key
-					}
+			if apiKey, ok := GetAPIKeyFromContext(r.Context()); ok && apiKey != nil {
+				// Only log first 8 chars of ID for security
+				keyID := apiKey.ID.String()
+				if len(keyID) > 8 {
+					userKey = keyID[:8] + "..."
+				} else {
+					userKey = keyID
 				}
 			}
 

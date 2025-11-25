@@ -157,8 +157,9 @@ func (p *GeminiProvider) AnalyzeStream(ctx context.Context, req *AnalysisRequest
 		defer close(ch)
 
 		// Build streaming URL with alt=sse parameter
+		// NOTE: Gemini API requires API key in URL query string (Google's design)
 		streamURL := fmt.Sprintf("%s/%s:streamGenerateContent?key=%s&alt=sse",
-			adapter.GetEndpoint(),
+			adapter.config.Endpoint,
 			adapter.config.Model,
 			adapter.config.APIKey)
 
@@ -288,7 +289,9 @@ func (a *geminiAdapter) BuildHeaders() map[string]string {
 }
 
 func (a *geminiAdapter) GetEndpoint() string {
-	// Gemini uses API key in URL, not in endpoint
+	// NOTE: Gemini API requires API key in URL query string, not in Authorization header.
+	// This is Google's design - ensure TLS is used and avoid logging URLs with keys.
+	// See: https://ai.google.dev/gemini-api/docs/api-key
 	return fmt.Sprintf("%s/%s:generateContent?key=%s",
 		a.config.Endpoint,
 		a.config.Model,

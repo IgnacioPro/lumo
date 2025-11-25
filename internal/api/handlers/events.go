@@ -319,9 +319,12 @@ func (h *EventsHandler) getAgentIDFromContext(ctx context.Context) (uuid.UUID, e
 	return uuid.Nil, fmt.Errorf("agent_id not found in context")
 }
 
-// processEventsAsync performs AI analysis and sends notifications asynchronously
+// processEventsAsync performs AI analysis and sends notifications asynchronously.
+// Uses a 5-minute timeout for all async operations to prevent resource leaks.
 func (h *EventsHandler) processEventsAsync(events []*models.Event) {
-	ctx := context.Background()
+	// Create a new context with timeout (not derived from HTTP request context which is already cancelled)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
 
 	for _, event := range events {
 		// AI Analysis
