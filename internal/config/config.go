@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/spf13/viper"
@@ -306,7 +307,7 @@ func DefaultConfig() *Config {
 			RateLimitRequestsPerMin:  60,   // 60 req/min per IP (1 req/sec average)
 			RateLimitRequestsPerHour: 3600, // 3600 req/hour per user (1 req/sec average)
 			RateLimitBurstSize:       10,   // Allow bursts of 10 requests
-			AllowedOrigins:           []string{"*"},
+			AllowedOrigins:           []string{}, // SECURITY: Configure explicit origins in production
 		},
 		Diagnostics: DiagnosticsConfig{
 			Network: NetworkConfig{
@@ -353,7 +354,7 @@ func DefaultConfig() *Config {
 			Port:            5432,
 			Name:            "lumo",
 			User:            "lumo",
-			Password:        "lumo_dev", // Set via LUMO_DATABASE_PASSWORD env var
+			Password:        "", // REQUIRED: Set via LUMO_DATABASE_PASSWORD env var
 			SSLMode:         "disable",
 			MaxConnections:  50,               // Adaptive default for medium deployments (100-500 agents)
 			MaxIdle:         12,               // 25% of MaxConnections (keep warm connections)
@@ -522,6 +523,21 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
+// isDevEnvironment checks if we're running in a development or test environment.
+// Returns true when LUMO_ENV is set to "development"/"dev"/"test", or when
+// running under `go test` (detected via test flag presence).
+func isDevEnvironment() bool {
+	env := os.Getenv("LUMO_ENV")
+	if env == "development" || env == "dev" || env == "test" {
+		return true
+	}
+	// Check if running under go test
+	if testing.Testing() {
+		return true
+	}
+	return false
+}
+
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
 	// SSH validation
@@ -625,6 +641,10 @@ func (c *Config) Validate() error {
 	}
 	if c.Database.User == "" {
 		return fmt.Errorf("database user cannot be empty")
+	}
+	// In production environments, require database password
+	if c.Database.Password == "" && !isDevEnvironment() {
+		return fmt.Errorf("database password required (set LUMO_DATABASE_PASSWORD environment variable)")
 	}
 	validSSLModes := map[string]bool{
 		"disable":     true,

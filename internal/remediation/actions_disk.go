@@ -161,14 +161,22 @@ func (a *CleanTmpFilesAction) Execute(ctx context.Context, executor diagnostics.
 
 	// Actual deletion command
 	deleteCmd := fmt.Sprintf("%s -delete", findCmd)
-	stdout, _, exitCode, err := executor.ExecuteWithContext(ctx, deleteCmd)
+	stdout, stderr, exitCode, err := executor.ExecuteWithContext(ctx, deleteCmd)
 
-	result.Output = fmt.Sprintf("stdout: %s\nstderr: %s", stdout, "") // Changed stderr to ""
-	
+	if stderr != "" {
+		result.Output = fmt.Sprintf("stdout: %s\nstderr: %s", stdout, stderr)
+	} else {
+		result.Output = stdout
+	}
+
 	if err != nil || exitCode != 0 {
 		result.Status = StatusFailed
 		result.Message = fmt.Sprintf("Failed to delete temporary files in '%s'", a.targetDir)
-		result.Error = fmt.Errorf("exit code %d: %s", exitCode, "").Error() // Changed stderr to ""
+		errMsg := fmt.Sprintf("exit code %d", exitCode)
+		if stderr != "" {
+			errMsg = fmt.Sprintf("%s: %s", errMsg, stderr)
+		}
+		result.Error = errMsg
 		result.EndTime = time.Now()
 		result.Duration = result.EndTime.Sub(result.StartTime)
 		return result, fmt.Errorf("command failed: %w", err)
