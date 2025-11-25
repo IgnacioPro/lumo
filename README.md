@@ -92,6 +92,8 @@
 
 ### Kubernetes Diagnostics
 
+<img width="2816" height="1536" alt="por_escrito" src="https://github.com/user-attachments/assets/b58fb4c6-3f20-4fa4-9f21-e8b586074b5c" />
+
 Native cluster monitoring using `k8s.io/client-go`:
 
 - ✅ **8 Resource Types** - Nodes, Pods, Deployments, StatefulSets, DaemonSets, Services, PVCs, Events
