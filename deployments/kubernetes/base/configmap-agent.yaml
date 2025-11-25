@@ -40,11 +40,12 @@ data:
 
   # Event-driven mode configuration
   agent.event-driven.enabled: "true"
-  agent.event-driven.debounce-window: "45s"  # Wait 45s before processing event
-  agent.event-driven.resync-period: "0s"     # 0 = pure event-driven (no polling)
+  agent.event-driven.debounce-window: "45s"      # Wait 45s before processing event
+  agent.event-driven.max-debounce-window: "3m"   # Max 3min wait (prevents infinite debouncing)
+  agent.event-driven.resync-period: "0s"         # 0 = pure event-driven (no polling)
   agent.event-driven.group-related-events: "true"
   agent.event-driven.max-events-per-min: "100"
-  agent.event-driven.min-severity: "low"     # low|medium|high|critical
+  agent.event-driven.min-severity: "low"         # low|medium|high|critical
 
   # Event type watchers (all enabled by default)
   agent.event-driven.watch-pod-events: "true"     # ImagePullBackOff, CrashLoopBackOff, OOMKilled

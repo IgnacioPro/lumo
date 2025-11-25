@@ -260,7 +260,7 @@ bootstrap_api_key() {
         log_info "Creating new API key in database..."
         # Create API key in database with full agent permissions
         # Scopes: agents:read, agents:write, events:write, jobs:read, diagnostics:write
-        kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo <<-EOF
+        kubectl exec -i -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo -v ON_ERROR_STOP=1 <<-EOF
             INSERT INTO api_keys (
                 id,
                 key_hash,
@@ -302,7 +302,7 @@ EOF
 
     # Create system agent for API key authenticated events
     log_info "Creating system agent for API key authentication..."
-    kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo <<-EOF
+    kubectl exec -i -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo -v ON_ERROR_STOP=1 <<-EOF
         INSERT INTO agents (
             id,
             name,
@@ -914,10 +914,10 @@ main() {
     deploy_infrastructure
     echo ""
 
-    bootstrap_api_key
+    deploy_api_server
     echo ""
 
-    deploy_api_server
+    bootstrap_api_key
     echo ""
 
     deploy_agent
