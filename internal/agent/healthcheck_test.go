@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -55,5 +56,29 @@ func TestHealthCheck_Ready(t *testing.T) {
 		}()
 
 		assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	})
+
+	t.Run("KeepAlive updates last run time", func(t *testing.T) {
+		hc := NewHealthCheck(8080, nil, logger)
+
+		// Simulate stale status
+		hc.mu.Lock()
+		hc.lastRun = time.Now().Add(-20 * time.Minute)
+		hc.mu.Unlock()
+
+		// Verify not ready
+		req := httptest.NewRequest("GET", "/ready", nil)
+		w := httptest.NewRecorder()
+		hc.readyHandler(w, req)
+		assert.Equal(t, http.StatusServiceUnavailable, w.Result().StatusCode)
+
+		// Call KeepAlive
+		hc.KeepAlive()
+
+		// Verify ready
+		req = httptest.NewRequest("GET", "/ready", nil)
+		w = httptest.NewRecorder()
+		hc.readyHandler(w, req)
+		assert.Equal(t, http.StatusOK, w.Result().StatusCode)
 	})
 }
