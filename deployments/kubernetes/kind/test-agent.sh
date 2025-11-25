@@ -230,25 +230,34 @@ deploy_infrastructure() {
 
 bootstrap_api_key() {
     log_info "Step 3.5/7: Bootstrapping API key and system agent..."
-    
+
     # Token that agents will use (matches deploy-to-kind.sh)
     local AGENT_TOKEN="test-token-for-kind"
-    
+
     # Hash the token using SHA-256 (matches internal/database/models/api_key.go)
     local KEY_HASH=$(echo -n "$AGENT_TOKEN" | sha256sum | awk '{print $1}')
-    
+
     log_info "Creating API key with hash: ${KEY_HASH:0:16}..."
-    
+
     # Get PostgreSQL pod name
     local pg_pod=$(kubectl get pods -n "${NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}')
-    
+
+    if [ -z "$pg_pod" ]; then
+        log_error "✗ PostgreSQL pod not found"
+        return 1
+    fi
+
     # Check if API key already exists
     local existing_key=$(kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
-        psql -U lumo -d lumo -t -c "SELECT COUNT(*) FROM api_keys WHERE key_hash = '$KEY_HASH';" 2>/dev/null | tr -d ' ')
-    
+        psql -U lumo -d lumo -t -c "SELECT COUNT(*) FROM api_keys WHERE key_hash = '$KEY_HASH';" 2>/dev/null | tr -d ' \n')
+
+    # Default to 0 if empty
+    existing_key=${existing_key:-0}
+
     if [ "$existing_key" -gt 0 ]; then
         log_success "✓ API key already exists in database, skipping creation"
     else
+        log_info "Creating new API key in database..."
         # Create API key in database with full agent permissions
         # Scopes: agents:read, agents:write, events:write, jobs:read, diagnostics:write
         kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo <<-EOF
@@ -268,15 +277,29 @@ bootstrap_api_key() {
                 false
             );
 EOF
-        
-        if [ $? -eq 0 ]; then
-            log_success "✓ API key created successfully"
+
+        if [ $? -ne 0 ]; then
+            log_error "✗ Failed to execute API key insert command"
+            return 1
+        fi
+
+        # Verify the API key was actually created
+        log_info "Verifying API key creation..."
+        local verify_key=$(kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+            psql -U lumo -d lumo -t -c "SELECT COUNT(*) FROM api_keys WHERE key_hash = '$KEY_HASH';" 2>/dev/null | tr -d ' \n')
+
+        verify_key=${verify_key:-0}
+
+        if [ "$verify_key" -gt 0 ]; then
+            log_success "✓ API key created and verified in database"
         else
-            log_error "✗ Failed to create API key"
+            log_error "✗ API key creation failed - key not found in database after insert"
+            log_info "Checking database connection and tables..."
+            kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo -c "\dt api_keys"
             return 1
         fi
     fi
-    
+
     # Create system agent for API key authenticated events
     log_info "Creating system agent for API key authentication..."
     kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo <<-EOF
@@ -310,13 +333,34 @@ EOF
             last_heartbeat_at = NOW(),
             status = 'online';
 EOF
-    
-    if [ $? -eq 0 ]; then
-        log_success "✓ System agent created successfully"
-    else
-        log_error "✗ Failed to create system agent"
+
+    if [ $? -ne 0 ]; then
+        log_error "✗ Failed to execute system agent insert command"
         return 1
     fi
+
+    # Verify the system agent was created
+    log_info "Verifying system agent creation..."
+    local verify_agent=$(kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+        psql -U lumo -d lumo -t -c "SELECT COUNT(*) FROM agents WHERE id = '00000000-0000-0000-0000-000000000000';" 2>/dev/null | tr -d ' \n')
+
+    verify_agent=${verify_agent:-0}
+
+    if [ "$verify_agent" -gt 0 ]; then
+        log_success "✓ System agent created and verified in database"
+    else
+        log_error "✗ System agent creation failed - agent not found in database after insert"
+        log_info "Checking database connection and tables..."
+        kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo -c "\dt agents"
+        return 1
+    fi
+
+    # Final verification: Show what was created
+    log_info "Bootstrap summary:"
+    kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo -c \
+        "SELECT name, scopes FROM api_keys WHERE key_hash = '$KEY_HASH';" 2>/dev/null | head -3
+    kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo -c \
+        "SELECT id, name, status FROM agents WHERE id = '00000000-0000-0000-0000-000000000000';" 2>/dev/null | head -3
 }
 
 deploy_api_server() {

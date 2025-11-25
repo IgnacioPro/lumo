@@ -103,13 +103,36 @@ func (w *PodWatcher) detectPodIssues(pod *corev1.Pod, oldPod *corev1.Pod, info *
 			}
 		}
 
-		// Check for OOMKilled
-		if containerStatus.LastTerminationState.Terminated != nil {
-			terminated := containerStatus.LastTerminationState.Terminated
+		// Check for OOMKilled in current state (restartPolicy: Never)
+		if containerStatus.State.Terminated != nil {
+			terminated := containerStatus.State.Terminated
 			if terminated.Reason == "OOMKilled" {
 				event := w.createOOMKilledEvent(pod, containerStatus.Name, terminated, info)
 				if event != nil {
 					events = append(events, event)
+				}
+			}
+		}
+
+		// Check for OOMKilled in last termination state (after restart)
+		if containerStatus.LastTerminationState.Terminated != nil {
+			terminated := containerStatus.LastTerminationState.Terminated
+			if terminated.Reason == "OOMKilled" {
+				// Only trigger if this is a new OOMKill (restart count changed)
+				if oldPod != nil {
+					oldStatus := findContainerStatus(oldPod, containerStatus.Name)
+					if oldStatus == nil || oldStatus.RestartCount != containerStatus.RestartCount {
+						event := w.createOOMKilledEvent(pod, containerStatus.Name, terminated, info)
+						if event != nil {
+							events = append(events, event)
+						}
+					}
+				} else {
+					// New pod - report OOMKilled
+					event := w.createOOMKilledEvent(pod, containerStatus.Name, terminated, info)
+					if event != nil {
+						events = append(events, event)
+					}
 				}
 			}
 		}
