@@ -81,15 +81,7 @@ func (p *ProxmoxChecker) RequiresRoot() bool {
 
 // Run executes the Proxmox check
 func (p *ProxmoxChecker) Run(ctx context.Context, executor diagnostics.CommandExecutor) (*diagnostics.CheckResult, error) {
-	result := &diagnostics.CheckResult{
-		Name:      p.Name(),
-		Category:  p.Category(),
-		Status:    diagnostics.StatusCompleted,
-		Timestamp: time.Now(),
-		Data:      make(map[string]interface{}),
-		Metrics:   []diagnostics.Metric{},
-	}
-
+	result := diagnostics.NewCheckResult(p)
 	startTime := time.Now()
 
 	// First, check if Proxmox is installed

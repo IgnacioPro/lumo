@@ -59,15 +59,7 @@ type ListeningPort struct {
 
 // Run executes the open ports check
 func (p *PortsChecker) Run(ctx context.Context, executor diagnostics.CommandExecutor) (*diagnostics.CheckResult, error) {
-	result := &diagnostics.CheckResult{
-		Name:      p.Name(),
-		Category:  p.Category(),
-		Status:    diagnostics.StatusCompleted,
-		Timestamp: time.Now(),
-		Data:      make(map[string]interface{}),
-		Metrics:   []diagnostics.Metric{},
-	}
-
+	result := diagnostics.NewCheckResult(p)
 	startTime := time.Now()
 
 	// Get listening ports

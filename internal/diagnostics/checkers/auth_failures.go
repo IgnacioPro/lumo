@@ -68,15 +68,7 @@ type AttackSource struct {
 
 // Run executes the auth failures check
 func (a *AuthFailuresChecker) Run(ctx context.Context, executor diagnostics.CommandExecutor) (*diagnostics.CheckResult, error) {
-	result := &diagnostics.CheckResult{
-		Name:      a.Name(),
-		Category:  a.Category(),
-		Status:    diagnostics.StatusCompleted,
-		Timestamp: time.Now(),
-		Data:      make(map[string]interface{}),
-		Metrics:   []diagnostics.Metric{},
-	}
-
+	result := diagnostics.NewCheckResult(a)
 	startTime := time.Now()
 
 	// Detect log file location

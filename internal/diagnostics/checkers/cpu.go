@@ -44,15 +44,7 @@ func (c *CPUChecker) RequiresRoot() bool {
 
 // Run executes the CPU check
 func (c *CPUChecker) Run(ctx context.Context, executor diagnostics.CommandExecutor) (*diagnostics.CheckResult, error) {
-	result := &diagnostics.CheckResult{
-		Name:      c.Name(),
-		Category:  c.Category(),
-		Status:    diagnostics.StatusCompleted,
-		Timestamp: time.Now(),
-		Data:      make(map[string]interface{}),
-		Metrics:   []diagnostics.Metric{},
-	}
-
+	result := diagnostics.NewCheckResult(c)
 	startTime := time.Now()
 
 	// Get CPU count

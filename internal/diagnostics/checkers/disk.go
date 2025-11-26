@@ -44,15 +44,7 @@ func (d *DiskChecker) RequiresRoot() bool {
 
 // Run executes the disk check
 func (d *DiskChecker) Run(ctx context.Context, executor diagnostics.CommandExecutor) (*diagnostics.CheckResult, error) {
-	result := &diagnostics.CheckResult{
-		Name:      d.Name(),
-		Category:  d.Category(),
-		Status:    diagnostics.StatusCompleted,
-		Timestamp: time.Now(),
-		Data:      make(map[string]interface{}),
-		Metrics:   []diagnostics.Metric{},
-	}
-
+	result := diagnostics.NewCheckResult(d)
 	startTime := time.Now()
 
 	// Get disk usage for all filesystems

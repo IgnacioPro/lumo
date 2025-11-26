@@ -4,8 +4,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ignacio/lumo/internal/api/response"
@@ -105,17 +103,8 @@ func (h *JobsHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // Get handles GET /api/v1/jobs/:id
 func (h *JobsHandler) Get(w http.ResponseWriter, r *http.Request) {
-	// Extract job ID from URL
-	idStr := chi.URLParam(r, "id")
-	if idStr == "" {
-		response.BadRequest(w, "Job ID is required")
-		return
-	}
-
-	// Parse UUID
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		response.BadRequest(w, "Invalid job ID format")
+	id, ok := parseUUIDParam(w, r, "id")
+	if !ok {
 		return
 	}
 
@@ -132,17 +121,8 @@ func (h *JobsHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 // Delete handles DELETE /api/v1/jobs/:id
 func (h *JobsHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	// Extract job ID from URL
-	idStr := chi.URLParam(r, "id")
-	if idStr == "" {
-		response.BadRequest(w, "Job ID is required")
-		return
-	}
-
-	// Parse UUID
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		response.BadRequest(w, "Invalid job ID format")
+	id, ok := parseUUIDParam(w, r, "id")
+	if !ok {
 		return
 	}
 

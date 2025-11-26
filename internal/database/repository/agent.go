@@ -100,21 +100,21 @@ func (r *AgentRepository) Create(ctx context.Context, agent *models.Agent) error
 	return nil
 }
 
-// GetByID retrieves an agent by ID
-func (r *AgentRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Agent, error) {
-	query := `
-		SELECT id, name, hostname, ip_address, platform, architecture, version,
-			   status, capabilities, labels, kubernetes_metadata,
-			   last_heartbeat_at, registered_at, updated_at
-		FROM agents
-		WHERE id = $1
-	`
+// agentColumns is the list of columns for agent queries
+const agentColumns = `id, name, hostname, ip_address, platform, architecture, version,
+		   status, capabilities, labels, kubernetes_metadata,
+		   last_heartbeat_at, registered_at, updated_at`
 
+// scanAgent scans a database row into an Agent model.
+// This helper function reduces duplication across GetByID, GetByHostname, and List.
+func (r *AgentRepository) scanAgent(scanner interface {
+	Scan(dest ...interface{}) error
+}) (*models.Agent, error) {
 	agent := &models.Agent{}
 	var capabilities pq.StringArray
 	var k8sMetadataJSON []byte
 
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
+	err := scanner.Scan(
 		&agent.ID,
 		&agent.Name,
 		&agent.Hostname,
@@ -130,12 +130,8 @@ func (r *AgentRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Ag
 		&agent.RegisteredAt,
 		&agent.UpdatedAt,
 	)
-
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("agent not found: %w", err)
-	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get agent: %w", err)
+		return nil, err
 	}
 
 	agent.Capabilities = capabilities
@@ -147,6 +143,21 @@ func (r *AgentRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Ag
 			return nil, fmt.Errorf("failed to unmarshal kubernetes metadata: %w", err)
 		}
 		agent.KubernetesMetadata = &k8sMeta
+	}
+
+	return agent, nil
+}
+
+// GetByID retrieves an agent by ID
+func (r *AgentRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Agent, error) {
+	query := `SELECT ` + agentColumns + ` FROM agents WHERE id = $1`
+
+	agent, err := r.scanAgent(r.db.QueryRowContext(ctx, query, id))
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("agent not found: %w", err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get agent: %w", err)
 	}
 
 	return agent, nil
@@ -154,35 +165,9 @@ func (r *AgentRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Ag
 
 // GetByHostname retrieves an agent by hostname
 func (r *AgentRepository) GetByHostname(ctx context.Context, hostname string) (*models.Agent, error) {
-	query := `
-		SELECT id, name, hostname, ip_address, platform, architecture, version,
-			   status, capabilities, labels, kubernetes_metadata,
-			   last_heartbeat_at, registered_at, updated_at
-		FROM agents
-		WHERE hostname = $1
-	`
+	query := `SELECT ` + agentColumns + ` FROM agents WHERE hostname = $1`
 
-	agent := &models.Agent{}
-	var capabilities pq.StringArray
-	var k8sMetadataJSON []byte
-
-	err := r.db.QueryRowContext(ctx, query, hostname).Scan(
-		&agent.ID,
-		&agent.Name,
-		&agent.Hostname,
-		&agent.IPAddress,
-		&agent.Platform,
-		&agent.Architecture,
-		&agent.Version,
-		&agent.Status,
-		&capabilities,
-		&agent.Labels,
-		&k8sMetadataJSON,
-		&agent.LastHeartbeatAt,
-		&agent.RegisteredAt,
-		&agent.UpdatedAt,
-	)
-
+	agent, err := r.scanAgent(r.db.QueryRowContext(ctx, query, hostname))
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("agent not found: %w", err)
 	}
@@ -190,29 +175,12 @@ func (r *AgentRepository) GetByHostname(ctx context.Context, hostname string) (*
 		return nil, fmt.Errorf("failed to get agent: %w", err)
 	}
 
-	agent.Capabilities = capabilities
-
-	// Deserialize Kubernetes metadata if present
-	if len(k8sMetadataJSON) > 0 {
-		var k8sMeta models.KubernetesMetadata
-		if err := json.Unmarshal(k8sMetadataJSON, &k8sMeta); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal kubernetes metadata: %w", err)
-		}
-		agent.KubernetesMetadata = &k8sMeta
-	}
-
 	return agent, nil
 }
 
 // List retrieves agents with optional filtering
 func (r *AgentRepository) List(ctx context.Context, filters map[string]interface{}) ([]*models.Agent, error) {
-	query := `
-		SELECT id, name, hostname, ip_address, platform, architecture, version,
-			   status, capabilities, labels, kubernetes_metadata,
-			   last_heartbeat_at, registered_at, updated_at
-		FROM agents
-		WHERE 1=1
-	`
+	query := `SELECT ` + agentColumns + ` FROM agents WHERE 1=1`
 
 	args := []interface{}{}
 	argCount := 1
@@ -264,41 +232,10 @@ func (r *AgentRepository) List(ctx context.Context, filters map[string]interface
 
 	agents := []*models.Agent{}
 	for rows.Next() {
-		agent := &models.Agent{}
-		var capabilities pq.StringArray
-		var k8sMetadataJSON []byte
-
-		err := rows.Scan(
-			&agent.ID,
-			&agent.Name,
-			&agent.Hostname,
-			&agent.IPAddress,
-			&agent.Platform,
-			&agent.Architecture,
-			&agent.Version,
-			&agent.Status,
-			&capabilities,
-			&agent.Labels,
-			&k8sMetadataJSON,
-			&agent.LastHeartbeatAt,
-			&agent.RegisteredAt,
-			&agent.UpdatedAt,
-		)
+		agent, err := r.scanAgent(rows)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan agent: %w", err)
 		}
-
-		agent.Capabilities = capabilities
-
-		// Deserialize Kubernetes metadata if present
-		if len(k8sMetadataJSON) > 0 {
-			var k8sMeta models.KubernetesMetadata
-			if err := json.Unmarshal(k8sMetadataJSON, &k8sMeta); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal kubernetes metadata: %w", err)
-			}
-			agent.KubernetesMetadata = &k8sMeta
-		}
-
 		agents = append(agents, agent)
 	}
 

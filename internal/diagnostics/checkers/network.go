@@ -54,15 +54,7 @@ func (n *NetworkChecker) RequiresRoot() bool {
 
 // Run executes the network check
 func (n *NetworkChecker) Run(ctx context.Context, executor diagnostics.CommandExecutor) (*diagnostics.CheckResult, error) {
-	result := &diagnostics.CheckResult{
-		Name:      n.Name(),
-		Category:  n.Category(),
-		Status:    diagnostics.StatusCompleted,
-		Timestamp: time.Now(),
-		Data:      make(map[string]interface{}),
-		Metrics:   []diagnostics.Metric{},
-	}
-
+	result := diagnostics.NewCheckResult(n)
 	startTime := time.Now()
 
 	// Get network interfaces

@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 
@@ -174,9 +173,8 @@ func (h *EventsHandler) SubmitEvents(w http.ResponseWriter, r *http.Request) {
 
 // GetEvent handles GET /api/v1/events/:id
 func (h *EventsHandler) GetEvent(w http.ResponseWriter, r *http.Request) {
-	eventID, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		response.BadRequest(w, "Invalid event ID")
+	eventID, ok := parseUUIDParam(w, r, "id")
+	if !ok {
 		return
 	}
 
