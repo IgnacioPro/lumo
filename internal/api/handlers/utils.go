@@ -1,8 +1,14 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+
+	"github.com/ignacio/lumo/internal/api/response"
 )
 
 // parsePagination extracts limit and offset from query parameters
@@ -26,4 +32,22 @@ func parsePagination(r *http.Request) (limit, offset int) {
 	}
 
 	return limit, offset
+}
+
+// parseUUIDParam extracts and validates a UUID from URL parameters.
+// Returns the parsed UUID and true if successful, or writes an error response and returns false.
+func parseUUIDParam(w http.ResponseWriter, r *http.Request, param string) (uuid.UUID, bool) {
+	idStr := chi.URLParam(r, param)
+	if idStr == "" {
+		response.BadRequest(w, fmt.Sprintf("%s is required", param))
+		return uuid.Nil, false
+	}
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(w, fmt.Sprintf("Invalid %s format", param))
+		return uuid.Nil, false
+	}
+
+	return id, true
 }

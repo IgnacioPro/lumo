@@ -56,15 +56,7 @@ type SSHDConfigIssue struct {
 
 // Run executes the SSH security check
 func (s *SSHSecurityChecker) Run(ctx context.Context, executor diagnostics.CommandExecutor) (*diagnostics.CheckResult, error) {
-	result := &diagnostics.CheckResult{
-		Name:      s.Name(),
-		Category:  s.Category(),
-		Status:    diagnostics.StatusCompleted,
-		Timestamp: time.Now(),
-		Data:      make(map[string]interface{}),
-		Metrics:   []diagnostics.Metric{},
-	}
-
+	result := diagnostics.NewCheckResult(s)
 	startTime := time.Now()
 
 	// Check SSH key permissions

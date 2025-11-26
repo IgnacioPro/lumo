@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ignacio/lumo/internal/api/response"
@@ -210,11 +208,8 @@ func (h *AgentsHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 // Heartbeat handles PUT /api/v1/agents/:id/heartbeat
 func (h *AgentsHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
-	// Get agent ID from URL
-	agentIDStr := chi.URLParam(r, "id")
-	agentID, err := uuid.Parse(agentIDStr)
-	if err != nil {
-		response.BadRequest(w, "Invalid agent ID")
+	agentID, ok := parseUUIDParam(w, r, "id")
+	if !ok {
 		return
 	}
 
@@ -278,11 +273,8 @@ func (h *AgentsHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // Get handles GET /api/v1/agents/:id
 func (h *AgentsHandler) Get(w http.ResponseWriter, r *http.Request) {
-	// Get agent ID from URL
-	agentIDStr := chi.URLParam(r, "id")
-	agentID, err := uuid.Parse(agentIDStr)
-	if err != nil {
-		response.BadRequest(w, "Invalid agent ID")
+	agentID, ok := parseUUIDParam(w, r, "id")
+	if !ok {
 		return
 	}
 
@@ -310,11 +302,8 @@ type UpdateRequest struct {
 
 // Update handles PUT /api/v1/agents/:id
 func (h *AgentsHandler) Update(w http.ResponseWriter, r *http.Request) {
-	// Get agent ID from URL
-	agentIDStr := chi.URLParam(r, "id")
-	agentID, err := uuid.Parse(agentIDStr)
-	if err != nil {
-		response.BadRequest(w, "Invalid agent ID")
+	agentID, ok := parseUUIDParam(w, r, "id")
+	if !ok {
 		return
 	}
 
@@ -384,11 +373,8 @@ func (h *AgentsHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 // Delete handles DELETE /api/v1/agents/:id
 func (h *AgentsHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	// Get agent ID from URL
-	agentIDStr := chi.URLParam(r, "id")
-	agentID, err := uuid.Parse(agentIDStr)
-	if err != nil {
-		response.BadRequest(w, "Invalid agent ID")
+	agentID, ok := parseUUIDParam(w, r, "id")
+	if !ok {
 		return
 	}
 

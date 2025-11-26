@@ -68,16 +68,9 @@ func (k *KubernetesChecker) RequiresRoot() bool {
 func (k *KubernetesChecker) Run(ctx context.Context, executor diagnostics.CommandExecutor) (*diagnostics.CheckResult, error) {
 	startTime := time.Now()
 
-	result := &diagnostics.CheckResult{
-		Name:      k.Name(),
-		Category:  k.Category(),
-		Status:    diagnostics.StatusCompleted,
-		Severity:  diagnostics.SeverityInfo,
-		Message:   "Kubernetes cluster is healthy",
-		Timestamp: time.Now(),
-		Data:      make(map[string]interface{}),
-		Metrics:   []diagnostics.Metric{},
-	}
+	result := diagnostics.NewCheckResult(k)
+	result.Severity = diagnostics.SeverityInfo
+	result.Message = "Kubernetes cluster is healthy"
 
 	// Initialize Kubernetes client
 	if err := k.initClient(); err != nil {

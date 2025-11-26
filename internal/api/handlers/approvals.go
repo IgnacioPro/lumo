@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ignacio/lumo/internal/api/middleware"
@@ -87,11 +85,8 @@ func (h *ApprovalsHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // Get handles GET /api/v1/approvals/:id
 func (h *ApprovalsHandler) Get(w http.ResponseWriter, r *http.Request) {
-	// Get approval ID from URL
-	approvalIDStr := chi.URLParam(r, "id")
-	approvalID, err := uuid.Parse(approvalIDStr)
-	if err != nil {
-		response.BadRequest(w, "Invalid approval ID")
+	approvalID, ok := parseUUIDParam(w, r, "id")
+	if !ok {
 		return
 	}
 
@@ -113,11 +108,8 @@ type ApprovalDecisionRequest struct {
 
 // Approve handles PUT /api/v1/approvals/:id/approve
 func (h *ApprovalsHandler) Approve(w http.ResponseWriter, r *http.Request) {
-	// Get approval ID from URL
-	approvalIDStr := chi.URLParam(r, "id")
-	approvalID, err := uuid.Parse(approvalIDStr)
-	if err != nil {
-		response.BadRequest(w, "Invalid approval ID")
+	approvalID, ok := parseUUIDParam(w, r, "id")
+	if !ok {
 		return
 	}
 
@@ -189,11 +181,8 @@ func (h *ApprovalsHandler) Approve(w http.ResponseWriter, r *http.Request) {
 
 // Reject handles PUT /api/v1/approvals/:id/reject
 func (h *ApprovalsHandler) Reject(w http.ResponseWriter, r *http.Request) {
-	// Get approval ID from URL
-	approvalIDStr := chi.URLParam(r, "id")
-	approvalID, err := uuid.Parse(approvalIDStr)
-	if err != nil {
-		response.BadRequest(w, "Invalid approval ID")
+	approvalID, ok := parseUUIDParam(w, r, "id")
+	if !ok {
 		return
 	}
 

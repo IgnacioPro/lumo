@@ -39,15 +39,7 @@ func (p *PatchChecker) RequiresRoot() bool {
 
 // Run executes the patch status check
 func (p *PatchChecker) Run(ctx context.Context, executor diagnostics.CommandExecutor) (*diagnostics.CheckResult, error) {
-	result := &diagnostics.CheckResult{
-		Name:      p.Name(),
-		Category:  p.Category(),
-		Status:    diagnostics.StatusCompleted,
-		Timestamp: time.Now(),
-		Data:      make(map[string]interface{}),
-		Metrics:   []diagnostics.Metric{},
-	}
-
+	result := diagnostics.NewCheckResult(p)
 	startTime := time.Now()
 
 	// Detect OS and package manager

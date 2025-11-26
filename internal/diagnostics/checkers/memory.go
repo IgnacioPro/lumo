@@ -44,15 +44,7 @@ func (m *MemoryChecker) RequiresRoot() bool {
 
 // Run executes the memory check
 func (m *MemoryChecker) Run(ctx context.Context, executor diagnostics.CommandExecutor) (*diagnostics.CheckResult, error) {
-	result := &diagnostics.CheckResult{
-		Name:      m.Name(),
-		Category:  m.Category(),
-		Status:    diagnostics.StatusCompleted,
-		Timestamp: time.Now(),
-		Data:      make(map[string]interface{}),
-		Metrics:   []diagnostics.Metric{},
-	}
-
+	result := diagnostics.NewCheckResult(m)
 	startTime := time.Now()
 
 	// Get memory statistics

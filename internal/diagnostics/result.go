@@ -330,3 +330,16 @@ func (cr *CheckResult) SetData(key string, value interface{}) {
 	}
 	cr.Data[key] = value
 }
+
+// NewCheckResult creates a new CheckResult with common fields initialized.
+// This factory function reduces boilerplate in checker implementations.
+func NewCheckResult(checker Checker) *CheckResult {
+	return &CheckResult{
+		Name:      checker.Name(),
+		Category:  checker.Category(),
+		Status:    StatusCompleted,
+		Timestamp: time.Now(),
+		Data:      make(map[string]interface{}),
+		Metrics:   []Metric{},
+	}
+}

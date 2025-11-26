@@ -44,15 +44,7 @@ func (s *ServiceChecker) RequiresRoot() bool {
 
 // Run executes the service check
 func (s *ServiceChecker) Run(ctx context.Context, executor diagnostics.CommandExecutor) (*diagnostics.CheckResult, error) {
-	result := &diagnostics.CheckResult{
-		Name:      s.Name(),
-		Category:  s.Category(),
-		Status:    diagnostics.StatusCompleted,
-		Timestamp: time.Now(),
-		Data:      make(map[string]interface{}),
-		Metrics:   []diagnostics.Metric{},
-	}
-
+	result := diagnostics.NewCheckResult(s)
 	startTime := time.Now()
 
 	// Detect service manager (systemd vs sysvinit)
