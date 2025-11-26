@@ -186,7 +186,7 @@ func (c *Cache) sizeNoLock() (int64, error) {
 func (c *Cache) enforceMaxSize() error {
 	currentSize, err := c.sizeNoLock()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get cache size: %w", err)
 	}
 
 	if currentSize <= c.maxSize {

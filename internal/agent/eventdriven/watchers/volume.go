@@ -50,8 +50,11 @@ func (w *PVCWatcher) Setup(factory informers.SharedInformerFactory, handler even
 			}).Debug("PVC deleted")
 		},
 	})
+	if err != nil {
+		return fmt.Errorf("failed to add PVC event handler: %w", err)
+	}
 
-	return err
+	return nil
 }
 
 func (w *PVCWatcher) GetInformer() cache.SharedIndexInformer {
@@ -207,8 +210,11 @@ func (w *EventWatcher) Setup(factory informers.SharedInformerFactory, handler ev
 			// Don't care about event deletions
 		},
 	})
+	if err != nil {
+		return fmt.Errorf("failed to add event handler: %w", err)
+	}
 
-	return err
+	return nil
 }
 
 func (w *EventWatcher) GetInformer() cache.SharedIndexInformer {

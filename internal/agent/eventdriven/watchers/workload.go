@@ -51,8 +51,11 @@ func (w *DeploymentWatcher) Setup(factory informers.SharedInformerFactory, handl
 			}).Debug("Deployment deleted")
 		},
 	})
+	if err != nil {
+		return fmt.Errorf("failed to add deployment event handler: %w", err)
+	}
 
-	return err
+	return nil
 }
 
 func (w *DeploymentWatcher) GetInformer() cache.SharedIndexInformer {
@@ -159,8 +162,11 @@ func (w *StatefulSetWatcher) Setup(factory informers.SharedInformerFactory, hand
 			}).Debug("StatefulSet deleted")
 		},
 	})
+	if err != nil {
+		return fmt.Errorf("failed to add statefulset event handler: %w", err)
+	}
 
-	return err
+	return nil
 }
 
 func (w *StatefulSetWatcher) GetInformer() cache.SharedIndexInformer {
@@ -269,8 +275,11 @@ func (w *DaemonSetWatcher) Setup(factory informers.SharedInformerFactory, handle
 			}).Debug("DaemonSet deleted")
 		},
 	})
+	if err != nil {
+		return fmt.Errorf("failed to add daemonset event handler: %w", err)
+	}
 
-	return err
+	return nil
 }
 
 func (w *DaemonSetWatcher) GetInformer() cache.SharedIndexInformer {
@@ -382,8 +391,11 @@ func (w *JobWatcher) Setup(factory informers.SharedInformerFactory, handler even
 			}).Debug("Job deleted")
 		},
 	})
+	if err != nil {
+		return fmt.Errorf("failed to add job event handler: %w", err)
+	}
 
-	return err
+	return nil
 }
 
 func (w *JobWatcher) GetInformer() cache.SharedIndexInformer {

@@ -15,7 +15,7 @@ import (
 
 // TestHealthEndpoints tests all health-related endpoints
 func TestHealthEndpoints(t *testing.T) {
-	t.Skip("Integration tests require full database setup - to be implemented in Phase 7 completion")
+	t.Skip("Use tests/integration/ for integration tests with testcontainers")
 
 	// Create test router with in-memory database
 	router, _, cleanup := setupTestRouter(t)
@@ -76,7 +76,7 @@ func TestHealthEndpoints(t *testing.T) {
 
 // TestAgentRegistration tests agent registration flow
 func TestAgentRegistration(t *testing.T) {
-	t.Skip("Integration tests require full database setup - to be implemented in Phase 7 completion")
+	t.Skip("Use tests/integration/ for integration tests with testcontainers")
 
 	router, apiKey, cleanup := setupTestRouter(t)
 	defer cleanup()
@@ -219,7 +219,7 @@ func TestAgentRegistration(t *testing.T) {
 
 // TestAgentReregistration tests that re-registering an agent updates existing registration
 func TestAgentReregistration(t *testing.T) {
-	t.Skip("Integration tests require full database setup - to be implemented in Phase 7 completion")
+	t.Skip("Use tests/integration/ for integration tests with testcontainers")
 
 	router, apiKey, cleanup := setupTestRouter(t)
 	defer cleanup()
@@ -297,7 +297,7 @@ func TestAgentReregistration(t *testing.T) {
 
 // TestAuthenticationRequired tests that endpoints require API key
 func TestAuthenticationRequired(t *testing.T) {
-	t.Skip("Integration tests require full database setup - to be implemented in Phase 7 completion")
+	t.Skip("Use tests/integration/ for integration tests with testcontainers")
 
 	router, _, cleanup := setupTestRouter(t)
 	defer cleanup()

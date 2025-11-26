@@ -221,7 +221,7 @@ func (a *Agent) register() error {
 	defer cancel()
 	resp, err := a.reporter.RegisterAgent(ctx, req)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to register agent: %w", err)
 	}
 
 	// Parse agent ID
