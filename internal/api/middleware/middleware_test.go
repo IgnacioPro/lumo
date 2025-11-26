@@ -7,9 +7,10 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/ignacio/lumo/internal/database/models"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/ignacio/lumo/internal/database/models"
 )
 
 // testContextKey is a custom type for test context keys to avoid collisions

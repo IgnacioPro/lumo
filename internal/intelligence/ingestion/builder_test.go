@@ -4,9 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ignacio/lumo/internal/diagnostics"
 )
 
 func TestDocumentBuilder_BuildFromReport(t *testing.T) {

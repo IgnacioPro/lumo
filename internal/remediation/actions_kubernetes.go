@@ -6,8 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ignacio/lumo/internal/diagnostics"
 )
 
 const (
@@ -29,14 +30,14 @@ func NewK8sRolloutRestartAction(namespace, resourceType, resourceName string, lo
 	if namespace == "" {
 		namespace = "default"
 	}
-	
+
 	// Validate resource type
 	if resourceType != "deployment" && resourceType != "statefulset" && resourceType != "daemonset" {
 		resourceType = "deployment" // Default
 	}
 
 	actionID := fmt.Sprintf("%s.%s.%s.%s", ActionK8sRolloutRestart, namespace, resourceType, resourceName)
-	
+
 	return &K8sRolloutRestartAction{
 		BaseAction: NewBaseAction(
 			actionID,
@@ -60,7 +61,7 @@ func NewK8sRolloutRestartActionFactory() ActionFactory {
 		namespace, _ := params["namespace"].(string)
 		resourceType, _ := params["resource_type"].(string)
 		resourceName, ok := params["resource_name"].(string)
-		
+
 		if !ok || resourceName == "" {
 			return nil, fmt.Errorf("resource_name is required")
 		}
@@ -81,11 +82,11 @@ func (a *K8sRolloutRestartAction) Validate(ctx context.Context, executor diagnos
 	}
 
 	// Check if resource exists
-	cmd := fmt.Sprintf("kubectl get %s %s -n %s", 
-		shellQuote(a.resourceType), 
-		shellQuote(a.resourceName), 
+	cmd := fmt.Sprintf("kubectl get %s %s -n %s",
+		shellQuote(a.resourceType),
+		shellQuote(a.resourceName),
 		shellQuote(a.namespace))
-	
+
 	if _, _, exitCode, _ := executor.ExecuteWithContext(ctx, cmd); exitCode != 0 {
 		return fmt.Errorf("%s %s/%s not found", a.resourceType, a.namespace, a.resourceName)
 	}
@@ -156,7 +157,7 @@ func NewK8sDeletePodAction(namespace, podName string, force bool, logger *logrus
 	}
 
 	actionID := fmt.Sprintf("%s.%s.%s", ActionK8sDeletePod, namespace, podName)
-	
+
 	return &K8sDeletePodAction{
 		BaseAction: NewBaseAction(
 			actionID,

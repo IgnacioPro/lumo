@@ -36,8 +36,8 @@ func NewRateLimiter(enabled bool, requestsPerMin, requestsPerHour, burstSize int
 		// Per-IP rate limiter (for all requests)
 		// Uses sliding window counter with IP address as key
 		rl.perIPLimiter = httprate.Limit(
-			requestsPerMin,                 // Max requests per window
-			time.Minute,                    // Window duration
+			requestsPerMin,                          // Max requests per window
+			time.Minute,                             // Window duration
 			httprate.WithKeyFuncs(httprate.KeyByIP), // Key by IP address
 			httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
 				logger.WithFields(logrus.Fields{
@@ -93,8 +93,8 @@ func (rl *RateLimiter) PerUserMiddleware() func(http.Handler) http.Handler {
 	// Per-user rate limiter (for authenticated requests)
 	// Uses API key or JWT user ID as key
 	return httprate.Limit(
-		rl.requestsPerHour,  // Max requests per hour
-		time.Hour,           // Window duration
+		rl.requestsPerHour, // Max requests per hour
+		time.Hour,          // Window duration
 		httprate.WithKeyFuncs(func(r *http.Request) (string, error) {
 			// Try to extract user identifier from context
 			// Priority: API key > JWT user ID > IP address (fallback)

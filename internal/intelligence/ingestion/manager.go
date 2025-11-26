@@ -12,10 +12,10 @@ import (
 )
 
 type Manager struct {
-	store    vectorstore.VectorStore
-	builder  *DocumentBuilder
-	cfg      *config.RAGConfig
-	log      *logrus.Logger
+	store   vectorstore.VectorStore
+	builder *DocumentBuilder
+	cfg     *config.RAGConfig
+	log     *logrus.Logger
 
 	// Batch queue
 	queue    chan *vectorstore.Document

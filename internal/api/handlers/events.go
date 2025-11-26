@@ -11,12 +11,13 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
+
 	"github.com/ignacio/lumo/internal/ai"
 	"github.com/ignacio/lumo/internal/api/response"
 	"github.com/ignacio/lumo/internal/database/models"
 	"github.com/ignacio/lumo/internal/database/repository"
 	"github.com/ignacio/lumo/internal/notifications"
-	"github.com/sirupsen/logrus"
 )
 
 // EventsHandler handles Kubernetes event-related requests

@@ -7,10 +7,11 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
-	"github.com/ignacio/lumo/internal/database/models"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ignacio/lumo/internal/database/models"
 )
 
 func TestAPIKeyRepository_Create(t *testing.T) {

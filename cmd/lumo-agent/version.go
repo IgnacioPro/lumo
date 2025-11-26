@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/ignacio/lumo/internal/version"
 	"github.com/spf13/cobra"
+
+	"github.com/ignacio/lumo/internal/version"
 )
 
 var versionCmd = &cobra.Command{

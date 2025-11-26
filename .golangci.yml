@@ -1,0 +1,47 @@
+# golangci-lint configuration
+# https://golangci-lint.run/usage/configuration/
+#
+# This config matches the default linters that were previously running.
+# To run stricter linting, use: golangci-lint run --enable-all
+
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes: github.com/ignacio/lumo
+
+# Use default linters only (errcheck, govet, ineffassign, staticcheck, unused)
+# Additional linters can be enabled gradually as we fix issues
+linters:
+  default: standard
+
+  disable:
+    # Disabled by default, keeping disabled
+    - exhaustive
+    - wrapcheck
+    - mnd
+
+issues:
+  exclude-rules:
+    # Test files have different needs
+    - path: _test\.go
+      linters:
+        - gocritic
+        - unparam
+        - funlen
+
+    # Generated protobuf files
+    - path: \.pb\.go
+      linters:
+        - all
+
+  max-issues-per-linter: 50
+  max-same-issues: 10

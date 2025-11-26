@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/ssh"
-	"github.com/spf13/cobra"
 )
 
 var connectCmd = &cobra.Command{

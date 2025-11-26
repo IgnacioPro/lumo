@@ -5,9 +5,10 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/ignacio/lumo/internal/api/auth"
 	"github.com/ignacio/lumo/internal/api/response"
-	"github.com/sirupsen/logrus"
 )
 
 // jwtContextKey is the context key for JWT claims

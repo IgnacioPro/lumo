@@ -108,7 +108,7 @@ func TestShellQuote(t *testing.T) {
 			// Verify that the quoted string doesn't contain unescaped dangerous characters
 			// (except within the quotes themselves)
 			if strings.Contains(tt.input, ";") || strings.Contains(tt.input, "|") ||
-			   strings.Contains(tt.input, "&") || strings.Contains(tt.input, "`") {
+				strings.Contains(tt.input, "&") || strings.Contains(tt.input, "`") {
 				// The result should wrap these in quotes, making them literals
 				if !strings.HasPrefix(result, "'") || !strings.HasSuffix(result, "'") {
 					t.Errorf("shellQuote(%q) didn't properly wrap dangerous characters: %q", tt.input, result)

@@ -8,8 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/ignacio/lumo/internal/database/models"
 	"github.com/lib/pq"
+
+	"github.com/ignacio/lumo/internal/database/models"
 )
 
 // EventRepository handles database operations for Kubernetes events

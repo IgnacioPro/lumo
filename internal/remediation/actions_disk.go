@@ -7,16 +7,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ignacio/lumo/internal/diagnostics"
 )
 
 // CleanTmpFilesAction deletes temporary files older than a specified duration.
 type CleanTmpFilesAction struct {
 	*BaseAction
-	targetDir   string
-	maxAgeDays  int
-	dryRun      bool // For validation/preview purposes
+	targetDir  string
+	maxAgeDays int
+	dryRun     bool // For validation/preview purposes
 }
 
 // NewCleanTmpFilesAction creates a new CleanTmpFilesAction.
@@ -42,14 +43,14 @@ func NewCleanTmpFilesAction(targetDir string, maxAgeDays int, dryRun bool, logge
 			name,
 			description,
 			CategoryDisk,
-			RiskSafe,    // Low risk, but can cause issues if applications rely on old tmp files
-			false,       // Not reversible
+			RiskSafe, // Low risk, but can cause issues if applications rely on old tmp files
+			false,    // Not reversible
 			impact,
 			logger,
 		),
-		targetDir:   targetDir,
-		maxAgeDays:  maxAgeDays,
-		dryRun:      dryRun,
+		targetDir:  targetDir,
+		maxAgeDays: maxAgeDays,
+		dryRun:     dryRun,
 	}
 }
 
@@ -57,7 +58,7 @@ func NewCleanTmpFilesAction(targetDir string, maxAgeDays int, dryRun bool, logge
 func NewCleanTmpFilesActionFactory() ActionFactory {
 	return func(params map[string]interface{}, logger *logrus.Logger) (Action, error) {
 		targetDir, _ := params["target_dir"].(string)
-		
+
 		maxAgeDays := 7 // Default
 		if ma, ok := params["max_age_days"].(int); ok {
 			maxAgeDays = ma
@@ -113,8 +114,8 @@ func (a *CleanTmpFilesAction) Execute(ctx context.Context, executor diagnostics.
 
 	findArgs := []string{
 		shellQuote(a.targetDir),
-		"-mindepth 1", // Don't delete the directory itself
-		"-type f",     // Only consider files
+		"-mindepth 1",                           // Don't delete the directory itself
+		"-type f",                               // Only consider files
 		fmt.Sprintf("-atime +%d", a.maxAgeDays), // Access time
 		fmt.Sprintf("-mtime +%d", a.maxAgeDays), // Modification time
 	}
@@ -194,7 +195,7 @@ func (a *CleanTmpFilesAction) Execute(ctx context.Context, executor diagnostics.
 // RotateLogsAction compresses and truncates log files.
 type RotateLogsAction struct {
 	*BaseAction
-	targetFile string
+	targetFile  string
 	backupCount int
 	compress    bool
 	dryRun      bool
@@ -332,121 +333,121 @@ func (a *RotateLogsAction) Execute(ctx context.Context, executor diagnostics.Com
 	for i := a.backupCount; i >= 1; i-- {
 		oldBackup := fmt.Sprintf("%s.%d", a.targetFile, i)
 		newBackup := fmt.Sprintf("%s.%d", a.targetFile, i+1)
-		
-				// If compressing, check for .gz suffix
-				if a.compress {
-					oldBackupGz := oldBackup + ".gz"
-					newBackupGz := newBackup + ".gz"
-					if _, _, exitCode, _ := executor.ExecuteWithContext(ctx, fmt.Sprintf("test -f %s", shellQuote(oldBackupGz))); exitCode == 0 {
-						moveCmd := fmt.Sprintf("mv %s %s", shellQuote(oldBackupGz), shellQuote(newBackupGz))
-						_, _, exitCode, err := executor.ExecuteWithContext(ctx, moveCmd) // Replaced stderr with _
-						if err != nil || exitCode != 0 {
-							a.logger.WithError(err).Warnf("Failed to move compressed backup '%s': exit code %d, err: %v", oldBackupGz, exitCode, err) // Adjusted error message
-						} else {
-							result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Moved compressed backup '%s' to '%s'", oldBackupGz, newBackupGz))
-						}
-					}
-				}
-		
-				if _, _, exitCode, _ := executor.ExecuteWithContext(ctx, fmt.Sprintf("test -f %s", shellQuote(oldBackup))); exitCode == 0 {
-					moveCmd := fmt.Sprintf("mv %s %s", shellQuote(oldBackup), shellQuote(newBackup))
-					_, _, exitCode, err := executor.ExecuteWithContext(ctx, moveCmd) // Replaced stderr with _
-					if err != nil || exitCode != 0 {
-						a.logger.WithError(err).Warnf("Failed to move backup '%s': exit code %d, err: %v", oldBackup, exitCode, err) // Adjusted error message
-					} else {
-						result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Moved backup '%s' to '%s'", oldBackup, newBackup))
-					}
-				}
-			}
-		
-			// Move current log file to .1
-			backupFile := fmt.Sprintf("%s.1", a.targetFile)
-			moveCurrentCmd := fmt.Sprintf("mv %s %s", shellQuote(a.targetFile), shellQuote(backupFile))
-			_, _, exitCode, err = executor.ExecuteWithContext(ctx, moveCurrentCmd) // Replaced stderr with _
-			if err != nil || exitCode != 0 {
-				result.Status = StatusFailed
-				result.Message = fmt.Sprintf("Failed to move current log file '%s' to backup '%s'", a.targetFile, backupFile)
-				result.Error = fmt.Errorf("exit code %d: %v", exitCode, err).Error() // Adjusted error message
-				result.EndTime = time.Now()
-				result.Duration = result.EndTime.Sub(result.StartTime)
-				return result, fmt.Errorf("command failed: %w", err)
-			}
-			result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Moved '%s' to '%s'", a.targetFile, backupFile))
-	// Create a new empty log file with original permissions
-	touchNewCmd := fmt.Sprintf("touch %s", shellQuote(a.targetFile))
-	        _, _, exitCode, err = executor.ExecuteWithContext(ctx, touchNewCmd)
-		if err != nil || exitCode != 0 {
-			a.logger.WithError(err).Warnf("Failed to create new log file '%s': %s", a.targetFile, err)
-		} else {
-			result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Created new empty log file '%s'", a.targetFile))
-		}
-		
-		// If compress is true, compress the new backupFile
+
+		// If compressing, check for .gz suffix
 		if a.compress {
-			compressCmd := fmt.Sprintf("gzip %s", shellQuote(backupFile))
-			_, _, exitCode, err := executor.ExecuteWithContext(ctx, compressCmd)
-			if err != nil || exitCode != 0 {
-				a.logger.WithError(err).Warnf("Failed to compress backup file '%s': %s", backupFile, err)
-			} else {
-				result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Compressed backup file '%s' to '%s.gz'", backupFile, backupFile))
-				backupFile += ".gz" // Update backupFile name
+			oldBackupGz := oldBackup + ".gz"
+			newBackupGz := newBackup + ".gz"
+			if _, _, exitCode, _ := executor.ExecuteWithContext(ctx, fmt.Sprintf("test -f %s", shellQuote(oldBackupGz))); exitCode == 0 {
+				moveCmd := fmt.Sprintf("mv %s %s", shellQuote(oldBackupGz), shellQuote(newBackupGz))
+				_, _, exitCode, err := executor.ExecuteWithContext(ctx, moveCmd) // Replaced stderr with _
+				if err != nil || exitCode != 0 {
+					a.logger.WithError(err).Warnf("Failed to move compressed backup '%s': exit code %d, err: %v", oldBackupGz, exitCode, err) // Adjusted error message
+				} else {
+					result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Moved compressed backup '%s' to '%s'", oldBackupGz, newBackupGz))
+				}
 			}
 		}
-	
-		// Calculate freed space
-		freedSpace := originalSize - (getFileSizeSafe(ctx, executor, backupFile))
-		
-		result.Status = StatusSuccess
-		result.Message = fmt.Sprintf("Successfully rotated log file '%s'. Freed %s.", a.targetFile, formatBytes(freedSpace))
-		result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Freed approximately %s of disk space.", formatBytes(freedSpace)))
+
+		if _, _, exitCode, _ := executor.ExecuteWithContext(ctx, fmt.Sprintf("test -f %s", shellQuote(oldBackup))); exitCode == 0 {
+			moveCmd := fmt.Sprintf("mv %s %s", shellQuote(oldBackup), shellQuote(newBackup))
+			_, _, exitCode, err := executor.ExecuteWithContext(ctx, moveCmd) // Replaced stderr with _
+			if err != nil || exitCode != 0 {
+				a.logger.WithError(err).Warnf("Failed to move backup '%s': exit code %d, err: %v", oldBackup, exitCode, err) // Adjusted error message
+			} else {
+				result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Moved backup '%s' to '%s'", oldBackup, newBackup))
+			}
+		}
+	}
+
+	// Move current log file to .1
+	backupFile := fmt.Sprintf("%s.1", a.targetFile)
+	moveCurrentCmd := fmt.Sprintf("mv %s %s", shellQuote(a.targetFile), shellQuote(backupFile))
+	_, _, exitCode, err = executor.ExecuteWithContext(ctx, moveCurrentCmd) // Replaced stderr with _
+	if err != nil || exitCode != 0 {
+		result.Status = StatusFailed
+		result.Message = fmt.Sprintf("Failed to move current log file '%s' to backup '%s'", a.targetFile, backupFile)
+		result.Error = fmt.Errorf("exit code %d: %v", exitCode, err).Error() // Adjusted error message
 		result.EndTime = time.Now()
 		result.Duration = result.EndTime.Sub(result.StartTime)
-	
-		return result, nil
+		return result, fmt.Errorf("command failed: %w", err)
 	}
-	
-	// getFileSize returns the size of a file in bytes.
-	func getFileSize(ctx context.Context, executor diagnostics.CommandExecutor, filePath string) (int64, error) {
-		cmd := fmt.Sprintf("stat -c %%s %s 2>/dev/null || stat -f %%z %s 2>/dev/null", shellQuote(filePath), shellQuote(filePath))
-		stdout, _, exitCode, err := executor.ExecuteWithContext(ctx, cmd)
+	result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Moved '%s' to '%s'", a.targetFile, backupFile))
+	// Create a new empty log file with original permissions
+	touchNewCmd := fmt.Sprintf("touch %s", shellQuote(a.targetFile))
+	_, _, exitCode, err = executor.ExecuteWithContext(ctx, touchNewCmd)
+	if err != nil || exitCode != 0 {
+		a.logger.WithError(err).Warnf("Failed to create new log file '%s': %s", a.targetFile, err)
+	} else {
+		result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Created new empty log file '%s'", a.targetFile))
+	}
+
+	// If compress is true, compress the new backupFile
+	if a.compress {
+		compressCmd := fmt.Sprintf("gzip %s", shellQuote(backupFile))
+		_, _, exitCode, err := executor.ExecuteWithContext(ctx, compressCmd)
 		if err != nil || exitCode != 0 {
-			return 0, fmt.Errorf("failed to get file size for '%s': %w", filePath, err)
+			a.logger.WithError(err).Warnf("Failed to compress backup file '%s': %s", backupFile, err)
+		} else {
+			result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Compressed backup file '%s' to '%s.gz'", backupFile, backupFile))
+			backupFile += ".gz" // Update backupFile name
 		}
-		sizeStr := strings.TrimSpace(stdout)
-		size, err := strconv.ParseInt(sizeStr, 10, 64)
-		if err != nil {
-			return 0, fmt.Errorf("failed to parse file size '%s': %w", sizeStr, err)
-		}
-		return size, nil
 	}
-	
-	// getFileSizeSafe returns the size of a file in bytes, or 0 if an error occurs.
-	func getFileSizeSafe(ctx context.Context, executor diagnostics.CommandExecutor, filePath string) int64 {
-		size, err := getFileSize(ctx, executor, filePath)
-		if err != nil {
-			return 0
-		}
-		return size
+
+	// Calculate freed space
+	freedSpace := originalSize - (getFileSizeSafe(ctx, executor, backupFile))
+
+	result.Status = StatusSuccess
+	result.Message = fmt.Sprintf("Successfully rotated log file '%s'. Freed %s.", a.targetFile, formatBytes(freedSpace))
+	result.ChangesApplied = append(result.ChangesApplied, fmt.Sprintf("Freed approximately %s of disk space.", formatBytes(freedSpace)))
+	result.EndTime = time.Now()
+	result.Duration = result.EndTime.Sub(result.StartTime)
+
+	return result, nil
+}
+
+// getFileSize returns the size of a file in bytes.
+func getFileSize(ctx context.Context, executor diagnostics.CommandExecutor, filePath string) (int64, error) {
+	cmd := fmt.Sprintf("stat -c %%s %s 2>/dev/null || stat -f %%z %s 2>/dev/null", shellQuote(filePath), shellQuote(filePath))
+	stdout, _, exitCode, err := executor.ExecuteWithContext(ctx, cmd)
+	if err != nil || exitCode != 0 {
+		return 0, fmt.Errorf("failed to get file size for '%s': %w", filePath, err)
 	}
-	
-	// formatBytes converts bytes to a human-readable format.
-	func formatBytes(b int64) string {
-		const unit = 1024
-		if b < unit {
-			return fmt.Sprintf("%d B", b)
-		}
-		div, exp := int64(unit), 0
-		for n := b / unit; n >= unit; n /= unit {
-			div *= unit
-			exp++
-		}
-		return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
+	sizeStr := strings.TrimSpace(stdout)
+	size, err := strconv.ParseInt(sizeStr, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse file size '%s': %w", sizeStr, err)
 	}
-	
-	// Register all factories for disk actions
-	func init() {
-		logger := logrus.StandardLogger() // Use standard logger for init functions
-		registry := GetDefaultRegistry(logger)
-		_ = registry.Register("disk.clean_tmp", NewCleanTmpFilesActionFactory())
-		_ = registry.Register("disk.rotate_logs", NewRotateLogsActionFactory())
+	return size, nil
+}
+
+// getFileSizeSafe returns the size of a file in bytes, or 0 if an error occurs.
+func getFileSizeSafe(ctx context.Context, executor diagnostics.CommandExecutor, filePath string) int64 {
+	size, err := getFileSize(ctx, executor, filePath)
+	if err != nil {
+		return 0
 	}
+	return size
+}
+
+// formatBytes converts bytes to a human-readable format.
+func formatBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
+// Register all factories for disk actions
+func init() {
+	logger := logrus.StandardLogger() // Use standard logger for init functions
+	registry := GetDefaultRegistry(logger)
+	_ = registry.Register("disk.clean_tmp", NewCleanTmpFilesActionFactory())
+	_ = registry.Register("disk.rotate_logs", NewRotateLogsActionFactory())
+}

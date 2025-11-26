@@ -5,8 +5,9 @@ import (
 	"net/http"
 	"runtime/debug"
 
-	"github.com/ignacio/lumo/internal/api/response"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ignacio/lumo/internal/api/response"
 )
 
 // Recovery is a middleware that recovers from panics and returns a 500 error

@@ -103,9 +103,9 @@ type EventSubmission struct {
 
 // SubmitEventResponse represents the response after submitting events
 type SubmitEventResponse struct {
-	Accepted int       `json:"accepted"`
-	Rejected int       `json:"rejected"`
-	EventIDs []string  `json:"event_ids,omitempty"`
-	Errors   []string  `json:"errors,omitempty"`
-	Message  string    `json:"message"`
+	Accepted int      `json:"accepted"`
+	Rejected int      `json:"rejected"`
+	EventIDs []string `json:"event_ids,omitempty"`
+	Errors   []string `json:"errors,omitempty"`
+	Message  string   `json:"message"`
 }

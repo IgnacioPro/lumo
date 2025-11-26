@@ -8,8 +8,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ignacio/lumo/internal/reliability"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ignacio/lumo/internal/reliability"
 )
 
 // TelegramNotifier sends notifications via Telegram Bot API.

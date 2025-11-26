@@ -6,10 +6,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/doctor"
 	"github.com/ignacio/lumo/internal/version"
-	"github.com/spf13/cobra"
 )
 
 var doctorCmd = &cobra.Command{

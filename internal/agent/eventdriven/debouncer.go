@@ -111,13 +111,13 @@ func (d *Debouncer) Debounce(event *KubernetesEvent, callback func(*KubernetesEv
 	timeSinceFirstSeen := event.Timestamp.Sub(event.FirstSeen)
 	if seen && timeSinceFirstSeen >= d.maxDebounceWindow {
 		d.logger.WithFields(logrus.Fields{
-			"event_key":            eventKey,
-			"event_type":           event.Type,
-			"resource":             event.ResourceKind + "/" + event.ResourceName,
-			"namespace":            event.ResourceNamespace,
-			"time_since_first":     timeSinceFirstSeen,
-			"max_debounce_window":  d.maxDebounceWindow,
-			"count":                count,
+			"event_key":           eventKey,
+			"event_type":          event.Type,
+			"resource":            event.ResourceKind + "/" + event.ResourceName,
+			"namespace":           event.ResourceNamespace,
+			"time_since_first":    timeSinceFirstSeen,
+			"max_debounce_window": d.maxDebounceWindow,
+			"count":               count,
 		}).Info("Maximum debounce window exceeded - processing event immediately")
 
 		// Store event in Redis first

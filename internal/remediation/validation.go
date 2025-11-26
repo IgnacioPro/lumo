@@ -51,7 +51,7 @@ func isValidProcessPattern(pattern string) bool {
 //
 // Algorithm:
 // 1. Wrap the entire string in single quotes
-// 2. Replace any single quotes with: '\''  (end quote, escaped quote, start quote)
+// 2. Replace any single quotes with: '\”  (end quote, escaped quote, start quote)
 //
 // This is the POSIX-standard way to quote shell arguments and handles all edge cases.
 // Examples:

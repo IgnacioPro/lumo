@@ -8,12 +8,13 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/ignacio/lumo/internal/agent"
-	"github.com/ignacio/lumo/internal/config"
-	"github.com/ignacio/lumo/internal/version"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/ignacio/lumo/internal/agent"
+	"github.com/ignacio/lumo/internal/config"
+	"github.com/ignacio/lumo/internal/version"
 )
 
 var (

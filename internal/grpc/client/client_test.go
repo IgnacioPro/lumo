@@ -178,12 +178,12 @@ func TestNewClient(t *testing.T) {
 			defer func() { _ = conn.Close() }()
 
 			client := &Client{
-		circuitBreaker: reliability.NewCircuitBreaker("test-grpc"),
-				conn:        conn,
-				diagnostics: lumov1.NewDiagnosticsServiceClient(conn),
-				agents:      lumov1.NewAgentsServiceClient(conn),
-				health:      lumov1.NewHealthServiceClient(conn),
-				token:       tt.opts.Token,
+				circuitBreaker: reliability.NewCircuitBreaker("test-grpc"),
+				conn:           conn,
+				diagnostics:    lumov1.NewDiagnosticsServiceClient(conn),
+				agents:         lumov1.NewAgentsServiceClient(conn),
+				health:         lumov1.NewHealthServiceClient(conn),
+				token:          tt.opts.Token,
 			}
 
 			assert.NotNil(t, client)
@@ -240,8 +240,8 @@ func TestClient_HealthCheck(t *testing.T) {
 
 	client := &Client{
 		circuitBreaker: reliability.NewCircuitBreaker("test-grpc"),
-		conn:   conn,
-		health: lumov1.NewHealthServiceClient(conn),
+		conn:           conn,
+		health:         lumov1.NewHealthServiceClient(conn),
 	}
 
 	resp, err := client.HealthCheck(ctx, "test-service")
@@ -267,8 +267,8 @@ func TestClient_Live(t *testing.T) {
 
 	client := &Client{
 		circuitBreaker: reliability.NewCircuitBreaker("test-grpc"),
-		conn:   conn,
-		health: lumov1.NewHealthServiceClient(conn),
+		conn:           conn,
+		health:         lumov1.NewHealthServiceClient(conn),
 	}
 
 	resp, err := client.Live(ctx)
@@ -293,8 +293,8 @@ func TestClient_Ready(t *testing.T) {
 
 	client := &Client{
 		circuitBreaker: reliability.NewCircuitBreaker("test-grpc"),
-		conn:   conn,
-		health: lumov1.NewHealthServiceClient(conn),
+		conn:           conn,
+		health:         lumov1.NewHealthServiceClient(conn),
 	}
 
 	resp, err := client.Ready(ctx)
@@ -320,8 +320,8 @@ func TestClient_Ping(t *testing.T) {
 
 	client := &Client{
 		circuitBreaker: reliability.NewCircuitBreaker("test-grpc"),
-		conn:   conn,
-		health: lumov1.NewHealthServiceClient(conn),
+		conn:           conn,
+		health:         lumov1.NewHealthServiceClient(conn),
 	}
 
 	err = client.Ping(ctx)
@@ -344,8 +344,8 @@ func TestClient_RegisterAgent(t *testing.T) {
 
 	client := &Client{
 		circuitBreaker: reliability.NewCircuitBreaker("test-grpc"),
-		conn:   conn,
-		agents: lumov1.NewAgentsServiceClient(conn),
+		conn:           conn,
+		agents:         lumov1.NewAgentsServiceClient(conn),
 	}
 
 	tests := []struct {
@@ -402,8 +402,8 @@ func TestClient_SendHeartbeat(t *testing.T) {
 
 	client := &Client{
 		circuitBreaker: reliability.NewCircuitBreaker("test-grpc"),
-		conn:   conn,
-		agents: lumov1.NewAgentsServiceClient(conn),
+		conn:           conn,
+		agents:         lumov1.NewAgentsServiceClient(conn),
 	}
 
 	tests := []struct {
@@ -459,8 +459,8 @@ func TestClient_GetAgentStats(t *testing.T) {
 
 	client := &Client{
 		circuitBreaker: reliability.NewCircuitBreaker("test-grpc"),
-		conn:   conn,
-		agents: lumov1.NewAgentsServiceClient(conn),
+		conn:           conn,
+		agents:         lumov1.NewAgentsServiceClient(conn),
 	}
 
 	resp, err := client.GetAgentStats(ctx)
@@ -486,8 +486,8 @@ func TestClient_RunDiagnostics(t *testing.T) {
 
 	client := &Client{
 		circuitBreaker: reliability.NewCircuitBreaker("test-grpc"),
-		conn:        conn,
-		diagnostics: lumov1.NewDiagnosticsServiceClient(conn),
+		conn:           conn,
+		diagnostics:    lumov1.NewDiagnosticsServiceClient(conn),
 	}
 
 	tests := []struct {
@@ -544,8 +544,8 @@ func TestClient_GetDiagnosticsResult(t *testing.T) {
 
 	client := &Client{
 		circuitBreaker: reliability.NewCircuitBreaker("test-grpc"),
-		conn:        conn,
-		diagnostics: lumov1.NewDiagnosticsServiceClient(conn),
+		conn:           conn,
+		diagnostics:    lumov1.NewDiagnosticsServiceClient(conn),
 	}
 
 	tests := []struct {
@@ -612,9 +612,9 @@ func TestClient_WithAuth(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := &Client{
-		circuitBreaker: reliability.NewCircuitBreaker("test-grpc"),
-				conn:  conn,
-				token: tt.token,
+				circuitBreaker: reliability.NewCircuitBreaker("test-grpc"),
+				conn:           conn,
+				token:          tt.token,
 			}
 
 			ctx = client.withAuth(context.Background())

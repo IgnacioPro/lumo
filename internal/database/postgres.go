@@ -137,10 +137,10 @@ func (db *DB) GetPoolStats() map[string]interface{} {
 		"open_connections":     stats.OpenConnections,
 		"in_use":               stats.InUse,
 		"idle":                 stats.Idle,
-		"wait_count":           stats.WaitCount,             // Total # of connections waited for
+		"wait_count":           stats.WaitCount, // Total # of connections waited for
 		"wait_duration_ms":     stats.WaitDuration.Milliseconds(),
-		"max_idle_closed":      stats.MaxIdleClosed,         // Closed due to max idle
-		"max_lifetime_closed":  stats.MaxLifetimeClosed,     // Closed due to max lifetime
+		"max_idle_closed":      stats.MaxIdleClosed,     // Closed due to max idle
+		"max_lifetime_closed":  stats.MaxLifetimeClosed, // Closed due to max lifetime
 		"utilization_percent":  utilization,
 	}
 }

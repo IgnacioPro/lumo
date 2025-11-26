@@ -5,8 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ignacio/lumo/internal/diagnostics"
 )
 
 // Suggester generates remediation suggestions from diagnostic results.

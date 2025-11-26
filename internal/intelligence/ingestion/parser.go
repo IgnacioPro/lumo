@@ -26,11 +26,11 @@ type LogEntry struct {
 	// - "ERROR": Error conditions
 	// - "CRITICAL" or "FATAL": Critical/fatal error conditions
 	// Parsers should normalize various log level formats to these standard values.
-	Level     string
-	Source    string                 // File path or logger name
-	Message   string                 // Primary log message
-	Fields    map[string]interface{} // Structured fields (from JSON logs)
-	Raw       string                 // Original raw line
+	Level   string
+	Source  string                 // File path or logger name
+	Message string                 // Primary log message
+	Fields  map[string]interface{} // Structured fields (from JSON logs)
+	Raw     string                 // Original raw line
 }
 
 // LogParser extracts structured data from raw log lines

@@ -12,8 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ignacio/lumo/internal/config"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ignacio/lumo/internal/config"
 )
 
 // ConfigFileCheck verifies config file exists and is readable
@@ -399,9 +400,9 @@ func (c *VersionCheck) Run(ctx context.Context) CheckResult {
 	}
 
 	return CheckResult{
-		Name:    c.Name(),
-		Status:  StatusWarning,
-		Message: fmt.Sprintf("Update available: v%s → v%s", currentVer, latestVer),
+		Name:        c.Name(),
+		Status:      StatusWarning,
+		Message:     fmt.Sprintf("Update available: v%s → v%s", currentVer, latestVer),
 		Remediation: "Visit: https://github.com/ignacio/lumo/releases/latest",
 	}
 }

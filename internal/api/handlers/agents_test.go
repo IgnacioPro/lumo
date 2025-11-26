@@ -9,9 +9,10 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/ignacio/lumo/internal/database/models"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/ignacio/lumo/internal/database/models"
 )
 
 func TestAgentsHandler_Register_InvalidJSON(t *testing.T) {

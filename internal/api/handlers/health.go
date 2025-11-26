@@ -4,9 +4,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/ignacio/lumo/internal/api/response"
 	"github.com/ignacio/lumo/internal/database"
-	"github.com/sirupsen/logrus"
 )
 
 // HealthHandler handles health check requests

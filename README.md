@@ -458,52 +458,38 @@ go tool cover -html=coverage.out
 
 ## 🤝 Contributing
 
-We welcome contributions! Here's how you can help:
+We welcome contributions! See our **[Contributing Guide](CONTRIBUTING.md)** for detailed instructions.
+
+### Quick Start
+
+```bash
+# Clone and setup
+git clone https://github.com/IgnacioPro/lumo.git
+cd lumo
+make setup    # Install deps, start services, build
+
+# Make changes
+git checkout -b feature/my-feature
+# ... edit code ...
+make ci       # Run all checks before committing
+
+# Submit PR
+git push origin feature/my-feature
+```
 
 ### Ways to Contribute
 
-- 🐛 **Report bugs** - Open an issue with reproduction steps
-- 💡 **Suggest features** - Share your ideas for improvements
+- 🐛 **Report bugs** - Use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md)
+- 💡 **Suggest features** - Use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md)
 - 📖 **Improve docs** - Fix typos, add examples, clarify usage
-- 🧪 **Write tests** - Help us reach 80% coverage
+- 🧪 **Write tests** - Help us improve coverage
 - 🔧 **Submit PRs** - Fix bugs or implement features
-
-### Development Setup
-
-```bash
-# 1. Fork and clone
-git clone https://github.com/YOUR_USERNAME/lumo.git
-cd lumo
-
-# 2. Create a branch
-git checkout -b feature/my-feature
-
-# 3. Make changes and test
-go test ./...
-go vet ./...
-go fmt ./...
-
-# 4. Commit and push
-git add .
-git commit -m "feat: add amazing feature"
-git push origin feature/my-feature
-
-# 5. Open a Pull Request
-```
-
-### Code Standards
-
-- ✅ Write tests for new functionality
-- ✅ Follow existing code patterns
-- ✅ Update documentation
-- ✅ Pass CI checks (format, vet, tests, build)
-- ✅ Use semantic commit messages
 
 ### Development Resources
 
-- **Main Guide**: [CLAUDE.md](CLAUDE.md) - Comprehensive development documentation
-- **Examples**: [DEVELOPMENT.md](DEVELOPMENT.md) - Tutorials and examples
-- **Reports**: [REPORTS/](REPORTS/) - Implementation details and audits
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Complete contributor guide
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Build and test instructions
+- **[CLAUDE.md](CLAUDE.md)** - Architecture reference
 
 ---
 

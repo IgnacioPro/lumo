@@ -9,12 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/ignacio/lumo/internal/diagnostics/checkers"
 	"github.com/ignacio/lumo/internal/remediation"
 	"github.com/ignacio/lumo/internal/ssh"
-	"github.com/spf13/cobra"
 )
 
 var fixCmd = &cobra.Command{

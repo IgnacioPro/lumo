@@ -9,8 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ignacio/lumo/internal/diagnostics"
 )
 
 func TestNewOpenAIProvider(t *testing.T) {

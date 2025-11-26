@@ -29,7 +29,7 @@ type Server struct {
 type ServerOptions struct {
 	Port        int
 	TLSEnabled  bool
-	MTLSEnabled bool   // Enable mutual TLS (requires client certificates)
+	MTLSEnabled bool // Enable mutual TLS (requires client certificates)
 	CertFile    string
 	KeyFile     string
 	CAFile      string // CA certificate for mTLS client verification

@@ -3,11 +3,12 @@ package main
 import (
 	"fmt"
 
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
+
 	"github.com/ignacio/lumo/internal/api"
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/database"
-	"github.com/sirupsen/logrus"
-	"github.com/spf13/cobra"
 )
 
 var serveCmd = &cobra.Command{

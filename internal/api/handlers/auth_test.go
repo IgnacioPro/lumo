@@ -8,11 +8,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ignacio/lumo/internal/api/auth"
-	"github.com/ignacio/lumo/internal/api/middleware"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/ignacio/lumo/internal/api/auth"
+	"github.com/ignacio/lumo/internal/api/middleware"
 )
 
 func TestAuthHandler_GenerateToken_InvalidJSON(t *testing.T) {
@@ -138,4 +139,3 @@ func TestAuthHandler_ValidateToken_NoToken(t *testing.T) {
 	// Assert
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
-
