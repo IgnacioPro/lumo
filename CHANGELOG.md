@@ -7,6 +7,162 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2025-11-26
+
+### Added
+
+#### Security Hardening & Production Quality
+
+**Authentication & Secrets Management**
+- Add Expiration() getter to JWTManager for proper token expiration access
+- Update AuthHandler to use actual JWT expiration instead of hardcoded 24h values
+- Implement environment variable interpolation in docker-compose for secure DB credential management
+- Add mTLS client certificate support in agent reporter (TLSCertFile, TLSKeyFile, TLSCAFile)
+- Improve secret file handling with secret.yaml.template to prevent accidental deployment of placeholder secrets
+
+**SSH Security Hardening**
+- Change SSH strict_host_key_checking default to true (prevents MITM attacks)
+- Hardcode autoApprove=false in remediation executor as defense-in-depth measure
+
+**Code Quality & Refactoring**
+- Add parseUUIDParam() helper in API handlers for consistent UUID parsing
+- Add scanAgent() helper in database repository to eliminate duplicate row scanning logic
+- Add NewCheckResult() factory function to reduce checker initialization code
+- Eliminate ~200 lines of duplicated code across handlers, repositories, and checkers
+- Consolidate duplicate isLocalhost() functions into single shared utility
+- Extract magic numbers to named constants (MaxEventsPerRequest, MaxListLimit, DefaultListLimit, MaxConcurrentEventProcessors)
+
+**Event-Driven Enhancements**
+- Add comprehensive event handler tests (15+ test cases, 378 LOC)
+- Implement async event processing with worker pool and semaphore
+- Add context parameter to Redis Health() method for trace propagation
+- Fix response body closure leak by refactoring doWithRetry loop into doSingleRequest helper
+- Add worker pool with configurable concurrency (MaxConcurrentEventProcessors=10)
+
+**Test Coverage Improvements**
+- Expand agent reporter tests with HTTP client, registration, retry logic scenarios
+- Add middleware tests for rate limiting, authentication, context helpers (396 LOC)
+- Add observability/tracing tests (98 LOC)
+- Coverage improvements: internal/agent +14.1%, internal/api/middleware +28.7%, internal/observability +77.8%
+- Overall internal package coverage: 47.7% (83 test files, 738 test functions)
+
+**Integration Testing**
+- Add comprehensive integration test suite with testcontainers-go
+- Tests: Health endpoints, Agent lifecycle, Jobs CRUD, Authentication, JWT validation, Events API
+- Location: tests/integration/ (testenv.go, api_test.go, ~1,000 LOC)
+- ~22 seconds execution time with PostgreSQL testcontainers
+
+**Documentation & Governance**
+- Add CONTRIBUTING.md with comprehensive contributor guidelines
+- Add GitHub issue templates (bug_report.md, feature_request.md)
+- Add GitHub pull request template
+- Add .golangci.yml for Go linting configuration
+- Add Dependabot configuration (.github/dependabot.yml)
+- Add multiple internal package READMEs:
+  - internal/agent/README.md - Agent architecture and deployment
+  - internal/ai/README.md - AI provider integration guide
+  - internal/api/README.md - API server documentation
+  - internal/diagnostics/README.md - Diagnostics system overview
+- Update main README.md with improved sections and clearer structure
+
+#### Dependency Updates
+
+**Go Dependencies**
+- Bump golang-jwt/jwt from 5.2.2 to 5.3.0
+- Bump pressly/goose from 3.24.1 to 3.26.0
+- Bump prometheus/client_golang from 1.20.5 to 1.23.2
+- Bump redis/go-redis from 9.16.0 to 9.17.1
+- Bump golang.org/x/crypto from 0.44.0 to 0.45.0
+- Bump google.golang.org/grpc from 1.67.0 to 1.75.1
+- Bump google.golang.org/protobuf from 1.34.2 to 1.36.10
+- Bump k8s.io/api from 0.31.3 to 0.34.2
+- Bump k8s.io/apimachinery from 0.31.3 to 0.34.2
+- Bump k8s.io/client-go from 0.31.3 to 0.34.2
+
+**Node.js Dependencies (website)**
+- Bump @types/react from 19.2.6 to 19.2.7
+- Bump eslint-config-next from 16.0.3 to 16.0.4
+- Bump lucide-react from 0.554.0 to 0.555.0
+- Bump next from 16.0.3 to 16.0.4
+
+**Container Images**
+- Bump golang base image from 1.24-alpine to 1.25-alpine
+
+### Changed
+
+**Configuration System**
+- Update config.example.yaml with secure defaults and improved documentation
+- Update kustomization.yaml with instructions for proper secret creation
+- Improve environment variable handling for database credentials
+
+**Security Defaults**
+- SSH strict_host_key_checking now defaults to true (BREAKING CHANGE)
+- Set autoApprove=false by default in remediation executor
+- Secrets now managed via environment variables (LUMO_*_API_KEY pattern)
+
+**API Handler Behavior**
+- All handlers now use consistent UUID parsing with parseUUIDParam() helper
+- Improved error messages with better context wrapping
+- All handlers use structured response helpers consistently
+
+**Database Repository**
+- Consolidated duplicate agent scanning logic into scanAgent() helper
+- Reduced repository code duplication across 6 methods
+- Consistent error handling and logging across all repository methods
+
+### Fixed
+
+**Critical Fixes**
+- Fix config loading in CLI mode that was blocked by unnecessary database password validation
+- Fix AI provider key lookup to check provider-specific env vars first (LUMO_OPENAI_API_KEY, etc.)
+- Remove 'testing' package import from production code (internal/config/config.go)
+- Fix response body closure leak in event processor HTTP client
+- Add explicit viper.BindEnv() calls for API key environment variables
+
+**Agent & Event Processing**
+- Fix OOMKilled detection for containers with restartPolicy: Never
+- Fix PVC Provision Failed detection logic for PVCs pending >2 minutes
+- Fix infinite debouncing by adding max debounce window (3 minutes)
+- Add proper context propagation in Redis operations
+
+**Testing & CI**
+- Remove debug print statements from production code
+- Improve error context wrapping in critical paths
+- All linting issues resolved (errcheck, staticcheck, vet)
+- All security checks passing (govulncheck clean)
+- All tests passing with race detection enabled
+
+### Breaking Changes
+
+**SSH Connection Behavior**
+- SSH strict_host_key_checking now defaults to true
+- This prevents Man-in-the-Middle attacks by verifying host keys
+- Set `strict_host_key_checking: false` in config for trusted networks only
+- Affected: All SSH-based diagnostics and remediation actions
+
+**Database Schema** (if upgrading from earlier versions)
+- No schema changes in this release
+- Goose migrations handle all version transitions automatically
+
+### Security
+
+**Authentication**
+- JWT tokens now use actual configured expiration instead of hardcoded 24h
+- Proper token expiration handling via Expiration() getter
+- Environment-based secret management (no hardcoded secrets)
+
+**Infrastructure**
+- mTLS client certificate support in agent reporter
+- SSH host key verification enabled by default
+- Secret template files prevent accidental production deployment
+
+**Dependency Security**
+- All dependencies updated to latest minor versions
+- No known vulnerabilities (govulncheck verified)
+- Go 1.25 provides improved security features
+
+## [Unreleased - Investor Materials]
+
 ### Added
 
 #### Investor POC Materials
