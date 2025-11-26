@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-26 (Phase 15 Complete - Integration Tests) | **Version:** 1.0.0 | **Status:** Phase 15 Complete ✅ | Phase 16 Complete ✅ | Phase 11c Pending ⏳ | **Full Stack K8s + Event-Driven + Circuit Breakers + Full Test Coverage** 🚀
+> **Last Updated:** 2025-11-26 (Phase 15b Complete - Coverage Improvements) | **Version:** 1.0.0 | **Status:** Phase 15 Complete ✅ | Phase 15b Complete ✅ | Phase 16 Complete ✅ | Phase 11c Pending ⏳ | **Full Stack K8s + Event-Driven + Circuit Breakers + Full Test Coverage** 🚀
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -70,7 +70,7 @@ lumo/
 ├── Dockerfile.agent                   # Security-hardened build for lumo-agent (non-root)
 └── docker-compose.yaml                # PostgreSQL + Redis for development
 
-Total: 139 Go files + 80 test files | Coverage: 53.4% internal packages | Verified: 2025-11-26
+Total: 139 Go files + 83 test files | Coverage: 47.7% internal packages | Verified: 2025-11-26
 ```
 
 ---
@@ -198,7 +198,7 @@ Implementation: `internal/doctor/{doctor.go,checks.go}`, `cmd/lumo/doctor.go`
 
 ## Testing & CI
 
-**Coverage:** 53.4% internal packages (80 test files, 250+ test cases) | Table-driven tests, mock executors
+**Coverage:** 47.7% internal packages (83 test files, 738 test functions) | Table-driven tests, mock executors
 
 **Key Package Coverage:**
 - `internal/reliability`: 100% (circuit breakers)
@@ -213,6 +213,15 @@ Implementation: `internal/doctor/{doctor.go,checks.go}`, `cmd/lumo/doctor.go`
 - ✅ Integration tests: API workflows with testcontainers
 - ✅ Load tests: 50 concurrent workers, rate limiting verification
 - ✅ Chaos engineering: 10+ K8s failure scenarios
+
+**Phase 15b Complete (Nov 26, 2025):**
+- ✅ Coverage improvements: 3 packages enhanced (+14.1%, +28.7%, +77.8%)
+- ✅ New test files: reporter_test.go (637 LOC), middleware_test.go (391 LOC), tracing_test.go (93 LOC)
+- ✅ Total new tests: 1,121 LOC, 19 new test functions
+- ✅ All CI checks passing (golangci-lint, govulncheck, race detection)
+- ✅ internal/agent: 17.8% → 31.9% (HTTP client, registration, retry logic)
+- ✅ internal/api/middleware: 0% → 28.7% (rate limiting, auth, CORS)
+- ✅ internal/observability: 0% → 77.8% (OpenTelemetry tracing)
 
 **Run:** `go test ./...` | `make ci` (full local checks)
 
