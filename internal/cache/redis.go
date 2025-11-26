@@ -91,10 +91,14 @@ func (rc *RedisClient) Close() error {
 	return nil
 }
 
-// Health checks the Redis connection health
-func (rc *RedisClient) Health() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
+// Health checks the Redis connection health using the provided context.
+// If ctx is nil, a default context with 2-second timeout is used.
+func (rc *RedisClient) Health(ctx context.Context) error {
+	if ctx == nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+	}
 
 	if err := rc.client.Ping(ctx).Err(); err != nil {
 		return fmt.Errorf("redis health check failed: %w", err)

@@ -402,11 +402,13 @@ func registerAllCheckers(runner *diagnostics.Runner, thresholds *diagnostics.Thr
 	runner.RegisterChecker(checkers.NewAuthFailuresChecker(24, 20))
 }
 
-// isLocalhost checks if the hostname refers to the local machine
+// isLocalhost checks if the hostname refers to the local machine.
+// This shared utility is used across handlers for SSRF protection.
 func isLocalhost(hostname string) bool {
-	hostname = strings.ToLower(hostname)
+	hostname = strings.ToLower(strings.TrimSpace(hostname))
 	return hostname == "localhost" ||
 		hostname == "127.0.0.1" ||
 		hostname == "::1" ||
-		hostname == "0.0.0.0"
+		hostname == "0.0.0.0" ||
+		hostname == "::"
 }
