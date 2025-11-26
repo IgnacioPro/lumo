@@ -142,7 +142,8 @@ func (h *EventsHandler) SubmitEvents(w http.ResponseWriter, r *http.Request) {
 		eventsProcessedTotal.WithLabelValues("accepted").Add(float64(len(events)))
 
 		// Process events asynchronously (AI analysis + notifications)
-		go h.processEventsAsync(events)
+		// Pass request context to preserve trace information
+		go h.processEventsAsync(r.Context(), events)
 	}
 
 	// Record rejected events
@@ -340,9 +341,12 @@ func (h *EventsHandler) getAgentIDFromContext(ctx context.Context) (uuid.UUID, e
 // processEventsAsync performs AI analysis and sends notifications asynchronously.
 // Uses a 5-minute timeout for all async operations and limits concurrent goroutines
 // via a semaphore to prevent resource exhaustion.
-func (h *EventsHandler) processEventsAsync(events []*models.Event) {
-	// Create a new context with timeout (not derived from HTTP request context which is already cancelled)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+func (h *EventsHandler) processEventsAsync(parentCtx context.Context, events []*models.Event) {
+	// Create detached context to allow async processing to complete independently of HTTP request
+	// while preserving trace context. Use WithoutCancel to prevent parent cancellation from stopping
+	// async processing, then add 5-minute timeout.
+	detachedCtx := context.WithoutCancel(parentCtx)
+	ctx, cancel := context.WithTimeout(detachedCtx, 5*time.Minute)
 	defer cancel()
 
 	// Use semaphore to limit concurrent goroutines

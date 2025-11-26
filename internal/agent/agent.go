@@ -111,7 +111,7 @@ func (a *Agent) Start(ctx context.Context) error {
 	}
 
 	// Register with API server
-	if err := a.register(); err != nil {
+	if err := a.register(ctx); err != nil {
 		a.logger.WithError(err).Warn("Failed to register with API server")
 		if !a.cfg.Agent.OfflineMode {
 			return fmt.Errorf("failed to register agent: %w", err)
@@ -177,7 +177,7 @@ func (a *Agent) Stop() error {
 }
 
 // register registers the agent with the API server
-func (a *Agent) register() error {
+func (a *Agent) register(parentCtx context.Context) error {
 	// Determine platform
 	platform := runtime.GOOS
 	if a.cfg.Agent.Kubernetes.Enabled {
@@ -218,7 +218,8 @@ func (a *Agent) register() error {
 	}
 
 	// Register with API with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Use parent context to respect shutdown signals
+	ctx, cancel := context.WithTimeout(parentCtx, 30*time.Second)
 	defer cancel()
 	resp, err := a.reporter.RegisterAgent(ctx, req)
 	if err != nil {
@@ -371,7 +372,7 @@ func (a *Agent) setupEventDrivenMode(ctx context.Context) error {
 
 	// Step 2: Create Redis client for debouncer state tracking
 	a.logger.Info("Initializing Redis client for event state tracking")
-	redisClient, err := a.createRedisClient()
+	redisClient, err := a.createRedisClient(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create Redis client: %w", err)
 	}
@@ -578,7 +579,7 @@ func (a *Agent) createKubernetesClient() (*kubernetes.Clientset, error) {
 }
 
 // createRedisClient creates a Redis client for event state tracking
-func (a *Agent) createRedisClient() (*redis.Client, error) {
+func (a *Agent) createRedisClient(parentCtx context.Context) (*redis.Client, error) {
 	if !a.cfg.Cache.Enabled {
 		return nil, fmt.Errorf("redis cache must be enabled for event-driven mode")
 	}
@@ -598,7 +599,8 @@ func (a *Agent) createRedisClient() (*redis.Client, error) {
 	client := redis.NewClient(opts)
 
 	// Test connection
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Use parent context to respect shutdown signals
+	ctx, cancel := context.WithTimeout(parentCtx, 5*time.Second)
 	defer cancel()
 
 	if err := client.Ping(ctx).Err(); err != nil {

@@ -41,7 +41,13 @@ const (
 	eventStateTTL = 24 * time.Hour
 )
 
-// NewDebouncer creates a new event debouncer
+// NewDebouncer creates a new event debouncer.
+//
+// Redis Client Lifecycle:
+// The debouncer stores a reference to the Redis client provided in config but does NOT
+// take ownership of it. The caller is responsible for closing the Redis client when the
+// agent shuts down. The debouncer's Shutdown() method only clears pending timers and
+// does not close the Redis connection.
 func NewDebouncer(ctx context.Context, config *DebouncerConfig, logger *logrus.Logger) (*Debouncer, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context cannot be nil")
@@ -157,9 +163,16 @@ func (d *Debouncer) Debounce(event *KubernetesEvent, callback func(*KubernetesEv
 		return err
 	}
 
-	// Create new timer
+	// Create new timer with context awareness
 	timer := time.AfterFunc(d.debounceWindow, func() {
-		d.processDebounced(eventKey, callback)
+		// Check if context is cancelled before processing
+		select {
+		case <-d.ctx.Done():
+			d.logger.Debug("Skipping debounced processing - context cancelled")
+			return
+		default:
+			d.processDebounced(eventKey, callback)
+		}
 	})
 
 	d.timers[eventKey] = timer
@@ -332,7 +345,9 @@ func (d *Debouncer) Clear() {
 	d.logger.Info("Cleared all pending debounce timers")
 }
 
-// Shutdown gracefully shuts down the debouncer
+// Shutdown gracefully shuts down the debouncer.
+// Note: This method only clears pending timers. The Redis client lifecycle
+// is managed by the caller and must be closed separately.
 func (d *Debouncer) Shutdown() {
 	d.logger.Info("Shutting down debouncer")
 	d.Clear()

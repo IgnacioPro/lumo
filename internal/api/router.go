@@ -58,6 +58,7 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 
 	// Global middleware
 	r.Use(apimiddleware.Recovery(logger))
+	r.Use(apimiddleware.RequestSizeLimit(5 * 1024 * 1024)) // 5 MB limit to prevent DoS
 	r.Use(func(next http.Handler) http.Handler {
 		return otelhttp.NewHandler(next, "lumo-api")
 	})

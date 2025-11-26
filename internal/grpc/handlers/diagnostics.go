@@ -75,11 +75,18 @@ func (h *DiagnosticsHandler) RunDiagnostics(ctx context.Context, req *lumov1.Run
 	}
 
 	// Execute diagnostics asynchronously in background
-	// Use a 30-minute timeout to match HTTP handler
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	// Create detached context to allow async processing while preserving trace context
+	// Use configurable timeout (default: 30 minutes)
+	timeout := h.cfg.Diagnostics.Timeout
+	if timeout == 0 {
+		timeout = 30 * time.Minute // Fallback default
+	}
+	detachedCtx := context.WithoutCancel(ctx)
+	execCtx, cancel := context.WithTimeout(detachedCtx, timeout)
+	defer cancel() // Always clean up in parent goroutine
+
 	go func() {
-		defer cancel()
-		h.executeDiagnostics(ctx, job, req)
+		h.executeDiagnostics(execCtx, job, req)
 	}()
 
 	return &lumov1.RunDiagnosticsResponse{
