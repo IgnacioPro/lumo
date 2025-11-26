@@ -9,8 +9,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/ignacio/lumo/internal/database/models"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ignacio/lumo/internal/database/models"
 )
 
 // ApprovalMode determines how approvals are requested
@@ -32,12 +33,12 @@ type ApprovalRepository interface {
 
 // Approver handles user approval for remediation actions.
 type Approver struct {
-	logger     *logrus.Logger
-	reader     *bufio.Reader
-	mode       ApprovalMode
-	repo       ApprovalRepository
-	jobID      uuid.UUID
-	target     string
+	logger      *logrus.Logger
+	reader      *bufio.Reader
+	mode        ApprovalMode
+	repo        ApprovalRepository
+	jobID       uuid.UUID
+	target      string
 	requestedBy string
 }
 
@@ -193,19 +194,19 @@ func (a *Approver) requestApprovalAPI(ctx context.Context, action Action) (bool,
 	// Create approval request in database
 	expiresAt := time.Now().Add(24 * time.Hour) // 24 hour expiration
 	approval := &models.Approval{
-		JobID:          a.jobID,
-		ActionID:       action.ID(),
-		ActionName:     action.Name(),
-		ActionCategory: string(action.Category()),
-		Description:    action.Description(),
-		RiskLevel:      riskLevel,
-		IsReversible:   action.IsReversible(),
+		JobID:           a.jobID,
+		ActionID:        action.ID(),
+		ActionName:      action.Name(),
+		ActionCategory:  string(action.Category()),
+		Description:     action.Description(),
+		RiskLevel:       riskLevel,
+		IsReversible:    action.IsReversible(),
 		EstimatedImpact: action.EstimateImpact(),
-		Target:         a.target,
-		Status:         models.ApprovalStatusPending,
-		RequestedBy:    a.requestedBy,
-		ExpiresAt:      &expiresAt,
-		Metadata:       models.JSONB{
+		Target:          a.target,
+		Status:          models.ApprovalStatusPending,
+		RequestedBy:     a.requestedBy,
+		ExpiresAt:       &expiresAt,
+		Metadata: models.JSONB{
 			"risk":     string(action.Risk()),
 			"category": string(action.Category()),
 		},

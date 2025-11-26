@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+
+	"github.com/ignacio/lumo/internal/diagnostics"
 )
 
 // TestRunDiagnostics_Localhost tests the complete localhost diagnostic flow

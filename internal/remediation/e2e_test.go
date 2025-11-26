@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/ignacio/lumo/internal/diagnostics/checkers"
-	"github.com/sirupsen/logrus"
 )
 
 // mockExecutorWithFailedServices simulates a system with failed services

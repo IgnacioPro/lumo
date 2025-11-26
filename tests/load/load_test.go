@@ -8,14 +8,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/ignacio/lumo/internal/api"
 	"github.com/ignacio/lumo/internal/api/auth"
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/database"
 	"github.com/ignacio/lumo/tests/testutil"
-	"github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // setupTestServer creates a real router with a real DB connection (if available)
@@ -25,7 +26,7 @@ func setupTestServer(t *testing.T) (*httptest.Server, func()) {
 	cfg := config.DefaultConfig()
 
 	// Configure for testing
-	cfg.Logging.Level = "error"                              // Reduce noise
+	cfg.Logging.Level = "error"                // Reduce noise
 	cfg.API.JWTSecret = testutil.TestJWTSecret // Required for JWT Manager
 
 	// Disable rate limiting for load testing stability, or set very high

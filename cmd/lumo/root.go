@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ignacio/lumo/internal/version"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/ignacio/lumo/internal/version"
 )
 
 var (

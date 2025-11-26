@@ -6,8 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ignacio/lumo/internal/diagnostics"
 )
 
 // RestartServiceAction restarts a systemd service.
@@ -163,7 +164,7 @@ func NewStopServiceAction(serviceName string, logger *logrus.Logger) *StopServic
 			fmt.Sprintf("Stops the systemd service '%s'", serviceName),
 			CategoryService,
 			RiskCritical, // Stopping a service is critical risk
-			true,     // Reversible by starting it
+			true,         // Reversible by starting it
 			fmt.Sprintf("Service '%s' will be stopped. This will cause downtime.", serviceName),
 			logger,
 		),

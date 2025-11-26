@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ignacio/lumo/internal/diagnostics"
 )
 
 // mockAdapter is a mock implementation of ProviderAdapter for testing

@@ -9,10 +9,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/ignacio/lumo/internal/api/auth"
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/database"
-	"github.com/sirupsen/logrus"
 )
 
 // Server represents the HTTP API server

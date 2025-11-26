@@ -141,10 +141,10 @@ Response: ERROR: I can only help with Lumo CLI commands.
 
 	// Log the request
 	log.WithFields(logrus.Fields{
-		"query":      query,
-		"provider":   cfg.AI.Provider,
-		"model":      cfg.AI.GetModelForProvider(cfg.AI.Provider),
-		"auto_yes":   false, // Will be updated below
+		"query":    query,
+		"provider": cfg.AI.Provider,
+		"model":    cfg.AI.GetModelForProvider(cfg.AI.Provider),
+		"auto_yes": false, // Will be updated below
 	}).Info("Processing ask request")
 
 	log.Info("Interpreting request...")

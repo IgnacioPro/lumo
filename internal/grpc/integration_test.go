@@ -45,7 +45,7 @@ func TestIntegration_HealthCheck(t *testing.T) {
 	}()
 
 	// Create client
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.Dial("bufnet",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()
@@ -107,7 +107,7 @@ func TestIntegration_ConcurrentRequests(t *testing.T) {
 	}()
 
 	// Create client
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.Dial("bufnet",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()
@@ -173,7 +173,7 @@ func TestIntegration_Timeouts(t *testing.T) {
 
 	// Create client
 	baseCtx := context.Background()
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.Dial("bufnet",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()
@@ -229,7 +229,7 @@ func TestIntegration_ErrorHandling(t *testing.T) {
 	}()
 
 	// Create client
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.Dial("bufnet",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()
@@ -276,7 +276,7 @@ func TestIntegration_ConnectionManagement(t *testing.T) {
 		// Create multiple connections
 
 		for i := 0; i < 5; i++ {
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+			//nolint:staticcheck // Deprecated API supported throughout 1.x
 			conn, err := grpc.Dial("bufnet",
 				grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 					return lis.Dial()
@@ -286,7 +286,7 @@ func TestIntegration_ConnectionManagement(t *testing.T) {
 			require.NoError(t, err)
 
 			healthClient := lumov1.NewHealthServiceClient(conn)
-	ctx := context.Background()
+			ctx := context.Background()
 			resp, err := healthClient.Live(ctx, &lumov1.LiveRequest{})
 			require.NoError(t, err)
 			assert.True(t, resp.Alive)
@@ -296,7 +296,7 @@ func TestIntegration_ConnectionManagement(t *testing.T) {
 	})
 
 	t.Run("ReuseConnection", func(t *testing.T) {
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+		//nolint:staticcheck // Deprecated API supported throughout 1.x
 		conn, err := grpc.Dial("bufnet",
 			grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 				return lis.Dial()
@@ -307,7 +307,7 @@ func TestIntegration_ConnectionManagement(t *testing.T) {
 		defer func() { _ = conn.Close() }()
 
 		healthClient := lumov1.NewHealthServiceClient(conn)
-	ctx := context.Background()
+		ctx := context.Background()
 
 		// Make multiple requests on the same connection
 		for i := 0; i < 10; i++ {
@@ -343,7 +343,7 @@ func BenchmarkGRPCHealthCheck(b *testing.B) {
 	}()
 
 	// Create client
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.Dial("bufnet",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()
@@ -386,7 +386,7 @@ func BenchmarkGRPCConcurrentHealthCheck(b *testing.B) {
 	}()
 
 	// Create client
-//nolint:staticcheck // Deprecated API supported throughout 1.x
+	//nolint:staticcheck // Deprecated API supported throughout 1.x
 	conn, err := grpc.Dial("bufnet",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()

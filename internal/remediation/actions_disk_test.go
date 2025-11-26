@@ -193,10 +193,10 @@ func TestRotateLogsAction(t *testing.T) {
 
 	t.Run("Execute rotates logs successfully (with compression)", func(t *testing.T) {
 		mockExecutor := new(MockCommandExecutor)
-		
+
 		// 1. Initial size
 		mockExecutor.On("ExecuteWithContext", ctx, "stat -c %s "+testLogFileQuoted+" 2>/dev/null || stat -f %z "+testLogFileQuoted+" 2>/dev/null").Return("10240", "", 0, nil).Once()
-		
+
 		// 2. Info check
 		mockExecutor.On("ExecuteWithContext", ctx, "ls -lah "+testLogFileQuoted).Return("-rw-r--r-- 1 root root 10K Nov 23 12:00 test.log", "", 0, nil).Once()
 
@@ -206,13 +206,13 @@ func TestRotateLogsAction(t *testing.T) {
 
 		// 4. Move current
 		mockExecutor.On("ExecuteWithContext", ctx, "mv "+testLogFileQuoted+" '/var/log/test.log.1'").Return("", "", 0, nil).Once()
-		
+
 		// 5. Create new
 		mockExecutor.On("ExecuteWithContext", ctx, "touch "+testLogFileQuoted).Return("", "", 0, nil).Once()
-		
+
 		// 6. Compress backup
 		mockExecutor.On("ExecuteWithContext", ctx, "gzip '/var/log/test.log.1'").Return("", "", 0, nil).Once()
-		
+
 		// 7. Get size of compressed backup
 		mockExecutor.On("ExecuteWithContext", ctx, "stat -c %s '/var/log/test.log.1.gz' 2>/dev/null || stat -f %z '/var/log/test.log.1.gz' 2>/dev/null").Return("1024", "", 0, nil).Once()
 

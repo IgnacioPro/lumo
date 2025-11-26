@@ -9,8 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ignacio/lumo/internal/reliability"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ignacio/lumo/internal/reliability"
 )
 
 // WebhookNotifier sends notifications via generic webhooks (Discord, Teams, Mattermost, etc.).

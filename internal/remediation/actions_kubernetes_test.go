@@ -13,11 +13,11 @@ func TestK8sRolloutRestartAction(t *testing.T) {
 	logger := logrus.New()
 	logger.SetOutput(new(mockWriter))
 	ctx := context.Background()
-	
+
 	ns := "default"
 	resName := "my-app"
 	resType := "deployment"
-	
+
 	t.Run("Validates successfully", func(t *testing.T) {
 		mockExecutor := new(MockCommandExecutor)
 		mockExecutor.On("ExecuteWithContext", ctx, "which kubectl").Return("/usr/bin/kubectl", "", 0, nil).Once()
@@ -49,7 +49,7 @@ func TestK8sRolloutRestartAction(t *testing.T) {
 
 		action := NewK8sRolloutRestartAction(ns, resType, resName, logger)
 		result, err := action.Execute(ctx, mockExecutor)
-		
+
 		assert.NoError(t, err)
 		assert.Equal(t, StatusSuccess, result.Status)
 		mockExecutor.AssertExpectations(t)
@@ -71,10 +71,10 @@ func TestK8sDeletePodAction(t *testing.T) {
 	logger := logrus.New()
 	logger.SetOutput(new(mockWriter))
 	ctx := context.Background()
-	
+
 	ns := "kube-system"
 	pod := "coredns-123"
-	
+
 	t.Run("Validates successfully", func(t *testing.T) {
 		mockExecutor := new(MockCommandExecutor)
 		mockExecutor.On("ExecuteWithContext", ctx, "which kubectl").Return("/usr/bin/kubectl", "", 0, nil).Once()
@@ -90,12 +90,12 @@ func TestK8sDeletePodAction(t *testing.T) {
 	t.Run("Execute deletes pod successfully", func(t *testing.T) {
 		mockExecutor := new(MockCommandExecutor)
 		cmd := "kubectl delete pod 'coredns-123' -n 'kube-system'"
-		
+
 		mockExecutor.On("ExecuteWithContext", ctx, cmd).Return("deleted", "", 0, nil).Once()
 
 		action := NewK8sDeletePodAction(ns, pod, false, logger)
 		result, err := action.Execute(ctx, mockExecutor)
-		
+
 		assert.NoError(t, err)
 		assert.Equal(t, StatusSuccess, result.Status)
 		mockExecutor.AssertExpectations(t)
@@ -104,12 +104,12 @@ func TestK8sDeletePodAction(t *testing.T) {
 	t.Run("Execute deletes pod with force", func(t *testing.T) {
 		mockExecutor := new(MockCommandExecutor)
 		cmd := "kubectl delete pod 'coredns-123' -n 'kube-system' --force --grace-period=0"
-		
+
 		mockExecutor.On("ExecuteWithContext", ctx, cmd).Return("deleted", "", 0, nil).Once()
 
 		action := NewK8sDeletePodAction(ns, pod, true, logger)
 		result, err := action.Execute(ctx, mockExecutor)
-		
+
 		assert.NoError(t, err)
 		assert.Equal(t, StatusSuccess, result.Status)
 		mockExecutor.AssertExpectations(t)

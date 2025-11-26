@@ -10,13 +10,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+
 	"github.com/ignacio/lumo/internal/api/middleware"
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/database/models"
 	"github.com/ignacio/lumo/internal/database/repository"
-	"github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 )
 
 // MockJobRepository is a mock implementation of JobRepository for testing

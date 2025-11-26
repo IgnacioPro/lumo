@@ -9,6 +9,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
 	"github.com/ignacio/lumo/internal/api/middleware"
 	"github.com/ignacio/lumo/internal/api/response"
 	"github.com/ignacio/lumo/internal/config"
@@ -17,10 +22,6 @@ import (
 	"github.com/ignacio/lumo/internal/diagnostics/checkers"
 	"github.com/ignacio/lumo/internal/remediation"
 	"github.com/ignacio/lumo/internal/ssh"
-	"github.com/sirupsen/logrus"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 )
 
 // JobRepository defines the interface for job storage operations

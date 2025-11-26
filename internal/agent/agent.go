@@ -14,11 +14,12 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/ignacio/lumo/internal/config"
 	"github.com/ignacio/lumo/internal/diagnostics"
 	"github.com/ignacio/lumo/internal/diagnostics/checkers"
 	"github.com/ignacio/lumo/internal/version"
-	"github.com/sirupsen/logrus"
 
 	"github.com/ignacio/lumo/internal/agent/eventdriven"
 	"github.com/ignacio/lumo/internal/agent/eventdriven/watchers"

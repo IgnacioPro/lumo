@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ignacio/lumo/internal/config"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ignacio/lumo/internal/config"
 )
 
 func newValidClientConfig() *ClientConfig {

@@ -7,6 +7,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/ignacio/lumo/internal/ai"
 	"github.com/ignacio/lumo/internal/api/auth"
 	"github.com/ignacio/lumo/internal/api/handlers"
@@ -15,8 +18,6 @@ import (
 	"github.com/ignacio/lumo/internal/database"
 	"github.com/ignacio/lumo/internal/database/repository"
 	"github.com/ignacio/lumo/internal/notifications"
-	"github.com/sirupsen/logrus"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // expandEnvVar expands environment variables in the format ${VAR} or $VAR

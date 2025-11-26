@@ -5,10 +5,11 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/ignacio/lumo/internal/api/response"
 	"github.com/ignacio/lumo/internal/database/models"
 	"github.com/ignacio/lumo/internal/database/repository"
-	"github.com/sirupsen/logrus"
 )
 
 // contextKey is a custom type for context keys to avoid collisions

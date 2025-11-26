@@ -27,24 +27,24 @@ const (
 
 // Approval represents a pending remediation action approval request
 type Approval struct {
-	ID             uuid.UUID         `json:"id"`
-	JobID          uuid.UUID         `json:"job_id"`
-	ActionID       string            `json:"action_id"`
-	ActionName     string            `json:"action_name"`
-	ActionCategory string            `json:"action_category"`
-	Description    string            `json:"description"`
-	RiskLevel      ApprovalRiskLevel `json:"risk_level"`
-	IsReversible   bool              `json:"is_reversible"`
-	EstimatedImpact string           `json:"estimated_impact"`
-	Target         string            `json:"target"`
-	Status         ApprovalStatus    `json:"status"`
-	RequestedBy    string            `json:"requested_by"`
-	RequestedAt    time.Time         `json:"requested_at"`
-	ReviewedBy     *string           `json:"reviewed_by,omitempty"`
-	ReviewedAt     *time.Time        `json:"reviewed_at,omitempty"`
-	Reason         *string           `json:"reason,omitempty"`
-	ExpiresAt      *time.Time        `json:"expires_at,omitempty"`
-	Metadata       JSONB             `json:"metadata,omitempty"`
+	ID              uuid.UUID         `json:"id"`
+	JobID           uuid.UUID         `json:"job_id"`
+	ActionID        string            `json:"action_id"`
+	ActionName      string            `json:"action_name"`
+	ActionCategory  string            `json:"action_category"`
+	Description     string            `json:"description"`
+	RiskLevel       ApprovalRiskLevel `json:"risk_level"`
+	IsReversible    bool              `json:"is_reversible"`
+	EstimatedImpact string            `json:"estimated_impact"`
+	Target          string            `json:"target"`
+	Status          ApprovalStatus    `json:"status"`
+	RequestedBy     string            `json:"requested_by"`
+	RequestedAt     time.Time         `json:"requested_at"`
+	ReviewedBy      *string           `json:"reviewed_by,omitempty"`
+	ReviewedAt      *time.Time        `json:"reviewed_at,omitempty"`
+	Reason          *string           `json:"reason,omitempty"`
+	ExpiresAt       *time.Time        `json:"expires_at,omitempty"`
+	Metadata        JSONB             `json:"metadata,omitempty"`
 }
 
 // IsPending returns true if the approval is pending

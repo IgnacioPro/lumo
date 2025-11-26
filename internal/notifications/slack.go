@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/ignacio/lumo/internal/reliability"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ignacio/lumo/internal/reliability"
 )
 
 // SlackNotifier sends notifications via Slack webhooks.

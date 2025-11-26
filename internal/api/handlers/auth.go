@@ -6,11 +6,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/ignacio/lumo/internal/api/auth"
 	"github.com/ignacio/lumo/internal/api/middleware"
 	"github.com/ignacio/lumo/internal/api/response"
 	"github.com/ignacio/lumo/internal/database/repository"
-	"github.com/sirupsen/logrus"
 )
 
 // AuthHandler handles authentication requests

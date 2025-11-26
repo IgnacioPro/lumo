@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/alpkeskin/gotoon"
+
 	"github.com/ignacio/lumo/internal/diagnostics"
 )
 

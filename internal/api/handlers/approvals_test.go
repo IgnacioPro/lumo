@@ -85,7 +85,6 @@ func TestApprovalsHandler_Approve_NoAuthentication(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
-
 func TestApprovalsHandler_Reject_InvalidID(t *testing.T) {
 	// Setup
 	logger := logrus.New()
@@ -135,4 +134,3 @@ func TestApprovalsHandler_Reject_NoAuthentication(t *testing.T) {
 	// Assert
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
-

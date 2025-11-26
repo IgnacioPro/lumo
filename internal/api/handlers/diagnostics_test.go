@@ -7,9 +7,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ignacio/lumo/internal/config"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/ignacio/lumo/internal/config"
 )
 
 func TestDiagnosticsHandler_Run_InvalidJSON(t *testing.T) {

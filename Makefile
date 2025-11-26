@@ -19,7 +19,7 @@ COLOR_GREEN=\033[32m
 COLOR_YELLOW=\033[33m
 COLOR_BLUE=\033[34m
 
-.PHONY: help build run clean test test-verbose test-ci test-ssh fmt fmt-check vet lint install coverage coverage-report coverage-html deps check ci ci-lint ci-test ci-build all diagnose-local diagnose-local-json version proto proto-gen proto-clean proto-fmt proto-lint docker-build-cli docker-build-agent docker-build docker-push-cli docker-push-agent docker-push
+.PHONY: help build run clean test test-verbose test-ci test-ssh fmt fmt-check vet lint install coverage coverage-report coverage-html deps check ci ci-lint ci-test ci-build all diagnose-local diagnose-local-json version proto proto-gen proto-clean proto-fmt proto-lint docker-build-cli docker-build-agent docker-build docker-push-cli docker-push-agent docker-push setup
 
 # Default target
 .DEFAULT_GOAL := help
@@ -146,6 +146,41 @@ deps:
 ## check: Run fmt-check, vet, and test
 check: fmt-check vet test
 	@echo "$(COLOR_GREEN)✓ All checks passed$(COLOR_RESET)"
+
+## setup: Set up development environment for new contributors
+setup:
+	@echo "$(COLOR_BOLD)Setting up Lumo development environment...$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_BLUE)1. Downloading Go dependencies...$(COLOR_RESET)"
+	@$(GO) mod download
+	@echo "$(COLOR_GREEN)✓ Dependencies downloaded$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_BLUE)2. Installing development tools...$(COLOR_RESET)"
+	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest 2>/dev/null || echo "$(COLOR_YELLOW)⚠ golangci-lint install failed (optional)$(COLOR_RESET)"
+	@go install golang.org/x/vuln/cmd/govulncheck@latest 2>/dev/null || echo "$(COLOR_YELLOW)⚠ govulncheck install failed (optional)$(COLOR_RESET)"
+	@echo "$(COLOR_GREEN)✓ Tools installed$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_BLUE)3. Starting local services (PostgreSQL + Redis)...$(COLOR_RESET)"
+	@if command -v docker-compose >/dev/null 2>&1; then \
+		docker-compose up -d 2>/dev/null && echo "$(COLOR_GREEN)✓ Services started$(COLOR_RESET)"; \
+	elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then \
+		docker compose up -d 2>/dev/null && echo "$(COLOR_GREEN)✓ Services started$(COLOR_RESET)"; \
+	else \
+		echo "$(COLOR_YELLOW)⚠ Docker not available - skipping services$(COLOR_RESET)"; \
+	fi
+	@echo ""
+	@echo "$(COLOR_BLUE)4. Building binaries...$(COLOR_RESET)"
+	@$(GO) build $(LDFLAGS) -o $(BINARY_NAME) $(MAIN_PATH)
+	@$(GO) build $(LDFLAGS) -o $(BINARY_NAME)-agent ./cmd/lumo-agent
+	@echo "$(COLOR_GREEN)✓ Binaries built$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_GREEN)$(COLOR_BOLD)✓ Setup complete!$(COLOR_RESET)"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  - Run 'make ci' to verify everything works"
+	@echo "  - Run './lumo doctor' to check configuration"
+	@echo "  - See CONTRIBUTING.md for development workflow"
+	@echo ""
 
 ## ci-lint: Run linters and security checks (used by GitHub CI)
 ci-lint:

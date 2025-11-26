@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ignacio/lumo/internal/reliability"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ignacio/lumo/internal/reliability"
 )
 
 // ProviderAdapter defines provider-specific operations that must be implemented
