@@ -91,8 +91,8 @@ func (h *AuthHandler) GenerateToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Calculate expiration
-	expiresIn := 24 * time.Hour // Default, should match JWTManager config
+	// Calculate expiration from JWT manager configuration
+	expiresIn := h.jwtManager.Expiration()
 	expiresAt := time.Now().Add(expiresIn)
 
 	resp := TokenResponse{
@@ -142,8 +142,8 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Calculate expiration
-	expiresIn := 24 * time.Hour // Default
+	// Calculate expiration from JWT manager configuration
+	expiresIn := h.jwtManager.Expiration()
 	expiresAt := time.Now().Add(expiresIn)
 
 	resp := RefreshResponse{
