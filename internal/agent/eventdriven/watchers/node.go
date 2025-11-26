@@ -47,8 +47,11 @@ func (w *NodeWatcher) Setup(factory informers.SharedInformerFactory, handler eve
 			w.logger.WithField("node", node.Name).Debug("Node deleted")
 		},
 	})
+	if err != nil {
+		return fmt.Errorf("failed to add node event handler: %w", err)
+	}
 
-	return err
+	return nil
 }
 
 func (w *NodeWatcher) GetInformer() cache.SharedIndexInformer {

@@ -140,7 +140,7 @@ func (h *DiagnosticsHandler) StreamDiagnostics(req *lumov1.StreamDiagnosticsRequ
 		JobId:    uuid.New().String(),
 		Progress: 0,
 	}); err != nil {
-		return err
+		return fmt.Errorf("failed to send start event: %w", err)
 	}
 
 	// Send completion event
@@ -148,7 +148,7 @@ func (h *DiagnosticsHandler) StreamDiagnostics(req *lumov1.StreamDiagnosticsRequ
 		Type:     lumov1.DiagnosticsEvent_EVENT_TYPE_COMPLETED,
 		Progress: 100,
 	}); err != nil {
-		return err
+		return fmt.Errorf("failed to send completion event: %w", err)
 	}
 
 	return nil

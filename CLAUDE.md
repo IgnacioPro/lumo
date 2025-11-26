@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-25 (Max Debounce Window) | **Version:** 1.0.0 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Phase 13 Complete ✅ | Phase 15 In Progress 🔄 | Phase 16 Complete ✅ | **Full Stack K8s + Event-Driven + Circuit Breakers** 🚀
+> **Last Updated:** 2025-11-25 (Code Quality Improvements) | **Version:** 1.0.0 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Phase 13 Complete ✅ | Phase 15 In Progress 🔄 | Phase 16 Complete ✅ | **Full Stack K8s + Event-Driven + Circuit Breakers** 🚀
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -64,7 +64,7 @@ lumo/
 ├── Dockerfile.agent                   # Security-hardened build for lumo-agent (non-root)
 └── docker-compose.yaml                # PostgreSQL + Redis for development
 
-Total: 192 Go files + 70 test files | Coverage: 66.7% | Verified: 2025-11-21
+Total: 139 Go files + 78 test files | Coverage: 53.4% internal packages | Verified: 2025-11-25
 ```
 
 ---
@@ -192,7 +192,16 @@ Implementation: `internal/doctor/{doctor.go,checks.go}`, `cmd/lumo/doctor.go`
 
 ## Testing & CI
 
-**Coverage:** 53.4% internal packages (82 test files, 250+ test cases added in Phase 15) | Table-driven tests, mock executors
+**Coverage:** 53.4% internal packages (78 test files, 250+ test cases) | Table-driven tests, mock executors
+
+**Key Package Coverage:**
+- `internal/reliability`: 100% (circuit breakers)
+- `internal/diagnostics/formatters`: 97.4%
+- `internal/diagnostics`: 88.3%
+- `internal/diagnostics/checkers`: 78.3%
+- `internal/api/auth`: 90.3%
+- `internal/api/response`: 90.5%
+
 **Recent Improvements (Phase 15):**
 - API auth package: 0% → 90.3%
 - API response package: 0% → 90.5%
@@ -216,6 +225,18 @@ make ci-build  # Build CLI + Agent binaries
 - Build verification
 - Cross-platform builds (main branch only: linux/darwin × amd64/arm64)
 - Path-based filtering: only runs on Go/Makefile/CI changes
+
+**Integration Tests (Phase 15):**
+```bash
+# Run integration tests (requires Docker)
+go test -v ./tests/integration/...
+
+# Skip integration tests (short mode)
+go test -short ./...
+```
+- Uses testcontainers-go for PostgreSQL
+- Tests: Health endpoints, Agent lifecycle, Jobs CRUD, Authentication, JWT, Events API
+- ~22 seconds total execution time
 
 ---
 
@@ -401,6 +422,13 @@ K8s Event → Informer → Watcher → Debouncer → API Processor → API Serve
 - Eliminated unsafe type assertions in all watchers (proper interface methods)
 - Added 5 Prometheus metrics: events_processed_total, event_processing_duration_seconds, ai_analysis_total, ai_analysis_duration_seconds, notifications_sent_total
 
+**Code Quality Improvements (Nov 25, 2025):**
+- Removed debug print statements from production code (`internal/database/repository/agent.go`)
+- Added proper error context wrapping in critical paths:
+  - Agent registration, cache operations, gRPC streaming
+  - All K8s informer event handler setup (node, volume, workload watchers)
+- Zero linting issues, zero vulnerabilities (govulncheck clean)
+
 **Bug Fixes (Nov 25, 2025):**
 - **OOMKilled Detection**: Fixed PodWatcher to check BOTH `State.Terminated` (for restartPolicy: Never) and `LastTerminationState.Terminated` (after restart), with restart count tracking to prevent duplicate events
   - Location: `internal/agent/eventdriven/watchers/pod.go:106-138`
@@ -536,14 +564,19 @@ See [EVENT_DRIVEN_IMPLEMENTATION.md](EVENT_DRIVEN_IMPLEMENTATION.md) for complet
 
 ### Current (Phase 15)
 
-**Phase 15: Testing & Quality** - IN PROGRESS 🔄 (Nov 23, 2025)
+**Phase 15: Testing & Quality** - IN PROGRESS 🔄 (Nov 25, 2025)
 - ✅ **Unit Test Expansion:** Added 8 comprehensive test files (1,536 LOC)
   - JWT authentication: token generation, validation, refresh (90.3% coverage)
   - API response helpers: all response types tested (90.5% coverage)
   - Handler validation: agents, approvals, auth, health, jobs, diagnostics
   - 250+ test cases covering edge cases and error paths
-- ⏳ **Integration Tests:** End-to-end workflow testing (pending)
-- ⏳ **Load Testing:** Performance benchmarks and stress tests (pending)
+- ✅ **Code Quality:** Removed debug statements, improved error context wrapping
+- ✅ **Integration Tests:** End-to-end API workflow testing with testcontainers
+  - Location: `tests/integration/` (testenv.go, api_test.go)
+  - Uses PostgreSQL testcontainers for real database testing
+  - Tests: Health endpoints, Agent lifecycle (register/heartbeat/get/list/delete), Jobs CRUD, Authentication, JWT token flow, Events API
+  - ~22 seconds execution time, Docker required
+- ⏳ **Load Testing:** Performance benchmarks and stress tests (existing in tests/load/)
 - ⏳ **Chaos Engineering:** Fault injection and resilience testing (pending)
 - **Overall Progress:** Internal package coverage 53.4%, all tests passing with clean linting
 
