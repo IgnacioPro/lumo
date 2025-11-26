@@ -95,7 +95,10 @@ Testcontainers uses dynamic ports, so conflicts are rare. If issues occur, ensur
 
 ## Future Enhancements
 
-- Load testing with concurrent requests
-- Chaos engineering (network failures, database unavailability)
 - Event submission tests with agent context
 - gRPC integration tests
+
+## Related Testing
+
+- **Load Testing**: `tests/load/load_test.go` - Performance benchmarks
+- **Chaos Engineering**: `deployments/kubernetes/kind/test-failure-scenarios.sh` - Kubernetes failure scenarios (OOMKilled, CrashLoopBackOff, etc.)
