@@ -38,7 +38,12 @@ type APIProcessorConfig struct {
 	RedisClient *redis.Client
 }
 
-// NewAPIEventProcessor creates a new API event processor
+// NewAPIEventProcessor creates a new API event processor.
+//
+// Redis Client Lifecycle:
+// The processor stores a reference to the Redis client provided in config but does NOT
+// take ownership of it. The caller is responsible for closing the Redis client when the
+// agent shuts down.
 func NewAPIEventProcessor(cfg *APIProcessorConfig, logger *logrus.Logger) (*APIEventProcessor, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("processor config cannot be nil")
@@ -254,9 +259,7 @@ func (p *APIEventProcessor) submitToAPI(submissions []EventSubmission) error {
 	if err != nil {
 		return fmt.Errorf("HTTP request failed: %w", err)
 	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
+	defer func() { _ = resp.Body.Close() }() // Safe after error check, ignore close error
 
 	// Check response
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -306,6 +309,9 @@ func NewRetryCache(redisClient *redis.Client, logger *logrus.Logger) *RetryCache
 
 // Add adds an event to the retry cache
 func (c *RetryCache) Add(event EventSubmission) error {
+	if event.ResourceUID == nil {
+		return fmt.Errorf("resource UID is required for retry cache")
+	}
 	key := fmt.Sprintf("%s%s:%d", c.keyPrefix, *event.ResourceUID, time.Now().UnixNano())
 
 	data, err := json.Marshal(event)

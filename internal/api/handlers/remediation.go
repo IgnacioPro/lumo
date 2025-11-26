@@ -136,9 +136,11 @@ func (h *RemediationHandler) Run(w http.ResponseWriter, r *http.Request) {
 
 	// Execute remediation asynchronously
 	// Use a long timeout (1 hour) to allow for complex remediation tasks
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Hour)
+	// Use request context to respect client lifecycle
+	ctx, cancel := context.WithTimeout(r.Context(), 1*time.Hour)
+	defer cancel() // Always clean up in parent goroutine
+
 	go func() {
-		defer cancel()
 		h.executeRemediation(ctx, job, &req)
 	}()
 
@@ -259,7 +261,11 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, job *models
 
 		// Use diagnostics.NewSSHExecutor to wrap the SSH client
 		executor = diagnostics.NewSSHExecutor(sshClient)
-		cleanup = func() { _ = sshClient.Disconnect() }
+		cleanup = func() {
+			if err := sshClient.Disconnect(); err != nil {
+				h.logger.WithError(err).Warn("Failed to disconnect SSH client")
+			}
+		}
 	}
 	defer cleanup()
 
@@ -334,7 +340,11 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, job *models
 	if err != nil {
 		return nil, fmt.Errorf("failed to create auditor: %w", err)
 	}
-	defer func() { _ = auditor.Close() }()
+	defer func() {
+		if err := auditor.Close(); err != nil {
+			h.logger.WithError(err).Error("Failed to close audit log")
+		}
+	}()
 
 	// Create approver with API mode (database-based approvals)
 	approver := remediation.NewApprover(h.logger,

@@ -60,6 +60,7 @@ func NewPostgresDB(config *PostgresConfig, logger *logrus.Logger) (*DB, error) {
 	sqlDB.SetMaxOpenConns(config.MaxConnections)
 	sqlDB.SetMaxIdleConns(config.MaxIdle)
 	sqlDB.SetConnMaxLifetime(config.ConnMaxLifetime)
+	sqlDB.SetConnMaxIdleTime(10 * time.Minute) // Close idle connections after 10 minutes
 
 	// Log pool configuration
 	logger.WithFields(logrus.Fields{

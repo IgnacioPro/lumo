@@ -84,6 +84,7 @@ type APIConfig struct {
 
 // DiagnosticsConfig contains diagnostic settings
 type DiagnosticsConfig struct {
+	Timeout    time.Duration    `mapstructure:"timeout"` // Timeout for diagnostic operations (default: 30m)
 	Network    NetworkConfig    `mapstructure:"network"`
 	Security   SecurityConfig   `mapstructure:"security"`
 	Kubernetes KubernetesConfig `mapstructure:"kubernetes"`
@@ -355,9 +356,9 @@ func DefaultConfig() *Config {
 			User:            "lumo",
 			Password:        "", // REQUIRED: Set via LUMO_DATABASE_PASSWORD env var
 			SSLMode:         "disable",
-			MaxConnections:  50,               // Adaptive default for medium deployments (100-500 agents)
-			MaxIdle:         12,               // 25% of MaxConnections (keep warm connections)
-			ConnMaxLifetime: 30 * time.Minute, // Increased from 5m to reduce connection churn
+			MaxConnections:  50,            // Adaptive default for medium deployments (100-500 agents)
+			MaxIdle:         25,            // 50% of MaxConnections for better burst handling
+			ConnMaxLifetime: 1 * time.Hour, // Reduce reconnection churn while preventing stale connections
 		},
 		Cache: CacheConfig{
 			Enabled:    false, // Disabled by default
@@ -499,6 +500,9 @@ func Load() (*Config, error) {
 	viper.SetDefault("agent.kubernetes.namespace", "")
 	viper.SetDefault("agent.kubernetes.node_name", "")
 	viper.SetDefault("agent.kubernetes.pod_name", "")
+
+	// Diagnostics defaults
+	viper.SetDefault("diagnostics.timeout", "30m") // 30 minute timeout for diagnostic operations
 
 	// Kubernetes diagnostics (bind both agent and diagnostics env vars for flexibility)
 	_ = viper.BindEnv("diagnostics.kubernetes.enabled", "LUMO_AGENT_KUBERNETES_ENABLED", "LUMO_DIAGNOSTICS_KUBERNETES_ENABLED")

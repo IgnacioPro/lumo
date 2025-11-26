@@ -132,12 +132,13 @@ func (h *DiagnosticsHandler) Run(w http.ResponseWriter, r *http.Request) {
 	}).Info("Diagnostic job created")
 
 	// Execute diagnostics asynchronously with a timeout context
-	// Note: We use Background instead of request context since the goroutine
-	// outlives the HTTP request. A 30-minute timeout ensures long-running
-	// diagnostics can complete while preventing resource leaks.
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	// Use request context to respect client lifecycle - if the client disconnects,
+	// we should cancel the operation to prevent resource waste.
+	// A 30-minute timeout ensures long-running diagnostics can complete.
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
+	defer cancel() // Always clean up in parent goroutine
+
 	go func() {
-		defer cancel()
 		h.executeDiagnostics(ctx, job, req)
 	}()
 
