@@ -346,7 +346,9 @@ func (h *RemediationHandler) performRemediation(ctx context.Context, job *models
 	)
 
 	// Create executor
-	remediationExecutor := remediation.NewExecutor(executor, auditor, approver, h.logger, req.DryRun, req.AutoApprove)
+	// SECURITY: Always pass false for autoApprove to enforce approval workflow
+	// Auto-approval should only be configured server-side based on organizational policy
+	remediationExecutor := remediation.NewExecutor(executor, auditor, approver, h.logger, req.DryRun, false)
 
 	// Execute plan
 	execReport, err := remediationExecutor.ExecutePlan(ctx, plan)

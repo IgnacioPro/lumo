@@ -47,8 +47,9 @@ ssh:
   # Path to SSH known_hosts file (leave empty for default ~/.ssh/known_hosts)
   known_hosts_path: ""
 
-  # Enable strict host key checking (verify server fingerprints)
-  strict_host_key_checking: false
+  # SECURITY: Enabled by default to prevent MITM attacks
+  # Set to false only for trusted networks or testing (NOT recommended for production)
+  strict_host_key_checking: true
 
   # Preferred authentication methods in order of priority
   # Options: agent, key, password, interactive

@@ -98,6 +98,11 @@ func (m *JWTManager) RefreshToken(oldToken string) (string, error) {
 	return m.GenerateToken(claims.UserID, claims.Username, claims.Scopes)
 }
 
+// Expiration returns the configured token expiration duration
+func (m *JWTManager) Expiration() time.Duration {
+	return m.expiration
+}
+
 // GenerateSecureSecret generates a cryptographically secure random secret key.
 // Useful for generating JWT secrets. Returns a base64-encoded string.
 func GenerateSecureSecret(length int) (string, error) {

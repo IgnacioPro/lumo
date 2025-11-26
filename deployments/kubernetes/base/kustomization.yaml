@@ -3,10 +3,20 @@ kind: Kustomization
 
 namespace: lumo-system
 
+# SECURITY NOTE: secret.yaml has been renamed to secret.yaml.template
+# to prevent accidental deployment of placeholder secrets.
+# Create actual secrets using kubectl:
+#   kubectl create secret generic lumo-agent-secret \
+#     --namespace=lumo-system \
+#     --from-literal=agent-token="your-jwt-token-here" \
+#     --from-literal=anthropic-api-key="sk-ant-..."
+# Or use an external secret manager (Vault, AWS Secrets Manager, etc.)
+# See secret.yaml.template for complete examples.
+
 resources:
   - rbac.yaml
   - configmap.yaml
-  - secret.yaml
+  # - secret.yaml  # REMOVED: Use kubectl or external secret manager instead
   - daemonset.yaml
   - deployment.yaml
   - service.yaml
