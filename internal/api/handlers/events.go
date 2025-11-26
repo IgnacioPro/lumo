@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -18,6 +19,18 @@ import (
 	"github.com/ignacio/lumo/internal/database/models"
 	"github.com/ignacio/lumo/internal/database/repository"
 	"github.com/ignacio/lumo/internal/notifications"
+)
+
+// Constants for event processing limits
+const (
+	// MaxEventsPerRequest is the maximum number of events that can be submitted in a single request
+	MaxEventsPerRequest = 100
+	// MaxListLimit is the maximum number of events that can be returned in a list query
+	MaxListLimit = 1000
+	// DefaultListLimit is the default number of events returned in a list query
+	DefaultListLimit = 100
+	// MaxConcurrentEventProcessors limits concurrent async event processing goroutines
+	MaxConcurrentEventProcessors = 10
 )
 
 // EventsHandler handles Kubernetes event-related requests
@@ -77,8 +90,8 @@ func (h *EventsHandler) SubmitEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(req.Events) > 100 {
-		response.BadRequest(w, "Maximum 100 events per request")
+	if len(req.Events) > MaxEventsPerRequest {
+		response.BadRequest(w, fmt.Sprintf("Maximum %d events per request", MaxEventsPerRequest))
 		return
 	}
 
@@ -242,13 +255,13 @@ func (h *EventsHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	// Pagination
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		if l, err := strconv.Atoi(limit); err == nil && l > 0 {
-			if l > 1000 {
-				l = 1000 // Max limit
+			if l > MaxListLimit {
+				l = MaxListLimit
 			}
 			filters["limit"] = l
 		}
 	} else {
-		filters["limit"] = 100 // Default limit
+		filters["limit"] = DefaultListLimit
 	}
 
 	if offset := r.URL.Query().Get("offset"); offset != "" {
@@ -327,27 +340,53 @@ func (h *EventsHandler) getAgentIDFromContext(ctx context.Context) (uuid.UUID, e
 }
 
 // processEventsAsync performs AI analysis and sends notifications asynchronously.
-// Uses a 5-minute timeout for all async operations to prevent resource leaks.
+// Uses a 5-minute timeout for all async operations and limits concurrent goroutines
+// via a semaphore to prevent resource exhaustion.
 func (h *EventsHandler) processEventsAsync(events []*models.Event) {
 	// Create a new context with timeout (not derived from HTTP request context which is already cancelled)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
+	// Use semaphore to limit concurrent goroutines
+	semaphore := make(chan struct{}, MaxConcurrentEventProcessors)
+	var wg sync.WaitGroup
+
 	for _, event := range events {
-		// AI Analysis
-		if h.aiEnabled && h.aiProvider != nil && event.IsHighPriority() {
-			if err := h.analyzeEventWithAI(ctx, event); err != nil {
-				h.logger.WithError(err).WithField("event_id", event.ID).Error("AI analysis failed")
-				asyncProcessingErrors.WithLabelValues("ai_analysis").Inc()
-			}
+		// Skip low priority events for async processing
+		if !event.IsHighPriority() {
+			continue
 		}
 
-		// Notifications
-		if h.notifEnabled && len(h.notifiers) > 0 && event.IsHighPriority() {
-			if err := h.sendEventNotifications(ctx, event); err != nil {
-				h.logger.WithError(err).WithField("event_id", event.ID).Error("Notification failed")
-				asyncProcessingErrors.WithLabelValues("notification").Inc()
-			}
+		wg.Add(1)
+		semaphore <- struct{}{} // Acquire semaphore
+
+		go func(evt *models.Event) {
+			defer wg.Done()
+			defer func() { <-semaphore }() // Release semaphore
+
+			h.processSingleEvent(ctx, evt)
+		}(event)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+}
+
+// processSingleEvent handles AI analysis and notifications for a single event
+func (h *EventsHandler) processSingleEvent(ctx context.Context, event *models.Event) {
+	// AI Analysis
+	if h.aiEnabled && h.aiProvider != nil {
+		if err := h.analyzeEventWithAI(ctx, event); err != nil {
+			h.logger.WithError(err).WithField("event_id", event.ID).Error("AI analysis failed")
+			asyncProcessingErrors.WithLabelValues("ai_analysis").Inc()
+		}
+	}
+
+	// Notifications
+	if h.notifEnabled && len(h.notifiers) > 0 {
+		if err := h.sendEventNotifications(ctx, event); err != nil {
+			h.logger.WithError(err).WithField("event_id", event.ID).Error("Notification failed")
+			asyncProcessingErrors.WithLabelValues("notification").Inc()
 		}
 	}
 }

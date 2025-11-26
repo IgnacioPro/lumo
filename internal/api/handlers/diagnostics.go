@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -180,11 +179,11 @@ func (h *DiagnosticsHandler) executeDiagnostics(ctx context.Context, job *models
 	h.logger.WithField("job_id", job.ID).Info("Starting diagnostic execution")
 
 	// Determine if target is localhost
-	isLocalhost := h.isLocalhost(req.Target)
+	isLocal := isLocalhost(req.Target)
 
 	var executor diagnostics.CommandExecutor
 
-	if isLocalhost {
+	if isLocal {
 		// Use local executor
 		executor = diagnostics.NewLocalExecutor()
 		h.logger.WithField("job_id", job.ID).Info("Using local executor")
@@ -334,27 +333,4 @@ func (h *DiagnosticsHandler) registerCheckers(runner *diagnostics.Runner) {
 	runner.RegisterChecker(checkers.NewProxmoxChecker(true, true, true, true, true, true, true))
 
 	h.logger.Debug("All diagnostic checkers registered successfully")
-}
-
-// isLocalhost checks if the given hostname refers to the local machine
-func (h *DiagnosticsHandler) isLocalhost(hostname string) bool {
-	// Normalize hostname to lowercase for comparison
-	hostname = strings.ToLower(strings.TrimSpace(hostname))
-
-	// Common localhost patterns
-	localhostPatterns := []string{
-		"localhost",
-		"127.0.0.1",
-		"::1",
-		"0.0.0.0",
-		"::",
-	}
-
-	for _, pattern := range localhostPatterns {
-		if hostname == pattern {
-			return true
-		}
-	}
-
-	return false
 }

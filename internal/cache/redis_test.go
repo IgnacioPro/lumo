@@ -281,7 +281,15 @@ func TestRedisClient_Health(t *testing.T) {
 		client, _, cleanup := setupTestRedis(t)
 		defer cleanup()
 
-		err := client.Health()
+		err := client.Health(context.Background())
+		assert.NoError(t, err)
+	})
+
+	t.Run("HealthyWithNilContext", func(t *testing.T) {
+		client, _, cleanup := setupTestRedis(t)
+		defer cleanup()
+
+		err := client.Health(nil) //nolint:staticcheck
 		assert.NoError(t, err)
 	})
 
@@ -292,7 +300,7 @@ func TestRedisClient_Health(t *testing.T) {
 		// Close the miniredis server to simulate unhealthy state
 		mr.Close()
 
-		err := client.Health()
+		err := client.Health(context.Background())
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "health check failed")
 	})
@@ -307,7 +315,7 @@ func TestRedisClient_Close(t *testing.T) {
 		assert.NoError(t, err)
 
 		// Verify connection is closed by attempting an operation
-		err = client.Health()
+		err = client.Health(context.Background())
 		assert.Error(t, err)
 	})
 }

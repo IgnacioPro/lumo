@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,11 +31,45 @@ type Reporter struct {
 
 // NewReporter creates a new API reporter
 func NewReporter(cfg *config.AgentConfig, logger *logrus.Logger) *Reporter {
+	// Configure TLS settings
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: cfg.TLSInsecure,
+		MinVersion:         tls.VersionTLS12,
+	}
+
+	// Load client certificate for mTLS if configured
+	if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile)
+		if err != nil {
+			logger.WithError(err).Warn("Failed to load client certificate for mTLS, continuing without client cert")
+		} else {
+			tlsConfig.Certificates = []tls.Certificate{cert}
+			logger.WithFields(logrus.Fields{
+				"cert_file": cfg.TLSCertFile,
+				"key_file":  cfg.TLSKeyFile,
+			}).Info("Loaded client certificate for mTLS")
+		}
+	}
+
+	// Load CA certificate for server verification if configured
+	if cfg.TLSCAFile != "" {
+		caCert, err := os.ReadFile(cfg.TLSCAFile)
+		if err != nil {
+			logger.WithError(err).Warn("Failed to load CA certificate, continuing with system CA pool")
+		} else {
+			caCertPool := x509.NewCertPool()
+			if !caCertPool.AppendCertsFromPEM(caCert) {
+				logger.Warn("Failed to parse CA certificate, continuing with system CA pool")
+			} else {
+				tlsConfig.RootCAs = caCertPool
+				logger.WithField("ca_file", cfg.TLSCAFile).Info("Loaded CA certificate for server verification")
+			}
+		}
+	}
+
 	// Configure HTTP client with TLS settings
 	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: cfg.TLSInsecure,
-		},
+		TLSClientConfig:    tlsConfig,
 		MaxIdleConns:       10,
 		IdleConnTimeout:    30 * time.Second,
 		DisableCompression: false,
@@ -192,94 +228,106 @@ func (r *Reporter) doWithRetry(ctx context.Context, method, url string, body []b
 	maxAttempts := r.cfg.RetryMaxAttempts
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		// Create request
-		var bodyReader io.Reader
-		if body != nil {
-			bodyReader = bytes.NewReader(body)
+		result, err := r.doSingleRequest(ctx, method, url, body, respData)
+		if err == nil {
+			return nil
 		}
 
-		req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
-		if err != nil {
-			return fmt.Errorf("failed to create request: %w", err)
+		lastErr = err
+
+		// Check if we should retry
+		if result != nil && result.statusCode >= 400 && result.statusCode < 500 {
+			// Don't retry on client errors (4xx)
+			return lastErr
 		}
 
-		// Set headers
-		req.Header.Set("Content-Type", "application/json")
-		if r.cfg.Token != "" {
-			req.Header.Set("X-API-Key", r.cfg.Token)
-		}
-
-		// Perform request
-		resp, err := r.httpClient.Do(req)
-		if err != nil {
-			lastErr = err
+		if result != nil && result.statusCode >= 500 {
+			r.logger.WithFields(logrus.Fields{
+				"status":  result.statusCode,
+				"attempt": attempt + 1,
+				"max":     maxAttempts,
+			}).Warn("Server error, retrying...")
+		} else {
 			r.logger.WithError(err).WithFields(logrus.Fields{
 				"attempt": attempt + 1,
 				"max":     maxAttempts,
 			}).Warn("HTTP request failed, retrying...")
-
-			// Wait before retry with exponential backoff
-			if attempt < maxAttempts-1 {
-				delay := baseDelay * time.Duration(1<<uint(attempt)) // 2s, 4s, 8s, 16s
-				time.Sleep(delay)
-			}
-			continue
 		}
 
-		// Read response body
-		defer func() {
-			if err := resp.Body.Close(); err != nil {
-				r.logger.WithError(err).Debug("Failed to close response body")
-			}
-		}()
-		respBody, err := io.ReadAll(resp.Body)
-		if err != nil {
-			lastErr = fmt.Errorf("failed to read response body: %w", err)
-			continue
-		}
-
-		// Check status code
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			// Success - unmarshal response
-			if respData != nil {
-				// API wraps responses in {success: bool, data: T}
-				var apiResp struct {
-					Success bool            `json:"success"`
-					Data    json.RawMessage `json:"data"`
-				}
-				if err := json.Unmarshal(respBody, &apiResp); err != nil {
-					return fmt.Errorf("failed to unmarshal API response wrapper: %w", err)
-				}
-				// Unmarshal the actual data
-				if err := json.Unmarshal(apiResp.Data, respData); err != nil {
-					return fmt.Errorf("failed to unmarshal response data: %w", err)
-				}
-			}
-			return nil
-		}
-
-		// Handle error responses
-		lastErr = fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(respBody))
-
-		// Don't retry on client errors (4xx)
-		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-			return lastErr
-		}
-
-		// Retry on server errors (5xx) with backoff
-		r.logger.WithFields(logrus.Fields{
-			"status":  resp.StatusCode,
-			"attempt": attempt + 1,
-			"max":     maxAttempts,
-		}).Warn("Server error, retrying...")
-
+		// Wait before retry with exponential backoff
 		if attempt < maxAttempts-1 {
-			delay := baseDelay * time.Duration(1<<uint(attempt))
+			delay := baseDelay * time.Duration(1<<uint(attempt)) // 2s, 4s, 8s, 16s
 			time.Sleep(delay)
 		}
 	}
 
 	return fmt.Errorf("request failed after %d attempts: %w", maxAttempts, lastErr)
+}
+
+// requestResult holds information about a single HTTP request attempt
+type requestResult struct {
+	statusCode int
+}
+
+// doSingleRequest performs a single HTTP request and handles response body closure properly
+func (r *Reporter) doSingleRequest(ctx context.Context, method, url string, body []byte, respData interface{}) (*requestResult, error) {
+	// Create request
+	var bodyReader io.Reader
+	if body != nil {
+		bodyReader = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/json")
+	if r.cfg.Token != "" {
+		req.Header.Set("X-API-Key", r.cfg.Token)
+	}
+
+	// Perform request
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	// Properly close body using defer - this is now in a function scope, not a loop
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			r.logger.WithError(closeErr).Debug("Failed to close response body")
+		}
+	}()
+
+	// Read response body
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return &requestResult{statusCode: resp.StatusCode}, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Check status code
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		// Success - unmarshal response
+		if respData != nil {
+			// API wraps responses in {success: bool, data: T}
+			var apiResp struct {
+				Success bool            `json:"success"`
+				Data    json.RawMessage `json:"data"`
+			}
+			if err := json.Unmarshal(respBody, &apiResp); err != nil {
+				return &requestResult{statusCode: resp.StatusCode}, fmt.Errorf("failed to unmarshal API response wrapper: %w", err)
+			}
+			// Unmarshal the actual data
+			if err := json.Unmarshal(apiResp.Data, respData); err != nil {
+				return &requestResult{statusCode: resp.StatusCode}, fmt.Errorf("failed to unmarshal response data: %w", err)
+			}
+		}
+		return &requestResult{statusCode: resp.StatusCode}, nil
+	}
+
+	// Return error with status code info
+	return &requestResult{statusCode: resp.StatusCode}, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(respBody))
 }
 
 // RegisterAgentRequest represents an agent registration request
