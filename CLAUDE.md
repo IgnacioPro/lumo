@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-25 (Code Quality Improvements) | **Version:** 1.0.0 | **Status:** Phase 11b Complete ✅ | Phase 11c Pending ⏳ | Phase 12 Complete ✅ | Phase 13 Complete ✅ | Phase 15 In Progress 🔄 | Phase 16 Complete ✅ | **Full Stack K8s + Event-Driven + Circuit Breakers** 🚀
+> **Last Updated:** 2025-11-26 (Phase 15 Complete - Integration Tests) | **Version:** 1.0.0 | **Status:** Phase 15 Complete ✅ | Phase 16 Complete ✅ | Phase 11c Pending ⏳ | **Full Stack K8s + Event-Driven + Circuit Breakers + Full Test Coverage** 🚀
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -52,9 +52,15 @@ lumo/
 │   ├── intelligence/                  # RAG: vectorstore, embeddings, ingestion
 │   ├── doctor/                        # Health check system (6 checks)
 │   ├── messaging/                     # Pub/sub framework (pending: NATS, Kafka, RabbitMQ, Redis)
+│   ├── reliability/                   # Circuit breakers (100% tested)
 │   └── observability/                 # OpenTelemetry tracing, structured observability
+├── tests/
+│   ├── integration/                   # API integration tests with testcontainers (PostgreSQL)
+│   ├── load/                          # Load testing (50 concurrent workers, rate limiting)
+│   └── testutil/                      # Shared test constants and utilities
 ├── deployments/
 │   ├── kubernetes/                    # DaemonSet, Deployment, RBAC, Helm, kind
+│   │   └── kind/                      # Local testing: test-agent.sh, test-failure-scenarios.sh
 │   └── systemd/                       # Service unit, install scripts, RPM/DEB packaging
 ├── examples/                          # 6 end-to-end examples (3,200+ LOC)
 ├── docs/                              # Getting started, competitive analysis, ROI, investor materials
@@ -64,7 +70,7 @@ lumo/
 ├── Dockerfile.agent                   # Security-hardened build for lumo-agent (non-root)
 └── docker-compose.yaml                # PostgreSQL + Redis for development
 
-Total: 139 Go files + 78 test files | Coverage: 53.4% internal packages | Verified: 2025-11-25
+Total: 139 Go files + 80 test files | Coverage: 53.4% internal packages | Verified: 2025-11-26
 ```
 
 ---
@@ -192,7 +198,7 @@ Implementation: `internal/doctor/{doctor.go,checks.go}`, `cmd/lumo/doctor.go`
 
 ## Testing & CI
 
-**Coverage:** 53.4% internal packages (78 test files, 250+ test cases) | Table-driven tests, mock executors
+**Coverage:** 53.4% internal packages (80 test files, 250+ test cases) | Table-driven tests, mock executors
 
 **Key Package Coverage:**
 - `internal/reliability`: 100% (circuit breakers)
@@ -202,11 +208,11 @@ Implementation: `internal/doctor/{doctor.go,checks.go}`, `cmd/lumo/doctor.go`
 - `internal/api/auth`: 90.3%
 - `internal/api/response`: 90.5%
 
-**Recent Improvements (Phase 15):**
-- API auth package: 0% → 90.3%
-- API response package: 0% → 90.5%
-- Comprehensive handler tests: agents, approvals, auth, health, jobs, diagnostics
-- All tests passing with clean linting
+**Phase 15 Complete (Nov 26, 2025):**
+- ✅ Unit tests: 250+ test cases across 80 files
+- ✅ Integration tests: API workflows with testcontainers
+- ✅ Load tests: 50 concurrent workers, rate limiting verification
+- ✅ Chaos engineering: 10+ K8s failure scenarios
 
 **Run:** `go test ./...` | `make ci` (full local checks)
 
@@ -226,7 +232,7 @@ make ci-build  # Build CLI + Agent binaries
 - Cross-platform builds (main branch only: linux/darwin × amd64/arm64)
 - Path-based filtering: only runs on Go/Makefile/CI changes
 
-**Integration Tests (Phase 15):**
+**Integration Tests:**
 ```bash
 # Run integration tests (requires Docker)
 go test -v ./tests/integration/...
@@ -234,9 +240,23 @@ go test -v ./tests/integration/...
 # Skip integration tests (short mode)
 go test -short ./...
 ```
+- Location: `tests/integration/` (testenv.go, api_test.go)
 - Uses testcontainers-go for PostgreSQL
 - Tests: Health endpoints, Agent lifecycle, Jobs CRUD, Authentication, JWT, Events API
-- ~22 seconds total execution time
+- ~22 seconds execution time
+
+**Chaos Engineering:**
+```bash
+# Run all failure scenarios (requires K8s cluster)
+./deployments/kubernetes/kind/test-failure-scenarios.sh
+
+# Run specific scenario
+./test-failure-scenarios.sh --scenario oom-killed
+./test-failure-scenarios.sh --list
+```
+- Location: `deployments/kubernetes/kind/test-failure-scenarios.sh` (781 lines)
+- 10+ scenarios: ImagePullBackOff, CrashLoopBackOff, OOMKilled, DeploymentFailed, JobFailed, PVCProvisionFailed
+- Validates full event pipeline: K8s failure → Agent → API → Database
 
 ---
 
@@ -562,9 +582,19 @@ See [EVENT_DRIVEN_IMPLEMENTATION.md](EVENT_DRIVEN_IMPLEMENTATION.md) for complet
 - Diagnostic checker registration fully implemented
 - All tests passing with tracing enabled
 
-### Current (Phase 15)
+### Completed (Phase 13)
 
-**Phase 15: Testing & Quality** - IN PROGRESS 🔄 (Nov 25, 2025)
+**Phase 13: Circuit Breaker Integration** - COMPLETE ✅ (Nov 24, 2025)
+- Circuit breakers integrated into all external service calls for resilience
+- **AI Providers** (`internal/ai/base_provider.go`): Analyze(), Health(), Ask() methods protected
+- **Notification Providers** (`internal/notifications/`): All Send() methods wrapped
+- **gRPC Client** (`internal/grpc/client/client.go`): Key RPC methods protected
+- **Test Coverage**: 100% for circuit breaker package (6 test cases)
+- Benefits: Prevents cascading failures, fast-fail behavior, automatic recovery
+
+### Completed (Phase 15)
+
+**Phase 15: Testing & Quality** - COMPLETE ✅ (Nov 26, 2025)
 - ✅ **Unit Test Expansion:** Added 8 comprehensive test files (1,536 LOC)
   - JWT authentication: token generation, validation, refresh (90.3% coverage)
   - API response helpers: all response types tested (90.5% coverage)
@@ -572,13 +602,18 @@ See [EVENT_DRIVEN_IMPLEMENTATION.md](EVENT_DRIVEN_IMPLEMENTATION.md) for complet
   - 250+ test cases covering edge cases and error paths
 - ✅ **Code Quality:** Removed debug statements, improved error context wrapping
 - ✅ **Integration Tests:** End-to-end API workflow testing with testcontainers
-  - Location: `tests/integration/` (testenv.go, api_test.go)
+  - Location: `tests/integration/` (testenv.go, api_test.go, ~1,000 LOC)
   - Uses PostgreSQL testcontainers for real database testing
-  - Tests: Health endpoints, Agent lifecycle (register/heartbeat/get/list/delete), Jobs CRUD, Authentication, JWT token flow, Events API
+  - Tests: Health endpoints, Agent lifecycle, Jobs CRUD, Authentication, JWT, Events API
   - ~22 seconds execution time, Docker required
-- ⏳ **Load Testing:** Performance benchmarks and stress tests (existing in tests/load/)
-- ⏳ **Chaos Engineering:** Fault injection and resilience testing (pending)
-- **Overall Progress:** Internal package coverage 53.4%, all tests passing with clean linting
+- ✅ **Load Testing:** Performance benchmarks (`tests/load/load_test.go`)
+  - Health endpoint load testing (50 workers × 20 requests)
+  - Rate limiting verification tests
+- ✅ **Chaos Engineering:** Kubernetes failure scenario testing
+  - Location: `deployments/kubernetes/kind/test-failure-scenarios.sh` (781 lines)
+  - 10+ failure scenarios: ImagePullBackOff, CrashLoopBackOff, OOMKilled, DeploymentFailed, JobFailed, PVCProvisionFailed
+  - Verifies event detection, database storage, and end-to-end flow
+- **Overall Progress:** Internal package coverage 53.4%, 80 test files, all tests passing
 
 ### Completed (Phase 16)
 
@@ -592,24 +627,6 @@ See [EVENT_DRIVEN_IMPLEMENTATION.md](EVENT_DRIVEN_IMPLEMENTATION.md) for complet
 - Code review: Race condition fix (sync.RWMutex), safe type assertions, 5 Prometheus metrics
 - Location: `internal/agent/eventdriven/` with full documentation in `EVENT_DRIVEN_IMPLEMENTATION.md`
 - All CI checks passed
-
-### Completed (Phase 13)
-
-**Phase 13: Circuit Breaker Integration** - COMPLETE ✅ (Nov 24, 2025)
-- Circuit breakers integrated into all external service calls for resilience
-- **AI Providers** (`internal/ai/base_provider.go`): Analyze(), Health(), Ask() methods protected
-- **Notification Providers** (`internal/notifications/`): All Send() methods wrapped
-  - Slack, Telegram, Webhook, Email notifiers with individual circuit breakers
-- **gRPC Client** (`internal/grpc/client/client.go`): Key RPC methods protected
-  - RunDiagnostics(), GetDiagnosticsResult(), RegisterAgent(), SendHeartbeat()
-- **Circuit Breaker Configuration** (`internal/reliability/circuit_breaker.go`):
-  - 3 requests minimum before evaluation
-  - 60% failure ratio triggers open state
-  - 30-second timeout before half-open state
-  - 3 max requests during half-open state
-- **Test Coverage**: 100% for circuit breaker package (6 test cases)
-- Location: `internal/reliability/circuit_breaker.go`, circuit_breaker_test.go
-- Benefits: Prevents cascading failures, fast-fail behavior, automatic recovery
 
 ### Future (Phases 14+)
 
