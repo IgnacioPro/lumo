@@ -9,7 +9,7 @@ This directory contains everything you need to test the **complete Lumo stack** 
 Run the complete test suite (creates cluster, builds images, deploys DB + API + Agents, runs integration tests):
 
 ```bash
-./test-agent.sh
+./deploy-lumo.sh
 ```
 
 **This deploys:**
@@ -51,11 +51,11 @@ The scripts will automatically install missing prerequisites, but you can instal
 
 | File | Purpose |
 |------|---------|
-| `test-agent.sh` | **PRIMARY**: Complete full-stack deployment + tests |
+| `deploy-lumo.sh` | **PRIMARY**: Complete full-stack deployment + tests |
 | `setup-kind-cluster.sh` | Creates a 3-node kind cluster |
 | `build-and-load.sh` | Builds Docker images (API + Agent) and loads into kind |
 | `deploy-to-kind.sh` | Deploys agents to kind cluster |
-| `test-workflow.sh` | Legacy full-stack deployment (use `test-agent.sh` instead) |
+| `test-workflow.sh` | Legacy full-stack deployment (use `deploy-lumo.sh` instead) |
 | `manifests/postgres.yaml` | PostgreSQL deployment |
 | `manifests/api-server.yaml` | Lumo API Server deployment |
 | `FULL_STACK_DEPLOYMENT.md` | Detailed documentation |
@@ -156,29 +156,29 @@ export LUMO_NAMESPACE=my-namespace
 - **Services**: Health/metrics endpoints
 - **RBAC**: ServiceAccount with read-only permissions
 
-### 4. test-agent.sh
+### 4. deploy-lumo.sh
 
 Complete end-to-end test suite.
 
 **Options:**
 ```bash
 # Full test
-./test-agent.sh
+./deploy-lumo.sh
 
 # Skip cluster creation (use existing)
-./test-agent.sh --skip-cluster
+./deploy-lumo.sh --skip-cluster
 
 # Skip image build (use existing)
-./test-agent.sh --skip-build
+./deploy-lumo.sh --skip-build
 
 # Skip deployment (test existing)
-./test-agent.sh --skip-deploy
+./deploy-lumo.sh --skip-deploy
 
 # Combine options
-./test-agent.sh --skip-cluster --skip-build
+./deploy-lumo.sh --skip-cluster --skip-build
 
 # Show help
-./test-agent.sh --help
+./deploy-lumo.sh --help
 ```
 
 **Test cases:**

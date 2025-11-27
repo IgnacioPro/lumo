@@ -83,11 +83,21 @@ sidecar:
     folder: /var/lib/grafana/dashboards
     searchNamespace: ALL
 
-# Security context
-securityContext:
+# Security context - pod level
+podSecurityContext:
   runAsNonRoot: true
   runAsUser: 472
   fsGroup: 472
+
+# Container security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 472
+
+# Disable init-chown-data container (not needed with fsGroup set)
+# This prevents permission denied errors on PVC
+initChownData:
+  enabled: false
 
 # Pod annotations
 podAnnotations:

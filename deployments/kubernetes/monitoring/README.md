@@ -46,24 +46,36 @@ The **Lumo Overview** dashboard includes:
 
 | Section | Panels |
 |---------|--------|
-| Agent Overview | Active Agents, API Availability, Diagnostics (1h), Errors (1h) |
-| Diagnostics Performance | Run Rate, Duration (p95 by checker) |
-| API Events & Processing | Events Processed Rate, AI Analysis Duration |
-| Cache & Connectivity | Cache Hit/Miss, Heartbeats, Notifications |
+| Agent Overview | Active Agents, API Availability, K8s Events (1h), Critical Events (1h) |
+| K8s Event Processing | Events by Type (Rate), Event Processing Duration (p50/p95) |
+| Events by Severity & Namespace | Severity breakdown, Namespace breakdown |
+| Agent Health & Connectivity | Cache Hit/Miss, Heartbeat Rate, Total Events Pie Chart |
+| Agent Diagnostics | Diagnostic Runs, Duration by Checker, Errors by Checker |
+| AI Analysis & Notifications | AI Analysis Rate, AI Duration, Notifications by Provider |
+| API Server Metrics | API Events Processed, API AI Duration, API Notifications |
+| Agent Info | Table of active agents with hostname, mode, platform, version |
 
 ### Metrics Visualized
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `lumo_agent_info` | Gauge | Agent instances |
-| `lumo_agent_api_available` | Gauge | API connectivity |
-| `lumo_agent_diagnostics_total` | Counter | Diagnostic runs |
-| `lumo_agent_diagnostics_duration_seconds` | Histogram | Diagnostic latency |
-| `lumo_agent_cache_hits_total` | Counter | Cache efficiency |
-| `lumo_agent_heartbeats_total` | Counter | Agent health |
-| `lumo_api_events_processed_total` | Counter | Event pipeline |
-| `lumo_api_ai_analysis_duration_seconds` | Histogram | AI provider latency |
-| `lumo_api_notifications_sent_total` | Counter | Notification delivery |
+| Metric | Type | Source | Description |
+|--------|------|--------|-------------|
+| `lumo_agent_info` | Gauge | Agent | Agent instances with labels |
+| `lumo_agent_api_available` | Gauge | Agent | API connectivity status |
+| `lumo_events_processed_total` | Counter | Agent | K8s events by type/severity/namespace |
+| `lumo_event_processing_duration_seconds` | Histogram | Agent | Event processing latency |
+| `lumo_agent_diagnostics_total` | Counter | Agent | Diagnostic runs by status |
+| `lumo_agent_diagnostics_duration_seconds` | Histogram | Agent | Diagnostic latency by checker |
+| `lumo_agent_diagnostics_errors_total` | Counter | Agent | Diagnostic errors by checker |
+| `lumo_agent_cache_hits_total` | Counter | Agent | Cache efficiency |
+| `lumo_agent_cache_misses_total` | Counter | Agent | Cache misses |
+| `lumo_agent_heartbeats_total` | Counter | Agent | Agent health |
+| `lumo_agent_heartbeat_errors_total` | Counter | Agent | Heartbeat failures |
+| `lumo_ai_analysis_total` | Counter | Agent | AI analysis operations |
+| `lumo_ai_analysis_duration_seconds` | Histogram | Agent | AI analysis latency |
+| `lumo_notifications_sent_total` | Counter | Agent | Notification delivery |
+| `lumo_api_events_processed_total` | Counter | API | API event pipeline |
+| `lumo_api_ai_analysis_duration_seconds` | Histogram | API | API-side AI latency |
+| `lumo_api_notifications_sent_total` | Counter | API | API notifications |
 
 ## Configuration
 
@@ -92,6 +104,19 @@ grafana_dashboard: "1"
 
 ## Troubleshooting
 
+### init-chown-data Permission Denied
+
+If you see `chown: /var/lib/grafana: Permission denied` errors:
+
+```bash
+# The values.yaml disables init-chown-data and uses fsGroup instead.
+# If upgrading from an old deployment, delete the PVC first:
+kubectl delete pvc grafana -n monitoring
+helm upgrade --install grafana grafana/grafana -n monitoring -f values.yaml
+```
+
+### Check Pod Status
+
 ```bash
 # Check Grafana pods
 kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana
@@ -99,6 +124,19 @@ kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana
 # View Grafana logs
 kubectl logs -n monitoring -l app.kubernetes.io/name=grafana
 
+# View init container logs (if failing)
+kubectl logs -n monitoring -l app.kubernetes.io/name=grafana -c init-chown-data
+
 # Verify dashboard ConfigMap
 kubectl get cm -n monitoring lumo-grafana-dashboards -o yaml
+```
+
+### Dashboard Not Loading
+
+```bash
+# Verify ConfigMap exists with correct label
+kubectl get cm -n monitoring -l grafana_dashboard=1
+
+# Check sidecar logs
+kubectl logs -n monitoring -l app.kubernetes.io/name=grafana -c grafana-sc-dashboard
 ```
