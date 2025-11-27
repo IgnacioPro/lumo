@@ -722,10 +722,11 @@ sudo ./uninstall.sh
 
 ## Next Steps
 
+- **[Example 5: K8s Agent Deployment](../05-agent-deployment-k8s/)** - Event-driven Kubernetes monitoring
+- **[Example 7: Querying Events](../07-events-query/)** - Query and analyze events
 - **[API Server Setup](../../docs/api-server.md)** - Set up central API server
 - **[Monitoring Guide](../../docs/monitoring.md)** - Comprehensive monitoring setup
 - **[Fleet Management](../../docs/fleet-management.md)** - Manage large agent deployments
-- **[Security Hardening](../../docs/security-hardening.md)** - Production security
 
 ## Additional Resources
 

@@ -1,54 +1,88 @@
 # Example 5: Agent Deployment on Kubernetes
 
-This example demonstrates deploying Lumo agents to Kubernetes clusters for continuous monitoring.
+This example demonstrates deploying Lumo agents to Kubernetes clusters for **real-time event-driven monitoring**.
 
 ## What You'll Learn
 
-- Deploy DaemonSet (per-node monitoring)
-- Deploy Deployment (cluster-wide monitoring)
-- Configure RBAC permissions
-- Set up API server for agent reporting
+- Deploy event-driven agents (recommended for Kubernetes)
+- Configure real-time Kubernetes event monitoring
+- Set up RBAC permissions
+- Configure API server for agent reporting
 - Monitor agent health and metrics
-- Scale and manage agents
+- Query events with `lumo events` command
 
 ## Prerequisites
 
 - Kubernetes cluster (1.25+)
 - kubectl configured
 - Lumo API server running (or use `lumo serve`)
-- API key for agent authentication
+- Redis (required for event-driven mode)
+- JWT token for agent authentication
 
 ## Architecture Overview
 
+Lumo uses a **centralized intelligence architecture** for Kubernetes:
+
 ```
-┌─────────────────────────────────────────┐
-│         Kubernetes Cluster              │
-│                                         │
-│  ┌──────────────┐  ┌──────────────┐   │
-│  │ Node 1       │  │ Node 2       │   │
-│  │ ┌──────────┐ │  │ ┌──────────┐ │   │
-│  │ │  Agent   │ │  │ │  Agent   │ │   │
-│  │ │ DaemonSet│ │  │ │ DaemonSet│ │   │
-│  │ └────┬─────┘ │  │ └────┬─────┘ │   │
-│  └──────┼───────┘  └──────┼───────┘   │
-│         │                  │           │
-│         └──────────┬───────┘           │
-│                    │                   │
-│         ┌──────────▼────────┐          │
-│         │   Cluster Agent   │          │
-│         │   (Deployment)    │          │
-│         └──────────┬────────┘          │
-└────────────────────┼───────────────────┘
-                     │
-            ┌────────▼─────────┐
-            │   Lumo API       │
-            │   Server         │
-            └──────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                   Kubernetes Cluster                         │
+│                                                               │
+│   ┌─────────────────────────────────────────────────────┐   │
+│   │         Event-Driven Agent (Deployment)              │   │
+│   │               2+ replicas for HA                     │   │
+│   │                                                       │   │
+│   │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │   │
+│   │  │ Pod Watcher │  │  Workload   │  │   Volume    │  │   │
+│   │  │             │  │   Watcher   │  │   Watcher   │  │   │
+│   │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  │   │
+│   │         │                 │                 │         │   │
+│   │         └────────────────┬┴─────────────────┘         │   │
+│   │                          │                             │   │
+│   │                  ┌───────▼───────┐                    │   │
+│   │                  │   Debouncer   │ ← 45s window       │   │
+│   │                  │   (Redis)     │                    │   │
+│   │                  └───────┬───────┘                    │   │
+│   └──────────────────────────┼────────────────────────────┘   │
+│                              │                                 │
+└──────────────────────────────┼─────────────────────────────────┘
+                               │ HTTP POST /api/v1/events
+                      ┌────────▼─────────┐
+                      │   Lumo API       │
+                      │   Server         │
+                      │                  │
+                      │  • AI Analysis   │
+                      │  • Notifications │
+                      │  • Storage       │
+                      └──────────────────┘
 ```
+
+**Key Benefits:**
+- **Real-time detection**: <60s latency (vs 5-minute polling)
+- **90%+ API load reduction**: Watch streams vs periodic List() calls
+- **Intelligent debouncing**: 45s window filters transient failures
+- **Centralized AI**: All analysis done by API server (agents are lightweight)
 
 ## Quick Start
 
-### 1. Start API Server
+### 1. Deploy Full Stack with Kind (Recommended for Testing)
+
+The easiest way to get started is with our automated deployment script:
+
+```bash
+cd deployments/kubernetes/kind
+./deploy-lumo.sh
+```
+
+This deploys:
+- PostgreSQL database
+- Redis cache
+- Lumo API server
+- Event-driven agents (2 replicas)
+- RBAC and secrets
+
+### 2. Manual Deployment
+
+#### Start API Server
 
 ```bash
 # Local development
@@ -59,156 +93,133 @@ lumo serve --port 8080
 export LUMO_API_ENDPOINT=https://lumo-api.example.com
 ```
 
-### 2. Create API Key
+#### Deploy to Kubernetes
 
 ```bash
-# Access PostgreSQL
-docker exec -it lumo-postgres psql -U lumo
+# Create namespace
+kubectl create namespace lumo-system
 
-# Create API key
-INSERT INTO api_keys (id, name, key_hash, scopes, created_at, expires_at)
-VALUES (
-  gen_random_uuid(),
-  'k8s-agents',
-  crypt('your-secret-key', gen_salt('bf')),
-  ARRAY['agent:register', 'agent:heartbeat', 'diagnostics:create'],
-  NOW(),
-  NOW() + INTERVAL '1 year'
-);
-
-# Save the key
-export LUMO_API_KEY=your-secret-key
-```
-
-### 3. Deploy DaemonSet (Per-Node Monitoring)
-
-```bash
 # Apply RBAC
-kubectl apply -f ../../deployments/kubernetes/base/rbac.yaml
+kubectl apply -f deployments/kubernetes/base/rbac.yaml
 
-# Create secret with API key
-kubectl create secret generic lumo-agent-secret \
-  --from-literal=api-key=$LUMO_API_KEY \
-  --from-literal=api-endpoint=http://lumo-api:8080
+# Create secrets (update with your values)
+kubectl create secret generic lumo-agent-secrets \
+  --from-literal=jwt-token=$LUMO_AGENT_TOKEN \
+  -n lumo-system
 
-# Deploy DaemonSet
-kubectl apply -f ../../deployments/kubernetes/base/daemonset.yaml
+# Optional: AI provider for event analysis
+kubectl create secret generic lumo-ai-secrets \
+  --from-literal=anthropic-api-key=$ANTHROPIC_API_KEY \
+  -n lumo-system
+
+# Deploy Redis (required for event-driven mode)
+kubectl apply -f deployments/kubernetes/redis/
+
+# Deploy ConfigMap and Agent
+kubectl apply -f deployments/kubernetes/base/configmap-agent.yaml
+kubectl apply -f deployments/kubernetes/base/deployment-agent.yaml
 ```
 
-### 4. Verify Deployment
+### 3. Verify Deployment
 
 ```bash
-# Check agent pods
-kubectl get pods -l app=lumo-agent -o wide
+# Check agent pods (should be 2 replicas)
+kubectl get pods -n lumo-system -l app=lumo-agent
 
-# Check logs
-kubectl logs -l app=lumo-agent -f
+# Check logs for event processing
+kubectl logs -n lumo-system -l app=lumo-agent -f
 
-# Check agent registration
+# Verify agent registration with API
 curl http://localhost:8080/api/v1/agents \
-  -H "X-API-Key: $LUMO_API_KEY"
+  -H "Authorization: Bearer $LUMO_API_TOKEN"
+
+# Query events
+lumo events --limit 10
 ```
 
-## DaemonSet Deployment (Node-Level Monitoring)
+## Event-Driven Architecture
 
-### What It Does
+### How It Works
 
-- Runs one agent per Kubernetes node
-- Monitors node-level resources (CPU, memory, disk)
-- Uses `hostNetwork`, `hostPID` for full system access
-- Reports to API server every 5 minutes
+1. **Kubernetes Informers** watch for changes (no polling)
+2. **Specialized Watchers** detect failures:
+   - **PodWatcher**: ImagePullBackOff, CrashLoopBackOff, OOMKilled
+   - **WorkloadWatcher**: Deployment failures, Job failures
+   - **VolumeWatcher**: PVC provisioning failures, mount issues
+   - **NodeWatcher**: Node NotReady, memory/disk pressure
+3. **Debouncer** waits 45 seconds to filter transient issues
+4. **API Processor** submits events to API server
+5. **API Server** performs AI analysis and sends notifications
+
+### Event Types & Severity
+
+| Event Type | Trigger | Severity |
+|------------|---------|----------|
+| `oom-killed` | Container OOMKilled | Critical |
+| `pod-evicted` | Pod evicted from node | Critical |
+| `node-not-ready` | Node becomes NotReady | Critical |
+| `job-failed` | BackoffLimitExceeded | Critical |
+| `image-pull-backoff` | Image pull failures | High |
+| `crash-loop-backoff` | Container crash loop | High |
+| `deployment-failed` | ProgressDeadlineExceeded | High |
+| `volume-failed-mount` | FailedMount event | High |
+| `pvc-provision-failed` | Provisioning failed | Medium |
+| `pod-pending` | Pending >5 minutes | Medium |
 
 ### Configuration
 
+The ConfigMap controls event-driven behavior:
+
 ```yaml
-# daemonset-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: lumo-agent-config
-data:
-  config.yaml: |
-    agent:
-      mode: hybrid
-      schedule: "*/5 * * * *"
-      api_endpoint: http://lumo-api:8080
-      enabled_checks:
-        - cpu
-        - memory
-        - disk
-        - process
-        - service
-        - network
-      report_format: toon
-      offline_mode: true
-      health_check_port: 8080
-      metrics_port: 9090
+# Key settings in configmap-agent.yaml
+agent.mode: "event-driven"
+agent.event-driven.enabled: "true"
+agent.event-driven.debounce-window: "45s"      # Wait before processing
+agent.event-driven.max-debounce-window: "3m"   # Prevents infinite debouncing
+agent.event-driven.resync-period: "0s"         # Pure event-driven (no polling)
+agent.event-driven.group-related-events: "true"
+agent.event-driven.max-events-per-min: "100"   # Rate limiting
+agent.event-driven.min-severity: "low"         # Process all severities
+
+# Enable/disable specific watchers
+agent.event-driven.watch-pod-events: "true"
+agent.event-driven.watch-workloads: "true"
+agent.event-driven.watch-volumes: "true"
+agent.event-driven.watch-nodes: "true"
 ```
 
-Apply configuration:
+### Monitoring Event-Driven Agents
 
 ```bash
-kubectl apply -f daemonset-config.yaml
+# Check agent status
+kubectl get pods -n lumo-system -l mode=event-driven
+
+# Follow event processing logs
+kubectl logs -n lumo-system -l app=lumo-agent -f --tail=100
+
+# Check Prometheus metrics
+kubectl port-forward -n lumo-system svc/lumo-agent 9090:9090
+curl http://localhost:9090/metrics | grep lumo_
+
+# Key metrics:
+# - lumo_events_processed_total
+# - lumo_event_processing_duration_seconds
+# - lumo_ai_analysis_total
+# - lumo_notifications_sent_total
 ```
 
-### Monitoring DaemonSet Agents
-
-```bash
-# Pod status
-kubectl get daemonset lumo-agent
-
-# Logs from specific node
-kubectl logs -l app=lumo-agent --node worker-01
-
-# Health check
-kubectl get pods -l app=lumo-agent -o wide
-kubectl port-forward lumo-agent-xxxxx 8080:8080
-curl http://localhost:8080/health
-
-# Metrics
-kubectl port-forward lumo-agent-xxxxx 9090:9090
-curl http://localhost:9090/metrics
-```
-
-## Deployment for Cluster Monitoring
-
-### What It Does
-
-- 2+ replicas for high availability
-- Monitors cluster-wide resources via K8s API
-- Checks pods, deployments, services, statefulsets
-- No hostNetwork required
-
-### Deploy
-
-```bash
-kubectl apply -f ../../deployments/kubernetes/base/deployment.yaml
-```
-
-### Monitoring Cluster Agents
-
-```bash
-# Deployment status
-kubectl get deployment lumo-agent-cluster
-
-# Scale replicas
-kubectl scale deployment lumo-agent-cluster --replicas=3
-
-# Logs
-kubectl logs -l app=lumo-agent-cluster -f
-```
-
-## Helm Deployment (Recommended)
+## Helm Deployment (Recommended for Production)
 
 ### Install Helm Chart
 
 ```bash
-# Add local chart
-helm install lumo-agent ../../deployments/kubernetes/helm/lumo-agent \
+# Install with event-driven mode (default)
+helm install lumo-agent deployments/kubernetes/helm/lumo-agent \
+  --namespace lumo-system \
+  --create-namespace \
   --set apiEndpoint=http://lumo-api:8080 \
-  --set apiKey=$LUMO_API_KEY \
-  --set daemonset.enabled=true \
-  --set deployment.enabled=true
+  --set agent.token=$LUMO_AGENT_TOKEN \
+  --set redis.enabled=true
 ```
 
 ### Custom Values
@@ -216,36 +227,37 @@ helm install lumo-agent ../../deployments/kubernetes/helm/lumo-agent \
 ```yaml
 # custom-values.yaml
 apiEndpoint: https://lumo-api.example.com
-apiKey: your-api-key
 
-daemonset:
-  enabled: true
-  resources:
-    limits:
-      memory: 256Mi
-      cpu: 200m
-    requests:
-      memory: 128Mi
-      cpu: 100m
-
-deployment:
-  enabled: true
+agent:
+  token: your-jwt-token
+  mode: event-driven
   replicas: 2
-  resources:
-    limits:
-      memory: 512Mi
-      cpu: 500m
 
-config:
-  mode: hybrid
-  schedule: "*/5 * * * *"
-  enabledChecks:
-    - cpu
-    - memory
-    - disk
-    - kubernetes
-  logLevel: info
-  reportFormat: toon
+redis:
+  enabled: true
+  url: redis://lumo-redis:6379/0
+
+eventDriven:
+  enabled: true
+  debounceWindow: 45s
+  maxDebounceWindow: 3m
+  groupRelatedEvents: true
+  maxEventsPerMin: 100
+  minSeverity: low
+  watchers:
+    pods: true
+    workloads: true
+    volumes: true
+    nodes: true
+    events: true
+
+resources:
+  limits:
+    memory: 256Mi
+    cpu: 200m
+  requests:
+    memory: 128Mi
+    cpu: 100m
 
 prometheus:
   enabled: true
@@ -256,7 +268,8 @@ prometheus:
 Install with custom values:
 
 ```bash
-helm install lumo-agent ../../deployments/kubernetes/helm/lumo-agent \
+helm install lumo-agent deployments/kubernetes/helm/lumo-agent \
+  --namespace lumo-system \
   -f custom-values.yaml
 ```
 
@@ -264,7 +277,8 @@ helm install lumo-agent ../../deployments/kubernetes/helm/lumo-agent \
 
 ```bash
 # Update values
-helm upgrade lumo-agent ../../deployments/kubernetes/helm/lumo-agent \
+helm upgrade lumo-agent deployments/kubernetes/helm/lumo-agent \
+  --namespace lumo-system \
   -f custom-values.yaml
 
 # Rollback if needed
@@ -369,38 +383,35 @@ kubectl logs -l app=lumo-agent --since=1h > agent-logs.txt
 ```bash
 # Cluster 1
 kubectl config use-context cluster-1
-helm install lumo-agent-us-east ./helm/lumo-agent \
+helm install lumo-agent-us-east deployments/kubernetes/helm/lumo-agent \
+  --namespace lumo-system \
   --set cluster.name=us-east \
   --set apiEndpoint=https://lumo-api-central.example.com
 
 # Cluster 2
 kubectl config use-context cluster-2
-helm install lumo-agent-us-west ./helm/lumo-agent \
+helm install lumo-agent-us-west deployments/kubernetes/helm/lumo-agent \
+  --namespace lumo-system \
   --set cluster.name=us-west \
   --set apiEndpoint=https://lumo-api-central.example.com
 ```
 
-### Node Affinity / Taints
+### Pod Affinity (HA Spread)
+
+The deployment already includes anti-affinity to spread replicas across nodes:
 
 ```yaml
-# Only run on specific nodes
-daemonset:
-  nodeSelector:
-    monitoring: enabled
-
-  tolerations:
-  - key: monitoring
-    operator: Equal
-    value: "true"
-    effect: NoSchedule
-
-  affinity:
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
-          - key: node-role.kubernetes.io/master
-            operator: DoesNotExist
+# Included in deployment-agent.yaml
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app: lumo-agent
+              mode: event-driven
+          topologyKey: kubernetes.io/hostname
 ```
 
 ### Resource Limits
@@ -421,66 +432,138 @@ resources:
 
 ```bash
 # Check agent logs
-kubectl logs -l app=lumo-agent
+kubectl logs -n lumo-system -l app=lumo-agent
 
 # Verify API endpoint reachability
-kubectl run test --rm -it --image=curlimages/curl -- \
+kubectl run test -n lumo-system --rm -it --image=curlimages/curl -- \
   curl -v http://lumo-api:8080/api/v1/health
 
-# Check secret
-kubectl get secret lumo-agent-secret -o yaml
+# Check secrets
+kubectl get secret -n lumo-system lumo-agent-secrets -o yaml
 
 # Verify RBAC
-kubectl auth can-i get pods --as=system:serviceaccount:default:lumo-agent
+kubectl auth can-i get pods --as=system:serviceaccount:lumo-system:lumo-agent
+kubectl auth can-i watch pods --as=system:serviceaccount:lumo-system:lumo-agent
+```
+
+### Events Not Being Processed
+
+```bash
+# Check Redis connection
+kubectl logs -n lumo-system -l app=lumo-agent | grep -i redis
+
+# Verify Redis is running
+kubectl get pods -n lumo-system -l app=lumo-redis
+
+# Check debounce window (events are held for 45s by default)
+# Transient failures that self-heal won't be processed
+
+# Check min severity setting
+kubectl get configmap -n lumo-system lumo-agent-config -o yaml | grep min-severity
 ```
 
 ### High Resource Usage
 
 ```bash
 # Check resource usage
-kubectl top pods -l app=lumo-agent
+kubectl top pods -n lumo-system -l app=lumo-agent
 
-# Reduce check frequency
-# Edit ConfigMap, change schedule to "*/15 * * * *"
+# Reduce event rate (adjust max-events-per-min)
+kubectl edit configmap -n lumo-system lumo-agent-config
 
-# Limit checks
-# Remove expensive checks (process, kubernetes)
+# Increase debounce window to reduce processing
+# agent.event-driven.debounce-window: "60s"
 ```
 
 ### Networking Issues
 
 ```bash
 # Test from agent pod
-kubectl exec -it lumo-agent-xxxxx -- sh
+kubectl exec -n lumo-system -it deploy/lumo-agent -- sh
 wget -O- http://lumo-api:8080/api/v1/health
 
 # Check NetworkPolicy
-kubectl get networkpolicy
-kubectl describe networkpolicy lumo-agent
+kubectl get networkpolicy -n lumo-system
+kubectl describe networkpolicy -n lumo-system lumo-agent
 
 # Check DNS
-kubectl exec -it lumo-agent-xxxxx -- nslookup lumo-api
+kubectl exec -n lumo-system -it deploy/lumo-agent -- nslookup lumo-api
+```
+
+## Testing with Chaos Engineering
+
+Trigger test failures to verify event detection:
+
+```bash
+# Run all failure scenarios
+cd deployments/kubernetes/kind
+./test-failure-scenarios.sh
+
+# Run specific scenario
+./test-failure-scenarios.sh --scenario oom-killed
+./test-failure-scenarios.sh --scenario image-pull-backoff
+
+# List available scenarios
+./test-failure-scenarios.sh --list
+```
+
+Available scenarios:
+- `image-pull-backoff` - Invalid image reference
+- `crash-loop-backoff` - Container that immediately exits
+- `oom-killed` - Container exceeds memory limit
+- `deployment-failed` - Deployment with impossible resource requests
+- `job-failed` - Job that exceeds backoff limit
+- `pvc-provision-failed` - PVC with non-existent storage class
+
+## Querying Events
+
+Use the `lumo events` command to query stored events:
+
+```bash
+# Show recent events
+lumo events
+
+# Filter by severity
+lumo events --severity critical
+lumo events --severity high,critical
+
+# Filter by type
+lumo events --type oom-killed
+lumo events --type crash-loop-backoff
+
+# Filter by namespace
+lumo events --namespace kube-system
+
+# Show events from last 24 hours
+lumo events --since 24h
+
+# Output as JSON
+lumo events --format json
+
+# Hide AI analysis column
+lumo events --no-analysis
 ```
 
 ## Production Best Practices
 
-1. **Use Helm** for easier management
-2. **Enable Prometheus metrics** for observability
-3. **Set resource limits** to prevent resource exhaustion
-4. **Use RBAC** with minimal permissions
-5. **Enable TLS** for API communication
-6. **Use secrets** for API keys (not ConfigMaps)
-7. **Test in staging** before production
-8. **Monitor agent health** via Prometheus/Grafana
-9. **Set up alerts** for agent failures
-10. **Keep agents updated** with latest version
+1. **Deploy 2+ replicas** for high availability
+2. **Use Redis** for event deduplication (required)
+3. **Enable Prometheus metrics** for observability
+4. **Set appropriate debounce windows** (45s default is good for most cases)
+5. **Use RBAC** with watch permissions on all monitored resources
+6. **Enable TLS** for API communication in production
+7. **Use Kubernetes secrets** for JWT tokens
+8. **Monitor Redis** to ensure event state tracking works
+9. **Set up alerts** for agent failures and high event rates
+10. **Test with chaos engineering** before production deployment
 
 ## Next Steps
 
 - **[Example 6: VM Agent Deployment](../06-agent-deployment-vms/)** - Deploy on bare metal/VMs
+- **[Example 7: Querying Events](../07-events-query/)** - Advanced event querying
 - **[K8s Deployment Guide](../../deployments/kubernetes/README.md)** - Complete documentation
-- **[API Reference](../../api/README.md)** - Agent API specification
-- **[Helm Chart Values](../../deployments/kubernetes/helm/lumo-agent/values.yaml)** - All options
+- **[Event-Driven Implementation](../../EVENT_DRIVEN_IMPLEMENTATION.md)** - Technical details
+- **[Kind Full Stack Deployment](../../deployments/kubernetes/kind/FULL_STACK_DEPLOYMENT.md)** - Local testing guide
 
 ## Additional Resources
 

@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-26 (Phase 15b Complete - Coverage Improvements) | **Version:** 1.0.0 | **Status:** Phase 15 Complete ✅ | Phase 15b Complete ✅ | Phase 16 Complete ✅ | Phase 11c Pending ⏳ | **Full Stack K8s + Event-Driven + Circuit Breakers + Full Test Coverage** 🚀
+> **Last Updated:** 2025-11-27 (Strategic Roadmap v1.1.0 Defined) | **Version:** 1.0.0 | **Status:** Phase 15 Complete ✅ | Phase 15b Complete ✅ | Phase 16 Complete ✅ | **Next: Phase 11c (Messaging) → v1.1.0** 🚀 | [Roadmap TODO](ROADMAP_TODO.md)
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -638,11 +638,120 @@ See [EVENT_DRIVEN_IMPLEMENTATION.md](EVENT_DRIVEN_IMPLEMENTATION.md) for complet
 - Location: `internal/agent/eventdriven/` with full documentation in `EVENT_DRIVEN_IMPLEMENTATION.md`
 - All CI checks passed
 
-### Future (Phases 14+)
+### Strategic Roadmap (Nov 27, 2025)
 
-**Phase 11c:** Messaging Integration - Pub/sub framework (NATS, Kafka, RabbitMQ, Redis Streams)
-**Phase 14:** Advanced Reporting - Multiple formats, historical data, trend analysis
-**Phase 17:** Advanced Features - Multi-cluster, anomaly detection, policy-as-code
+**Current Maturity:** Enterprise-Ready v1.0.0 - Production deployment ready with comprehensive features
+
+**Next Release: v1.1.0 (Target: January 2026)**
+
+See [ROADMAP_TODO.md](ROADMAP_TODO.md) for detailed technical implementation tasks.
+
+**Tier 1 - Critical Path (Immediate):**
+
+**Phase 11c: Messaging Integration** ⚡ **PRIORITY #1** - [2-3 weeks]
+- **Why Critical:** Blocks horizontal scaling beyond 10 agents, required for enterprise scale
+- **Scope:** Pub/sub framework, NATS/Kafka/RabbitMQ/Redis Streams providers
+- **Deliverables:**
+  - `/internal/messaging/` package with provider abstraction
+  - Event submission via message queue (replaces HTTP POST)
+  - Dead-letter queues, replay capability, event routing
+  - OpenTelemetry tracing for message flow
+- **Success Metrics:** 1,000 events/sec sustained throughput
+- **Status:** Foundation ready, pending implementation
+
+**Phase 14: Advanced Reporting** 📊 **PRIORITY #2** - [2-3 weeks, parallel with 11c]
+- **Why Important:** Market differentiator - executive visibility with AI-powered insights
+- **Scope:** Report generation engine, PDF/HTML/CSV export, trend detection, scheduled delivery
+- **Deliverables:**
+  - `/internal/reporting/` package with template system
+  - `lumo report` CLI command with time-window analysis
+  - Database schema extensions for metrics history
+  - Anomaly detection integration
+- **Success Metrics:** <5 sec generation for 30-day reports
+- **Status:** No blockers, can start immediately
+
+**Tier 2 - Enterprise Features (v1.1.0 continued):**
+
+**Phase 17a: Multi-Cluster Orchestration** 🌐 - [3-4 weeks]
+- **Scope:** Central control plane, cross-cluster agent registration, unified alerting
+- **Dependency:** Phase 11c (messaging) recommended first
+- **Status:** Planned for January 2026
+
+**Phase 17b: Anomaly Detection & Policy-as-Code** 🤖 - [4-5 weeks]
+- **Scope:** ML baseline models, policy DSL, self-healing automation
+- **Dependency:** Phase 11c (messaging required for policy routing)
+- **Status:** Planned for v1.2.0
+
+**Tier 3 - Quality & Performance (Ongoing):**
+
+**Test Coverage Enhancement** - [1-2 weeks]
+- **Current:** 47.7% overall
+- **Target:** 70%+ overall, 90%+ critical packages
+- **Focus Areas:** `/internal/database/repository/`, event-driven watchers, API handlers
+- **Status:** Continuous improvement
+
+**Performance Optimization** - [1 week]
+- **Focus:** Database query caching, batch inserts, Redis hit rates
+- **Expected Gain:** 30-50% API latency reduction
+- **Status:** Profiling phase
+
+**Documentation** - [Ongoing]
+- Helm deployment guide (`docs/helm-deployment.md`)
+- API authentication guide (`docs/api-auth-guide.md`)
+- Troubleshooting playbook (`docs/troubleshooting.md`)
+
+---
+
+### Version Timeline
+
+```
+v1.0.0 [CURRENT - Nov 27, 2025]
+└─ Enterprise-ready foundation with event-driven K8s monitoring
+
+v1.1.0 [TARGET - January 2026]
+├─ Phase 11c: Messaging Integration (NATS/Kafka/RabbitMQ/Redis)
+├─ Phase 14: Advanced Reporting (PDF/HTML/CSV, trends)
+├─ Phase 17a: Multi-Cluster Orchestration
+├─ Test Coverage 70%+
+└─ Performance optimizations (30-50% latency reduction)
+
+v1.2.0 [Q1 2026]
+├─ Phase 17b: Anomaly Detection + Policy-as-Code
+├─ Backup/Recovery system
+├─ RBAC fine-grained permissions
+├─ Helm advanced features (ingress, TLS, secrets)
+└─ API v2 with GraphQL option
+
+v2.0.0 [Q2-Q3 2026]
+├─ Distributed agent orchestration
+├─ Advanced ML models (behavior-based anomaly detection)
+├─ Custom plugin system
+└─ SaaS multi-tenancy
+```
+
+---
+
+### Enterprise Readiness Gap Analysis
+
+**Strengths (Production Ready):**
+- ✅ Security foundation (JWT, mTLS, rate limiting, RBAC)
+- ✅ Multi-platform deployment (K8s + VMs)
+- ✅ Event-driven architecture (real-time monitoring, <60s detection)
+- ✅ Comprehensive diagnostics (12 checkers)
+- ✅ AI integration (5 providers, RAG system)
+- ✅ Observability (OpenTelemetry, Prometheus)
+- ✅ Circuit breakers (fault tolerance)
+
+**Critical Gaps (Must Close for Enterprise Scale):**
+
+| Gap | Severity | Impact | ETA |
+|-----|----------|--------|-----|
+| Messaging Queue | HIGH | Can't scale beyond 10 agents reliably | Phase 11c (2-3w) |
+| Advanced Reporting | MEDIUM | No stakeholder visibility | Phase 14 (2-3w) |
+| Multi-Cluster Support | MEDIUM | Enterprise limitation | Phase 17a (3-4w) |
+| Test Coverage (70%+) | MEDIUM | Risk in maintenance | 1-2 weeks |
+| Helm Documentation | LOW | Deployment friction | Ongoing |
+| Performance Tuning | LOW | Handles 100+ agents, needs optimization | 1 week |
 
 ---
 

@@ -286,11 +286,17 @@ Use specific checks instead of all checks:
 lumo diagnose localhost --checks cpu,memory  # Fast
 ```
 
+### List available checks
+```bash
+lumo diagnose --list-checks
+```
+
 ## Next Steps
 
 - **[Example 2: SSH Remote Server](../02-ssh-remote-server/)** - Diagnose remote machines
 - **[Example 3: AI Analysis](../03-ai-analysis/)** - Use AI to interpret results
 - **[Example 4: Auto-Remediation](../04-auto-remediation/)** - Automatically fix issues
+- **[Example 5: K8s Agent Deployment](../05-agent-deployment-k8s/)** - Event-driven Kubernetes monitoring
 
 ## Additional Resources
 
