@@ -163,6 +163,7 @@ See [configs/config.example.yaml](configs/config.example.yaml) and [configs/noti
 | `connect` | ✅ | SSH connection |
 | `diagnose` | ✅ | System diagnostics + AI analysis + RAG context |
 | `diagnose --list-checks` | ✅ | List all available diagnostic checks |
+| `events` | ✅ | Query Kubernetes events from PostgreSQL database |
 | `fix` | ✅ | Auto-remediation with approval |
 | `serve` | ✅ | API server (Phase 7) |
 | `report` | ⏳ | Report generation (planned) |
@@ -688,6 +689,8 @@ lumo doctor                              # Validate setup
 lumo ask "check cpu usage"               # Natural language interface
 lumo ask "why is the server slow?" -y    # Auto-execute without confirmation
 lumo diagnose localhost --analyze --format toon
+lumo events --severity critical --limit 10  # Query Kubernetes events
+lumo events --type oom-killed --format json # Filter by event type
 lumo fix localhost --dry-run
 LUMO_ANTHROPIC_API_KEY=sk-ant-... lumo diagnose --analyze
 ```
