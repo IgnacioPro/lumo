@@ -5,11 +5,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/ignacio/lumo/internal/deploy/helm"
-	"github.com/ignacio/lumo/internal/deploy/kubernetes"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/ignacio/lumo/internal/deploy/helm"
+	"github.com/ignacio/lumo/internal/deploy/kubernetes"
 )
 
 // newDeployKubernetesCmd creates the Kubernetes deployment command
@@ -124,7 +125,7 @@ Examples:
 
 		if envVar != "" {
 			if val := os.Getenv(envVar); val != "" && !cmd.Flags().Changed(f.Name) {
-				cmd.Flags().Set(f.Name, val)
+				_ = cmd.Flags().Set(f.Name, val)
 			}
 		}
 	})
