@@ -8,6 +8,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NAMESPACE="monitoring"
 WITH_PROMETHEUS=false
 
+# Pin chart versions to avoid warnings and ensure reproducible deployments
+PROMETHEUS_CHART_VERSION="27.46.0"
+GRAFANA_CHART_VERSION="10.2.0"
+
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -36,9 +40,10 @@ helm repo update
 
 # Deploy Prometheus if requested
 if [ "$WITH_PROMETHEUS" = true ]; then
-    echo "Deploying Prometheus..."
+    echo "Deploying Prometheus (chart version ${PROMETHEUS_CHART_VERSION})..."
     helm upgrade --install prometheus prometheus-community/prometheus \
         --namespace "${NAMESPACE}" \
+        --version "${PROMETHEUS_CHART_VERSION}" \
         --set alertmanager.enabled=false \
         --set prometheus-pushgateway.enabled=false \
         --set server.persistentVolume.size=2Gi \
@@ -50,9 +55,10 @@ echo "Deploying Lumo dashboards..."
 kubectl apply -f "${SCRIPT_DIR}/grafana/dashboard-configmap.yaml"
 
 # Deploy Grafana
-echo "Deploying Grafana..."
+echo "Deploying Grafana (chart version ${GRAFANA_CHART_VERSION})..."
 helm upgrade --install grafana grafana/grafana \
     --namespace "${NAMESPACE}" \
+    --version "${GRAFANA_CHART_VERSION}" \
     -f "${SCRIPT_DIR}/grafana/values.yaml" \
     --set adminPassword=admin \
     --wait --timeout 5m
