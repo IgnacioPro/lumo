@@ -21,6 +21,10 @@ SKIP_BUILD="${SKIP_BUILD:-false}"
 SKIP_DEPLOY="${SKIP_DEPLOY:-false}"
 SKIP_INFRASTRUCTURE="${SKIP_INFRASTRUCTURE:-false}"
 SKIP_API="${SKIP_API:-false}"
+SKIP_MONITORING="${SKIP_MONITORING:-false}"
+WITH_MONITORING="${WITH_MONITORING:-false}"
+WITH_GCP_SECRETS="${WITH_GCP_SECRETS:-false}"
+GCP_SA_KEY_FILE="${GCP_SA_KEY_FILE:-}"
 
 # Functions
 log_info() {
@@ -29,6 +33,10 @@ log_info() {
 
 log_success() {
     echo -e "${GREEN}[SUCCESS]${NC} $1" >&2
+}
+
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1" >&2
 }
 
 log_error() {
@@ -789,9 +797,23 @@ print_summary() {
     echo ""
     echo "Deployed Components:"
     echo "  ✓ PostgreSQL (Database)"
+    echo "  ✓ Redis (Cache)"
     echo "  ✓ Lumo API Server"
     echo "  ✓ Lumo Event-Driven Agent (Deployment)"
+    if [ "$WITH_GCP_SECRETS" = "true" ]; then
+        echo "  ✓ External Secrets Operator"
+        echo "  ✓ GCP Secret Manager Integration"
+    fi
+    if [ "$WITH_MONITORING" = "true" ]; then
+        echo "  ✓ Prometheus + Grafana"
+    fi
     echo ""
+    if [ "$WITH_GCP_SECRETS" = "true" ]; then
+        log_info "Secrets managed by GCP Secret Manager:"
+        echo "  ${BLUE}kubectl get externalsecrets -n ${NAMESPACE}${NC}"
+        echo "  ${BLUE}kubectl get clustersecretstore gcp-secret-manager${NC}"
+        echo ""
+    fi
     log_info "View component logs:"
     echo "  PostgreSQL:  ${BLUE}kubectl logs -n ${NAMESPACE} -l app=postgres -f${NC}"
     echo "  API Server:  ${BLUE}kubectl logs -n ${NAMESPACE} -l app=lumo-api -f${NC}"
@@ -825,6 +847,10 @@ Options:
   --skip-infrastructure  Skip PostgreSQL deployment
   --skip-api             Skip API server deployment
   --skip-deploy          Skip agent deployment
+  --with-monitoring      Deploy Prometheus + Grafana monitoring stack
+  --skip-monitoring      Skip monitoring deployment (if --with-monitoring is set)
+  --with-gcp-secrets     Use GCP Secret Manager (fully automated setup)
+  --gcp-sa-key FILE      Use existing GCP SA key file (optional, auto-creates if not provided)
   --cluster-name         Name of kind cluster (default: lumo-test)
   --namespace            Kubernetes namespace (default: lumo-system)
   -h, --help             Show this help message
@@ -835,12 +861,30 @@ Environment variables:
   SKIP_INFRASTRUCTURE     Set to 'true' to skip PostgreSQL deployment
   SKIP_API                Set to 'true' to skip API server deployment
   SKIP_DEPLOY             Set to 'true' to skip agent deployment
+  WITH_MONITORING         Set to 'true' to deploy monitoring stack
+  WITH_GCP_SECRETS        Set to 'true' to use GCP Secret Manager
+  GCP_PROJECT_ID          GCP project ID (uses gcloud default if not set)
+  GCP_SA_KEY_FILE         Path to existing GCP service account key file
+  LUMO_ANTHROPIC_API_KEY  Anthropic API key (stored in GCP Secret Manager)
+  LUMO_OPENAI_API_KEY     OpenAI API key (stored in GCP Secret Manager)
+  LUMO_SLACK_WEBHOOK_URL  Slack webhook URL (stored in GCP Secret Manager)
   KIND_CLUSTER_NAME       Name of kind cluster
   LUMO_NAMESPACE          Kubernetes namespace
 
 Examples:
-  # Full stack deployment (recommended)
+  # Full stack deployment with hardcoded test secrets (local dev)
   $0
+
+  # Full stack with monitoring (Prometheus + Grafana)
+  $0 --with-monitoring
+
+  # Full stack with GCP Secret Manager (fully automated!)
+  # Just needs: gcloud auth login && gcloud config set project YOUR_PROJECT
+  $0 --with-gcp-secrets
+
+  # With real AI keys stored in GCP
+  export LUMO_ANTHROPIC_API_KEY="sk-ant-..."
+  $0 --with-gcp-secrets
 
   # Use existing cluster but rebuild everything
   $0 --skip-cluster
@@ -877,6 +921,22 @@ parse_args() {
                 SKIP_DEPLOY=true
                 shift
                 ;;
+            --skip-monitoring)
+                SKIP_MONITORING=true
+                shift
+                ;;
+            --with-monitoring)
+                WITH_MONITORING=true
+                shift
+                ;;
+            --with-gcp-secrets)
+                WITH_GCP_SECRETS=true
+                shift
+                ;;
+            --gcp-sa-key)
+                GCP_SA_KEY_FILE="$2"
+                shift 2
+                ;;
             --cluster-name)
                 CLUSTER_NAME="$2"
                 shift 2
@@ -898,6 +958,360 @@ parse_args() {
     done
 }
 
+deploy_monitoring() {
+    if [ "$WITH_MONITORING" != "true" ]; then
+        log_info "Skipping monitoring (use --with-monitoring to enable)"
+        return 0
+    fi
+
+    if [ "$SKIP_MONITORING" = "true" ]; then
+        log_info "Skipping monitoring deployment (SKIP_MONITORING=true)"
+        return 0
+    fi
+
+    echo "========================================"
+    echo "  Deploying Monitoring Stack"
+    echo "========================================"
+
+    local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local MONITORING_DIR="${SCRIPT_DIR}/../monitoring"
+
+    if [ ! -f "${MONITORING_DIR}/deploy-monitoring.sh" ]; then
+        log_error "Monitoring deploy script not found at ${MONITORING_DIR}/deploy-monitoring.sh"
+        return 1
+    fi
+
+    log_info "Deploying Prometheus and Grafana..."
+    bash "${MONITORING_DIR}/deploy-monitoring.sh" --with-prometheus
+
+    # Wait for Grafana to be ready
+    log_info "Waiting for Grafana to be ready..."
+    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=grafana -n monitoring --timeout=120s 2>/dev/null || {
+        log_error "Grafana failed to become ready"
+        kubectl get pods -n monitoring
+        return 1
+    }
+
+    log_success "Monitoring stack deployed successfully"
+
+    echo ""
+    log_info "Access Grafana:"
+    echo "  kubectl port-forward -n monitoring svc/grafana 3000:80"
+    echo "  Open: http://localhost:3000 (admin/admin)"
+    echo ""
+}
+
+deploy_gcp_secrets() {
+    if [ "$WITH_GCP_SECRETS" != "true" ]; then
+        log_info "Using hardcoded secrets (use --with-gcp-secrets for GCP Secret Manager)"
+        return 0
+    fi
+
+    echo "========================================"
+    echo "  Setting Up GCP Secret Manager"
+    echo "  (Fully automated setup)"
+    echo "========================================"
+
+    # Check for gcloud CLI
+    if ! command -v gcloud &> /dev/null; then
+        log_error "gcloud CLI not found. Install from: https://cloud.google.com/sdk/docs/install"
+        return 1
+    fi
+
+    # Check gcloud authentication
+    if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | grep -q .; then
+        log_error "Not authenticated with gcloud. Run: gcloud auth login"
+        return 1
+    fi
+
+    # Get or set project ID
+    if [ -z "${GCP_PROJECT_ID:-}" ]; then
+        GCP_PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
+        if [ -z "$GCP_PROJECT_ID" ]; then
+            log_error "GCP_PROJECT_ID not set and no default project configured"
+            log_info "Run: export GCP_PROJECT_ID=\"your-project-id\""
+            log_info "Or:  gcloud config set project your-project-id"
+            return 1
+        fi
+        log_info "Using default GCP project: $GCP_PROJECT_ID"
+    fi
+
+    export GCP_PROJECT_ID
+
+    # Step 1: Enable Secret Manager API
+    log_info "Step 1/5: Enabling Secret Manager API..."
+    if ! gcloud services list --enabled --project="$GCP_PROJECT_ID" 2>/dev/null | grep -q "secretmanager.googleapis.com"; then
+        gcloud services enable secretmanager.googleapis.com --project="$GCP_PROJECT_ID" --quiet
+        log_success "Secret Manager API enabled"
+    else
+        log_success "Secret Manager API already enabled"
+    fi
+
+    # Step 2: Create service account if needed
+    local SA_NAME="lumo-secrets-accessor"
+    local SA_EMAIL="${SA_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
+
+    log_info "Step 2/5: Setting up service account..."
+    if ! gcloud iam service-accounts describe "$SA_EMAIL" --project="$GCP_PROJECT_ID" &>/dev/null; then
+        gcloud iam service-accounts create "$SA_NAME" \
+            --display-name="Lumo Secrets Accessor" \
+            --description="Service account for Lumo to access GCP Secret Manager" \
+            --project="$GCP_PROJECT_ID" --quiet
+        log_success "Created service account: $SA_NAME"
+    else
+        log_success "Service account already exists: $SA_NAME"
+    fi
+
+    # Grant Secret Manager access
+    gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
+        --member="serviceAccount:${SA_EMAIL}" \
+        --role="roles/secretmanager.secretAccessor" \
+        --condition=None \
+        --quiet 2>/dev/null
+    log_success "Granted secretmanager.secretAccessor role"
+
+    # Step 3: Create or download service account key
+    log_info "Step 3/5: Setting up service account key..."
+    local KEY_DIR="${HOME}/.lumo/gcp"
+    local KEY_FILE="${KEY_DIR}/sa-key-${GCP_PROJECT_ID}.json"
+
+    mkdir -p "$KEY_DIR"
+    chmod 700 "$KEY_DIR"
+
+    if [ -n "$GCP_SA_KEY_FILE" ] && [ -f "$GCP_SA_KEY_FILE" ]; then
+        log_success "Using provided key file: $GCP_SA_KEY_FILE"
+        KEY_FILE="$GCP_SA_KEY_FILE"
+    elif [ -f "$KEY_FILE" ]; then
+        log_success "Using existing key file: $KEY_FILE"
+    else
+        log_info "Creating new service account key..."
+        gcloud iam service-accounts keys create "$KEY_FILE" \
+            --iam-account="$SA_EMAIL" \
+            --project="$GCP_PROJECT_ID" --quiet
+        chmod 600 "$KEY_FILE"
+        log_success "Created key file: $KEY_FILE"
+    fi
+
+    # Step 4: Create secrets in GCP Secret Manager
+    log_info "Step 4/5: Creating secrets in GCP Secret Manager..."
+    
+    create_gcp_secret_if_missing() {
+        local secret_name="$1"
+        local secret_value="$2"
+        
+        if gcloud secrets describe "$secret_name" --project="$GCP_PROJECT_ID" &>/dev/null; then
+            log_info "  ✓ $secret_name (exists)"
+        else
+            echo -n "$secret_value" | gcloud secrets create "$secret_name" \
+                --data-file=- \
+                --replication-policy="automatic" \
+                --labels="app=lumo,managed-by=deploy-lumo" \
+                --project="$GCP_PROJECT_ID" --quiet
+            log_success "  ✓ $secret_name (created)"
+        fi
+    }
+
+    # Generate secure random values for secrets
+    local JWT_SECRET=$(openssl rand -base64 32 2>/dev/null || head -c 32 /dev/urandom | base64)
+    local DB_PASSWORD=$(openssl rand -base64 16 2>/dev/null || head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9')
+    local AGENT_TOKEN=$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | xxd -p | tr -d '\n')
+
+    create_gcp_secret_if_missing "lumo-jwt-secret" "$JWT_SECRET"
+    create_gcp_secret_if_missing "lumo-database-password" "$DB_PASSWORD"
+    create_gcp_secret_if_missing "lumo-agent-token" "$AGENT_TOKEN"
+    
+    # Optional secrets - create with placeholder if not exists
+    create_gcp_secret_if_missing "lumo-anthropic-api-key" "${LUMO_ANTHROPIC_API_KEY:-placeholder}"
+    create_gcp_secret_if_missing "lumo-openai-api-key" "${LUMO_OPENAI_API_KEY:-placeholder}"
+    create_gcp_secret_if_missing "lumo-slack-webhook-url" "${LUMO_SLACK_WEBHOOK_URL:-placeholder}"
+
+    # Step 5: Deploy External Secrets Operator and sync secrets
+    log_info "Step 5/5: Deploying External Secrets Operator..."
+
+    # Install ESO via Helm
+    if ! command -v helm &> /dev/null; then
+        log_error "helm not found. Install from: https://helm.sh/docs/intro/install/"
+        return 1
+    fi
+
+    helm repo add external-secrets https://charts.external-secrets.io 2>/dev/null || true
+    helm repo update --quiet
+
+    local ESO_NAMESPACE="external-secrets"
+    kubectl create namespace "$ESO_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+
+    if helm status external-secrets -n "$ESO_NAMESPACE" &>/dev/null; then
+        log_info "External Secrets Operator already installed, upgrading..."
+        helm upgrade external-secrets external-secrets/external-secrets \
+            -n "$ESO_NAMESPACE" \
+            --set installCRDs=true \
+            --wait --quiet
+    else
+        helm install external-secrets external-secrets/external-secrets \
+            -n "$ESO_NAMESPACE" \
+            --set installCRDs=true \
+            --wait --quiet
+    fi
+    log_success "External Secrets Operator installed"
+
+    # Wait for CRDs
+    kubectl wait --for=condition=Established crd/externalsecrets.external-secrets.io --timeout=60s >/dev/null
+    kubectl wait --for=condition=Established crd/clustersecretstores.external-secrets.io --timeout=60s >/dev/null
+
+    # Create K8s secret with GCP credentials
+    kubectl create secret generic gcp-secret-manager-credentials \
+        --from-file=secret-access-credentials="$KEY_FILE" \
+        -n "$ESO_NAMESPACE" \
+        --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    log_success "GCP credentials secret created in cluster"
+
+    # Create namespace for Lumo
+    kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+
+    # Deploy ClusterSecretStore
+    cat <<EOF | kubectl apply -f - >/dev/null
+apiVersion: external-secrets.io/v1beta1
+kind: ClusterSecretStore
+metadata:
+  name: gcp-secret-manager
+spec:
+  provider:
+    gcpsm:
+      projectID: ${GCP_PROJECT_ID}
+      auth:
+        secretRef:
+          secretAccessKeySecretRef:
+            name: gcp-secret-manager-credentials
+            key: secret-access-credentials
+            namespace: ${ESO_NAMESPACE}
+EOF
+    log_success "ClusterSecretStore deployed"
+
+    # Wait for SecretStore to be ready
+    local max_wait=30
+    local elapsed=0
+    while [ $elapsed -lt $max_wait ]; do
+        local status=$(kubectl get clustersecretstore gcp-secret-manager -o jsonpath='{.status.conditions[0].status}' 2>/dev/null || echo "Unknown")
+        if [ "$status" = "True" ]; then
+            log_success "ClusterSecretStore is ready"
+            break
+        fi
+        sleep 3
+        elapsed=$((elapsed + 3))
+    done
+
+    if [ $elapsed -ge $max_wait ]; then
+        log_error "ClusterSecretStore not ready after ${max_wait}s"
+        kubectl describe clustersecretstore gcp-secret-manager
+        return 1
+    fi
+
+    # Deploy ExternalSecrets
+    cat <<EOF | kubectl apply -f - >/dev/null
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: lumo-api-secrets
+  namespace: ${NAMESPACE}
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: gcp-secret-manager
+    kind: ClusterSecretStore
+  target:
+    name: lumo-api-secret
+    creationPolicy: Owner
+  data:
+    - secretKey: jwt-secret
+      remoteRef:
+        key: lumo-jwt-secret
+    - secretKey: database-password
+      remoteRef:
+        key: lumo-database-password
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: lumo-ai-secrets
+  namespace: ${NAMESPACE}
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: gcp-secret-manager
+    kind: ClusterSecretStore
+  target:
+    name: lumo-ai-secrets
+    creationPolicy: Owner
+  data:
+    - secretKey: anthropic-api-key
+      remoteRef:
+        key: lumo-anthropic-api-key
+    - secretKey: openai-api-key
+      remoteRef:
+        key: lumo-openai-api-key
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: lumo-agent-secrets
+  namespace: ${NAMESPACE}
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: gcp-secret-manager
+    kind: ClusterSecretStore
+  target:
+    name: lumo-agent-secret
+    creationPolicy: Owner
+  data:
+    - secretKey: agent-token
+      remoteRef:
+        key: lumo-agent-token
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: lumo-notification-secrets
+  namespace: ${NAMESPACE}
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: gcp-secret-manager
+    kind: ClusterSecretStore
+  target:
+    name: lumo-notification-secrets
+    creationPolicy: Owner
+  data:
+    - secretKey: slack-webhook-url
+      remoteRef:
+        key: lumo-slack-webhook-url
+EOF
+    log_success "ExternalSecrets deployed"
+
+    # Wait for secrets to sync
+    log_info "Waiting for secrets to sync from GCP..."
+    max_wait=60
+    elapsed=0
+    while [ $elapsed -lt $max_wait ]; do
+        if kubectl get secret lumo-api-secret -n "${NAMESPACE}" &>/dev/null; then
+            log_success "✓ Secrets synced from GCP Secret Manager"
+            echo ""
+            log_info "GCP Secret Manager setup complete!"
+            echo "  Project: $GCP_PROJECT_ID"
+            echo "  Key file: $KEY_FILE"
+            echo ""
+            return 0
+        fi
+        sleep 5
+        elapsed=$((elapsed + 5))
+        log_info "Waiting for secrets... (${elapsed}s/${max_wait}s)"
+    done
+
+    log_error "Secrets not synced after ${max_wait}s"
+    kubectl get externalsecrets -n "${NAMESPACE}"
+    return 1
+}
+
 main() {
     parse_args "$@"
 
@@ -914,6 +1328,10 @@ main() {
     deploy_infrastructure
     echo ""
 
+    # Deploy GCP secrets before API server (if enabled)
+    deploy_gcp_secrets
+    echo ""
+
     deploy_api_server
     echo ""
 
@@ -921,6 +1339,9 @@ main() {
     echo ""
 
     deploy_agent
+    echo ""
+
+    deploy_monitoring
     echo ""
 
     run_component_tests

@@ -4,7 +4,7 @@
 
 ```bash
 cd /Users/ignacio/Code/lumo/deployments/kubernetes/kind
-./test-agent.sh
+./deploy-lumo.sh
 ```
 
 **Deploys:** PostgreSQL → API Server → Agents  
@@ -30,28 +30,28 @@ cd /Users/ignacio/Code/lumo/deployments/kubernetes/kind
 
 ### Full Deployment
 ```bash
-./test-agent.sh
+./deploy-lumo.sh
 ```
 
 ### Use Existing Cluster
 ```bash
-./test-agent.sh --skip-cluster
+./deploy-lumo.sh --skip-cluster
 ```
 
 ### Rebuild & Redeploy
 ```bash
-./test-agent.sh --skip-cluster --skip-infrastructure --skip-api
+./deploy-lumo.sh --skip-cluster --skip-infrastructure --skip-api
 ```
 
 ### Test Only
 ```bash
-./test-agent.sh --skip-cluster --skip-build --skip-infrastructure --skip-api --skip-deploy
+./deploy-lumo.sh --skip-cluster --skip-build --skip-infrastructure --skip-api --skip-deploy
 ```
 
 ### Clean Slate
 ```bash
 kind delete cluster --name lumo-test
-./test-agent.sh
+./deploy-lumo.sh
 ```
 
 ---
@@ -183,7 +183,7 @@ SKIP_BUILD=true \
 SKIP_INFRASTRUCTURE=true \
 SKIP_API=true \
 SKIP_DEPLOY=true \
-./test-agent.sh
+./deploy-lumo.sh
 ```
 
 ---
@@ -215,7 +215,7 @@ SKIP_DEPLOY=true \
 vim internal/diagnostics/cpu.go
 
 # 2. Rebuild & redeploy (keeps cluster, DB, API)
-./test-agent.sh --skip-cluster --skip-infrastructure --skip-api
+./deploy-lumo.sh --skip-cluster --skip-infrastructure --skip-api
 
 # 3. View logs
 kubectl logs -n lumo-system -l app.kubernetes.io/name=lumo-agent -f
@@ -241,7 +241,7 @@ export LUMO_NAMESPACE=lumo-system
 
 ## Files
 
-- **test-agent.sh** - Main deployment script (use this!)
+- **deploy-lumo.sh** - Main deployment script (use this!)
 - **FULL_STACK_DEPLOYMENT.md** - Complete documentation
 - **CHANGES_SUMMARY.md** - What changed
 - **README.md** - General kind testing guide
@@ -253,7 +253,7 @@ export LUMO_NAMESPACE=lumo-system
 ## Help
 
 ```bash
-./test-agent.sh --help
+./deploy-lumo.sh --help
 ```
 
 ---
@@ -336,7 +336,7 @@ make ci
 
 1. **Read**: [FULL_STACK_DEPLOYMENT.md](FULL_STACK_DEPLOYMENT.md)
 2. **Verify**: `make ci` (linters, tests, builds)
-3. **Deploy**: `./test-agent.sh`
+3. **Deploy**: `./deploy-lumo.sh`
 4. **Test Failures**: `./test-failure-scenarios.sh`
 5. **Explore**: Access services and view logs
 6. **Develop**: Make changes and iterate

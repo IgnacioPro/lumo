@@ -15,15 +15,14 @@ namespace: lumo-system
 
 resources:
   - rbac.yaml
-  - configmap.yaml
-  # - secret.yaml  # REMOVED: Use kubectl or external secret manager instead
-  - daemonset.yaml
-  - deployment.yaml
+  - configmap-agent.yaml
+  - configmap-api.yaml
+  - deployment-agent.yaml
+  - deployment-api.yaml
   - service.yaml
   - networkpolicy.yaml
 
 commonLabels:
-  app.kubernetes.io/name: lumo-agent
   app.kubernetes.io/part-of: lumo
 
 # ConfigMap generator for custom config
@@ -40,4 +39,6 @@ commonLabels:
 
 images:
   - name: ghcr.io/ignacio/lumo-agent
+    newTag: latest
+  - name: ghcr.io/ignacio/lumo
     newTag: latest

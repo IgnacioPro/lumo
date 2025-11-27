@@ -219,7 +219,7 @@ print_next_steps() {
     echo "     ${BLUE}./deploy-to-kind.sh${NC}"
     echo ""
     echo "  3. Or do both in one step:"
-    echo "     ${BLUE}./test-agent.sh${NC}"
+    echo "     ${BLUE}./deploy-lumo.sh${NC}"
     echo ""
     echo "Useful commands:"
     echo "  - Get pods: ${BLUE}kubectl get pods -n lumo-system${NC}"

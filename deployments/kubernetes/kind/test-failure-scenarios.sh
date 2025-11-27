@@ -27,6 +27,10 @@ NAMESPACE="${LUMO_NAMESPACE:-lumo-system}"
 TEST_NAMESPACE="lumo-test-scenarios"
 DEBOUNCE_WINDOW=45
 WAIT_TIME=180  # 3min: pod startup + image pull retries + debounce (45s) + processing
+# Fast mode: poll API instead of waiting full WAIT_TIME
+FAST_MODE="${FAST_MODE:-true}"
+POLL_INTERVAL=5       # Seconds between API polls
+POLL_MAX_ATTEMPTS=60  # Max attempts (5s × 60 = 5min max)
 
 # Counters
 TESTS_RUN=0
@@ -242,6 +246,85 @@ verify_event_in_database() {
     return 1
 }
 
+# Poll for event in database with short intervals (faster than fixed wait)
+# This replaces the fixed WAIT_TIME sleep for faster test execution
+poll_for_event() {
+    local event_type=$1
+    local resource_name=$2
+    local min_wait=${3:-$DEBOUNCE_WINDOW}  # Minimum wait before polling (debounce window)
+
+    # If fast mode is disabled, use legacy behavior
+    if [ "$FAST_MODE" != "true" ]; then
+        log_info "Fast mode disabled, waiting ${WAIT_TIME}s for debounce and event processing..."
+        sleep ${WAIT_TIME}
+        verify_event_in_database "${event_type}" "${resource_name}"
+        return $?
+    fi
+
+    log_info "Fast mode: polling for event after ${min_wait}s minimum wait"
+
+    local pg_pod=$(kubectl get pods -n "${NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+
+    if [ -z "$pg_pod" ]; then
+        log_error "PostgreSQL pod not found"
+        return 1
+    fi
+
+    # Wait minimum time for debounce
+    log_info "Waiting ${min_wait}s for debounce window..."
+    sleep ${min_wait}
+
+    log_info "Polling for event: ${event_type} (every ${POLL_INTERVAL}s, max ${POLL_MAX_ATTEMPTS} attempts)"
+
+    local attempt=1
+    while [ $attempt -le $POLL_MAX_ATTEMPTS ]; do
+        local count=$(kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+            psql -U lumo -d lumo -t -c \
+            "SELECT COUNT(*) FROM events WHERE event_type = '${event_type}' AND resource_name LIKE '%${resource_name}%';" \
+            2>/dev/null | tr -d ' \n')
+
+        count=${count:-0}
+
+        if [ "$count" -gt 0 ]; then
+            local elapsed=$((attempt * POLL_INTERVAL + min_wait))
+            log_success "Event found in database after ~${elapsed}s: ${event_type} (${count} records)"
+
+            # Show event details
+            log_info "Event details:"
+            kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+                psql -U lumo -d lumo -c \
+                "SELECT event_type, severity, resource_kind, resource_name, namespace, created_at FROM events WHERE event_type = '${event_type}' AND resource_name LIKE '%${resource_name}%' ORDER BY created_at DESC LIMIT 1;" \
+                2>/dev/null | head -4 || true
+
+            return 0
+        fi
+
+        attempt=$((attempt + 1))
+        sleep ${POLL_INTERVAL}
+    done
+
+    # Exhausted all attempts
+    local total_wait=$((POLL_MAX_ATTEMPTS * POLL_INTERVAL + min_wait))
+    log_error "Event NOT found after ${total_wait}s: ${event_type}"
+
+    # Run diagnostics
+    log_info "Checking total events in database..."
+    local total_events=$(kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+        psql -U lumo -d lumo -t -c "SELECT COUNT(*) FROM events;" 2>/dev/null | tr -d ' \n')
+    total_events=${total_events:-0}
+    log_info "Total events in database: ${total_events}"
+
+    if [ "$total_events" -gt 0 ]; then
+        log_info "Recent events in database:"
+        kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+            psql -U lumo -d lumo -c \
+            "SELECT event_type, severity, resource_name, created_at FROM events ORDER BY created_at DESC LIMIT 5;" \
+            2>/dev/null | head -7 || true
+    fi
+
+    return 1
+}
+
 # ==============================================================================
 # TEST SCENARIOS
 # ==============================================================================
@@ -287,12 +370,8 @@ EOF
         elapsed=$((elapsed + 2))
     done
     
-    # Wait for debounce window + buffer
-    log_info "Waiting ${WAIT_TIME}s for debounce and event processing..."
-    sleep ${WAIT_TIME}
-    
-    # Verify event detection (check database directly - logs may be too old)
-    if verify_event_in_database "image-pull-backoff" "${pod_name}"; then
+    # Wait for debounce window and poll for event
+    if poll_for_event "image-pull-backoff" "${pod_name}"; then
         log_result "PASS" "ImagePullBackOff scenario detected and stored"
     else
         log_result "FAIL" "ImagePullBackOff scenario not detected in database"
@@ -342,12 +421,8 @@ EOF
         elapsed=$((elapsed + 3))
     done
     
-    # Wait for debounce window
-    log_info "Waiting ${WAIT_TIME}s for debounce and event processing..."
-    sleep ${WAIT_TIME}
-    
-    # Verify event detection (check database directly - logs may be too old)
-    if verify_event_in_database "crash-loop-backoff" "${pod_name}"; then
+    # Wait for debounce window and poll for event
+    if poll_for_event "crash-loop-backoff" "${pod_name}"; then
         log_result "PASS" "CrashLoopBackOff scenario detected and stored"
     else
         log_result "FAIL" "CrashLoopBackOff scenario not detected in database"
@@ -402,12 +477,8 @@ EOF
         elapsed=$((elapsed + 3))
     done
     
-    # Wait for debounce window
-    log_info "Waiting ${WAIT_TIME}s for debounce and event processing..."
-    sleep ${WAIT_TIME}
-    
-    # Verify event detection (check database directly - logs may be too old)
-    if verify_event_in_database "oom-killed" "${pod_name}"; then
+    # Wait for debounce window and poll for event
+    if poll_for_event "oom-killed" "${pod_name}"; then
         log_result "PASS" "OOMKilled scenario detected and stored"
     else
         log_result "FAIL" "OOMKilled scenario not detected in database"
@@ -458,12 +529,8 @@ EOF
         log_success "Deployment failed with ProgressDeadlineExceeded"
     fi
     
-    # Wait for debounce window
-    log_info "Waiting ${WAIT_TIME}s for debounce and event processing..."
-    sleep ${WAIT_TIME}
-    
-    # Verify event detection (check database directly - logs may be too old)
-    if verify_event_in_database "deployment-failed" "${deploy_name}"; then
+    # Wait for debounce window and poll for event
+    if poll_for_event "deployment-failed" "${deploy_name}"; then
         log_result "PASS" "Deployment failure detected and stored"
     else
         log_result "FAIL" "Deployment failure not detected in database"
@@ -516,12 +583,8 @@ EOF
         elapsed=$((elapsed + 5))
     done
     
-    # Wait for debounce window
-    log_info "Waiting ${WAIT_TIME}s for debounce and event processing..."
-    sleep ${WAIT_TIME}
-    
-    # Verify event detection (check database directly - logs may be too old)
-    if verify_event_in_database "job-failed" "${job_name}"; then
+    # Wait for debounce window and poll for event
+    if poll_for_event "job-failed" "${job_name}"; then
         log_result "PASS" "Job failure detected and stored"
     else
         log_result "FAIL" "Job failure not detected in database"
@@ -609,12 +672,8 @@ EOF
         log_success "Pod stuck in Pending state (unschedulable)"
     fi
     
-    # Wait for debounce window
-    log_info "Waiting ${WAIT_TIME}s for debounce and event processing..."
-    sleep ${WAIT_TIME}
-    
-    # Verify event detection (check database directly - logs may be too old)
-    if verify_event_in_database "scheduling-failed" "${pod_name}"; then
+    # Wait for debounce window and poll for event
+    if poll_for_event "scheduling-failed" "${pod_name}"; then
         log_result "PASS" "Scheduling failure detected and stored"
     else
         log_result "FAIL" "Scheduling failure not detected in database"
@@ -645,7 +704,11 @@ run_all_tests() {
     
     echo ""
     log_info "Starting failure scenario tests..."
-    log_info "Debounce window: ${DEBOUNCE_WINDOW}s | Wait time per test: ${WAIT_TIME}s"
+    if [ "$FAST_MODE" = "true" ]; then
+        log_info "Fast mode: ENABLED (poll every ${POLL_INTERVAL}s after ${DEBOUNCE_WINDOW}s debounce)"
+    else
+        log_info "Fast mode: DISABLED (fixed ${WAIT_TIME}s wait per test)"
+    fi
     echo ""
     
     # Run tests
@@ -766,9 +829,20 @@ main() {
             echo "  --list                 List available test scenarios"
             echo "  --scenario <name>      Run specific scenario"
             echo "  --all                  Run all scenarios (default)"
+            echo "  --slow                 Disable fast mode (use fixed waits)"
             echo "  --help                 Show this help"
             echo ""
+            echo "Environment Variables:"
+            echo "  FAST_MODE=true|false   Enable/disable polling mode (default: true)"
+            echo "  POLL_INTERVAL=N        Seconds between polls (default: 5)"
+            echo "  POLL_MAX_ATTEMPTS=N    Max poll attempts (default: 60)"
+            echo ""
             list_scenarios
+            ;;
+        --slow)
+            FAST_MODE=false
+            shift
+            main "${@:-all}"
             ;;
         *)
             log_error "Unknown option: $1"

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `test-agent.sh` script has been enhanced to deploy the **complete Lumo stack** in a local kind cluster:
+The `deploy-lumo.sh` script has been enhanced to deploy the **complete Lumo stack** in a local kind cluster:
 
 1. **PostgreSQL** - Database for storing agent registrations, jobs, and reports
 2. **Lumo API Server** - Central control plane (REST API)
@@ -61,7 +61,7 @@ The `test-agent.sh` script has been enhanced to deploy the **complete Lumo stack
 cd /Users/ignacio/Code/lumo/deployments/kubernetes/kind
 
 # Deploy everything with one command
-./test-agent.sh
+./deploy-lumo.sh
 ```
 
 **What this does:**
@@ -78,32 +78,32 @@ cd /Users/ignacio/Code/lumo/deployments/kubernetes/kind
 
 ```bash
 # 1. Create cluster
-./test-agent.sh --skip-build --skip-infrastructure --skip-api --skip-deploy
+./deploy-lumo.sh --skip-build --skip-infrastructure --skip-api --skip-deploy
 
 # 2. Build images
-./test-agent.sh --skip-cluster --skip-infrastructure --skip-api --skip-deploy
+./deploy-lumo.sh --skip-cluster --skip-infrastructure --skip-api --skip-deploy
 
 # 3. Deploy PostgreSQL only
-./test-agent.sh --skip-cluster --skip-build --skip-api --skip-deploy
+./deploy-lumo.sh --skip-cluster --skip-build --skip-api --skip-deploy
 
 # 4. Deploy API Server
-./test-agent.sh --skip-cluster --skip-build --skip-infrastructure --skip-deploy
+./deploy-lumo.sh --skip-cluster --skip-build --skip-infrastructure --skip-deploy
 
 # 5. Run full test suite on existing deployment
-SKIP_CLUSTER_SETUP=true SKIP_BUILD=true SKIP_INFRASTRUCTURE=true SKIP_API=true SKIP_DEPLOY=true ./test-agent.sh
+SKIP_CLUSTER_SETUP=true SKIP_BUILD=true SKIP_INFRASTRUCTURE=true SKIP_API=true SKIP_DEPLOY=true ./deploy-lumo.sh
 ```
 
 ### Selective Deployment Options
 
 ```bash
 # Use existing cluster, rebuild everything, redeploy all
-./test-agent.sh --skip-cluster
+./deploy-lumo.sh --skip-cluster
 
 # Use existing infrastructure, redeploy only agents
-./test-agent.sh --skip-cluster --skip-build --skip-infrastructure --skip-api
+./deploy-lumo.sh --skip-cluster --skip-build --skip-infrastructure --skip-api
 
 # Just run tests on existing deployment
-./test-agent.sh --skip-cluster --skip-build --skip-infrastructure --skip-api --skip-deploy
+./deploy-lumo.sh --skip-cluster --skip-build --skip-infrastructure --skip-api --skip-deploy
 ```
 
 ## New Script Stages
@@ -244,7 +244,7 @@ export SKIP_DEPLOY=true              # Skip agents
 export KIND_CLUSTER_NAME=my-cluster  # Custom cluster name
 export LUMO_NAMESPACE=my-namespace   # Custom namespace
 
-./test-agent.sh
+./deploy-lumo.sh
 ```
 
 ## Cleanup
@@ -276,7 +276,7 @@ kubectl delete namespace lumo-system
 ## Next Steps
 
 1. **Develop features**: Make changes to code
-2. **Rebuild**: `./test-agent.sh --skip-cluster`
+2. **Rebuild**: `./deploy-lumo.sh --skip-cluster`
 3. **Test**: Verify changes work end-to-end
 4. **Iterate**: Repeat cycle
 
@@ -309,7 +309,7 @@ kubectl exec -n lumo-system <agent-pod> -- wget -O- http://lumo-api.lumo-system.
 ### Tests failing
 ```bash
 # Re-run just the tests
-SKIP_CLUSTER_SETUP=true SKIP_BUILD=true SKIP_INFRASTRUCTURE=true SKIP_API=true SKIP_DEPLOY=true ./test-agent.sh
+SKIP_CLUSTER_SETUP=true SKIP_BUILD=true SKIP_INFRASTRUCTURE=true SKIP_API=true SKIP_DEPLOY=true ./deploy-lumo.sh
 
 # Check all pods
 kubectl get pods -n lumo-system
@@ -318,9 +318,9 @@ kubectl get pods -n lumo-system
 kubectl get events -n lumo-system --sort-by='.lastTimestamp'
 ```
 
-## Comparison: test-agent.sh vs test-workflow.sh
+## Comparison: deploy-lumo.sh vs test-workflow.sh
 
-| Feature | test-agent.sh (NEW) | test-workflow.sh (OLD) |
+| Feature | deploy-lumo.sh (NEW) | test-workflow.sh (OLD) |
 |---------|---------------------|------------------------|
 | PostgreSQL | ✅ Yes | ✅ Yes |
 | API Server | ✅ Yes | ✅ Yes |
@@ -331,11 +331,11 @@ kubectl get events -n lumo-system --sort-by='.lastTimestamp'
 | Help System | ✅ Full usage | ❌ None |
 | Status | **Primary** | Deprecated |
 
-**Recommendation**: Use `test-agent.sh` for all testing going forward.
+**Recommendation**: Use `deploy-lumo.sh` for all testing going forward.
 
 ## Summary
 
-The enhanced `test-agent.sh` now provides:
+The enhanced `deploy-lumo.sh` now provides:
 - ✅ Complete full-stack deployment
 - ✅ Step-by-step deployment control
 - ✅ Comprehensive testing (10 tests total)

@@ -1,0 +1,229 @@
+---
+# Lumo API Server Deployment
+# Central API for agent registration, event processing, AI analysis, and notifications
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lumo-api
+  namespace: lumo-system
+  labels:
+    app.kubernetes.io/name: lumo-api
+    app.kubernetes.io/component: api-server
+    app.kubernetes.io/part-of: lumo
+spec:
+  replicas: 2  # HA with 2 replicas
+  selector:
+    matchLabels:
+      app: lumo-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: lumo-api
+        app.kubernetes.io/name: lumo-api
+        app.kubernetes.io/component: api-server
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: lumo-api
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Anti-affinity: spread replicas across nodes
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: lumo-api
+                topologyKey: kubernetes.io/hostname
+
+      containers:
+        - name: api
+          image: lumo:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/app/lumo", "serve"]
+          args:
+            - --config
+            - /etc/lumo/config.yaml
+
+          env:
+            # Database configuration
+            - name: LUMO_DATABASE_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-api-config
+                  key: database.host
+            - name: LUMO_DATABASE_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-api-config
+                  key: database.port
+            - name: LUMO_DATABASE_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-api-config
+                  key: database.name
+            - name: LUMO_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: lumo-api-secret
+                  key: database-user
+            - name: LUMO_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: lumo-api-secret
+                  key: database-password
+            - name: LUMO_DATABASE_SSLMODE
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-api-config
+                  key: database.sslmode
+
+            # API configuration
+            - name: LUMO_API_PORT
+              value: "8080"
+            - name: LUMO_API_HOST
+              value: "0.0.0.0"
+            - name: LUMO_API_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: lumo-api-secret
+                  key: jwt-secret
+
+            # AI configuration (optional)
+            - name: LUMO_AI_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-api-config
+                  key: ai.enabled
+            - name: LUMO_AI_PROVIDER
+              valueFrom:
+                configMapKeyRef:
+                  name: lumo-api-config
+                  key: ai.provider
+                  optional: true
+            - name: LUMO_ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: lumo-ai-secrets
+                  key: anthropic-api-key
+                  optional: true
+            - name: LUMO_OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: lumo-ai-secrets
+                  key: openai-api-key
+                  optional: true
+
+            # Notification webhooks (optional)
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: lumo-notification-secrets
+                  key: slack-webhook-url
+                  optional: true
+
+            # Environment
+            - name: LUMO_ENVIRONMENT
+              value: "production"
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          # Health checks
+          livenessProbe:
+            httpGet:
+              path: /api/v1/live
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /api/v1/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          # Resource limits
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+
+          volumeMounts:
+            - name: config
+              mountPath: /etc/lumo
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: config
+          configMap:
+            name: lumo-api-config
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi
+
+      # Graceful shutdown
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lumo-api
+  namespace: lumo-system
+  labels:
+    app.kubernetes.io/name: lumo-api
+    app.kubernetes.io/component: api-server
+    app.kubernetes.io/part-of: lumo
+spec:
+  type: ClusterIP
+  selector:
+    app: lumo-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lumo-api
+  namespace: lumo-system
+  labels:
+    app.kubernetes.io/name: lumo-api
+    app.kubernetes.io/part-of: lumo

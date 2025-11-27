@@ -60,7 +60,7 @@ lumo/
 │   └── testutil/                      # Shared test constants and utilities
 ├── deployments/
 │   ├── kubernetes/                    # DaemonSet, Deployment, RBAC, Helm, kind
-│   │   └── kind/                      # Local testing: test-agent.sh, test-failure-scenarios.sh
+│   │   └── kind/                      # Local testing: deploy-lumo.sh, test-failure-scenarios.sh
 │   └── systemd/                       # Service unit, install scripts, RPM/DEB packaging
 ├── examples/                          # 6 end-to-end examples (3,200+ LOC)
 ├── docs/                              # Getting started, competitive analysis, ROI, investor materials
@@ -363,7 +363,7 @@ For rate limiting and DB pool config, see [configs/config.example.yaml](configs/
 ```bash
 # K8s - Full Stack (Recommended for testing)
 cd deployments/kubernetes/kind
-./test-agent.sh  # Complete stack: DB + API + Agents + Tests
+./deploy-lumo.sh  # Complete stack: DB + API + Agents + Tests
 
 # K8s - Production (Event-Driven Only)
 kubectl apply -f deployments/kubernetes/base/deployment-agent.yaml
