@@ -52,6 +52,7 @@ The scripts will automatically install missing prerequisites, but you can instal
 | File | Purpose |
 |------|---------|
 | `deploy-lumo.sh` | **PRIMARY**: Complete full-stack deployment + tests |
+| `test-failure-scenarios.sh` | Event-driven agent failure scenario tests |
 | `setup-kind-cluster.sh` | Creates a 3-node kind cluster |
 | `build-and-load.sh` | Builds Docker images (API + Agent) and loads into kind |
 | `deploy-to-kind.sh` | Deploys agents to kind cluster |
@@ -536,6 +537,65 @@ After successful local testing:
 4. **Upgrade testing** - Test rolling updates
 5. **Security testing** - Test RBAC, NetworkPolicy
 6. **Deploy to real cluster** - Use production deployment guide
+
+## Failure Scenario Testing
+
+The `test-failure-scenarios.sh` script validates that the event-driven agent correctly detects and reports Kubernetes failures.
+
+### Event Flow
+
+```
+K8s Failure → Informer → Watcher → Debouncer (45s) → API Processor → POST /api/v1/events → Database
+```
+
+1. **Kubernetes Failure** - A pod crashes, OOMs, fails to pull image, etc.
+2. **Informer** - SharedInformerFactory receives the update from K8s API
+3. **Watcher** - Specialized watcher (Pod, Workload, Volume, Node) detects the failure condition
+4. **Debouncer** - Waits 45s to filter transient issues (configurable, max 3min for continuous events)
+5. **API Processor** - Submits event to API server via HTTP POST
+6. **Database** - Event stored for analysis and notifications
+
+### Running Tests
+
+```bash
+# Run all failure scenarios (fast mode - polls for events)
+./test-failure-scenarios.sh
+
+# Run specific scenario
+./test-failure-scenarios.sh --scenario oom-killed
+
+# List available scenarios
+./test-failure-scenarios.sh --list
+
+# Disable fast mode (use fixed 180s waits)
+./test-failure-scenarios.sh --slow
+```
+
+### Test Scenarios
+
+| Scenario | Event Type | Trigger |
+|----------|------------|---------|
+| `image-pull-backoff` | `image-pull-backoff` | Invalid image name |
+| `crash-loop-backoff` | `crash-loop-backoff` | Container exits immediately |
+| `oom-killed` | `oom-killed` | Memory limit exceeded |
+| `deployment-failed` | `deployment-failed` | Progress deadline exceeded |
+| `job-failed` | `job-failed` | Backoff limit exceeded |
+| `pvc-provision-failed` | `pvc-provision-failed` | Invalid storage class |
+| `scheduling-failed` | `scheduling-failed` | Node selector mismatch |
+
+### Fast Mode
+
+By default, tests use **fast mode** which polls the database every 5 seconds after the debounce window instead of waiting a fixed 180 seconds. This reduces test time by ~60-70%.
+
+```bash
+# Environment variables
+FAST_MODE=true          # Enable polling (default)
+POLL_INTERVAL=5         # Seconds between polls
+POLL_MAX_ATTEMPTS=60    # Max attempts (5min timeout)
+
+# Disable fast mode
+FAST_MODE=false ./test-failure-scenarios.sh
+```
 
 ## Resources
 
