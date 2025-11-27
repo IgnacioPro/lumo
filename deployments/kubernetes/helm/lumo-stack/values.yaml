@@ -4,6 +4,37 @@
 global:
   namespace: lumo-system
 
+  # Database password (used by both embedded and external PostgreSQL)
+  databasePassword: ""  # REQUIRED: Set via --set global.databasePassword
+
+  # External PostgreSQL (production - managed database)
+  externalPostgresql:
+    enabled: false
+    host: ""        # e.g., postgres.database.svc.cluster.local or RDS endpoint
+    port: 5432
+    database: lumo
+    username: lumo
+    password: ""    # REQUIRED if enabled (overrides global.databasePassword)
+    sslMode: require  # disable|allow|prefer|require|verify-ca|verify-full
+
+  # External Redis (production - managed Redis)
+  externalRedis:
+    enabled: false
+    host: ""        # e.g., redis.cache.svc.cluster.local or ElastiCache endpoint
+    port: 6379
+    password: ""    # Optional
+    tls: false
+
+  # AI configuration (shared across components)
+  ai:
+    provider: anthropic  # anthropic|openai|gemini|ollama|openrouter
+    enabled: true
+    keys:
+      anthropic: ""
+      openai: ""
+      gemini: ""
+      openrouter: ""
+
 # PostgreSQL (embedded for testing, disable for production with managed databases)
 postgresql:
   enabled: true
@@ -31,16 +62,6 @@ postgresql:
       cpu: 500m
       memory: 512Mi
 
-# External PostgreSQL (production - managed database)
-externalPostgresql:
-  enabled: false
-  host: ""        # e.g., postgres.database.svc.cluster.local or RDS endpoint
-  port: 5432
-  database: lumo
-  username: lumo
-  password: ""    # REQUIRED if enabled
-  sslMode: require  # disable|allow|prefer|require|verify-ca|verify-full
-
 # Redis (embedded for testing, disable for production with managed Redis)
 redis:
   enabled: true
@@ -62,14 +83,6 @@ redis:
     limits:
       cpu: 200m
       memory: 256Mi
-
-# External Redis (production - managed Redis)
-externalRedis:
-  enabled: false
-  host: ""        # e.g., redis.cache.svc.cluster.local or ElastiCache endpoint
-  port: 6379
-  password: ""    # Optional
-  tls: false
 
 # Lumo API Server
 api:
@@ -213,18 +226,6 @@ agent:
     capabilities:
       drop:
         - ALL
-
-# AI Configuration
-ai:
-  provider: anthropic  # anthropic|openai|gemini|ollama|openrouter
-  enabled: true
-
-  # API keys (use secret references in production)
-  keys:
-    anthropic: ""
-    openai: ""
-    gemini: ""
-    openrouter: ""
 
 # RBAC configuration
 rbac:

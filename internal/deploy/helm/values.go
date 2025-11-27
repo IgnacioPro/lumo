@@ -88,7 +88,30 @@ func (d *DeploymentConfig) Validate() error {
 func GenerateHelmValues(config *DeploymentConfig) (map[string]interface{}, error) {
 	values := map[string]interface{}{
 		"global": map[string]interface{}{
-			"namespace": config.Namespace,
+			"namespace":        config.Namespace,
+			"databasePassword": config.DBPassword,
+			// External PostgreSQL (if provided)
+			"externalPostgresql": map[string]interface{}{
+				"enabled": config.DBHost != "",
+				"host":    config.DBHost,
+				"port":    config.DBPort,
+			},
+			// External Redis (if provided)
+			"externalRedis": map[string]interface{}{
+				"enabled": config.RedisHost != "",
+				"host":    config.RedisHost,
+				"port":    config.RedisPort,
+			},
+			// AI provider
+			"ai": map[string]interface{}{
+				"provider": config.AIProvider,
+				"enabled":  true,
+				"keys": map[string]interface{}{
+					"anthropic": config.AnthropicKey,
+					"openai":    config.OpenAIKey,
+					"gemini":    config.GeminiKey,
+				},
+			},
 		},
 
 		// PostgreSQL configuration
@@ -97,27 +120,13 @@ func GenerateHelmValues(config *DeploymentConfig) (map[string]interface{}, error
 			"auth": map[string]interface{}{
 				"database": "lumo",
 				"username": "lumo",
-				"password": config.DBPassword,
+				"password": config.DBPassword, // Keep for backwards compat with sub-chart
 			},
-		},
-
-		// External PostgreSQL (if provided)
-		"externalPostgresql": map[string]interface{}{
-			"enabled": config.DBHost != "",
-			"host":    config.DBHost,
-			"port":    config.DBPort,
 		},
 
 		// Redis configuration
 		"redis": map[string]interface{}{
 			"enabled": config.RedisHost == "", // Disable if using external Redis
-		},
-
-		// External Redis (if provided)
-		"externalRedis": map[string]interface{}{
-			"enabled": config.RedisHost != "",
-			"host":    config.RedisHost,
-			"port":    config.RedisPort,
 		},
 
 		// API server
@@ -139,17 +148,6 @@ func GenerateHelmValues(config *DeploymentConfig) (map[string]interface{}, error
 				"tag":        parseImageTag(config.AgentImage),
 			},
 			"token": config.AgentToken,
-		},
-
-		// AI provider
-		"ai": map[string]interface{}{
-			"provider": config.AIProvider,
-			"enabled":  true,
-			"keys": map[string]interface{}{
-				"anthropic": config.AnthropicKey,
-				"openai":    config.OpenAIKey,
-				"gemini":    config.GeminiKey,
-			},
 		},
 	}
 

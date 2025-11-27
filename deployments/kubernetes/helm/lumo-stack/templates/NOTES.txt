@@ -10,19 +10,19 @@ App Version:  {{ .Chart.AppVersion }}
 Deployed Components:
 {{- if .Values.postgresql.enabled }}
   ✓ PostgreSQL (embedded for testing)
-{{- else if .Values.externalPostgresql.enabled }}
-  ✓ PostgreSQL (external: {{ .Values.externalPostgresql.host }}:{{ .Values.externalPostgresql.port }})
+{{- else if .Values.global.externalPostgresql.enabled }}
+  ✓ PostgreSQL (external: {{ .Values.global.externalPostgresql.host }}:{{ .Values.global.externalPostgresql.port }})
 {{- end }}
 {{- if .Values.redis.enabled }}
   ✓ Redis (embedded for testing)
-{{- else if .Values.externalRedis.enabled }}
-  ✓ Redis (external: {{ .Values.externalRedis.host }}:{{ .Values.externalRedis.port }})
+{{- else if .Values.global.externalRedis.enabled }}
+  ✓ Redis (external: {{ .Values.global.externalRedis.host }}:{{ .Values.global.externalRedis.port }})
 {{- end }}
 {{- if .Values.api.enabled }}
-  ✓ Lumo API Server ({{ .Values.api.replicas }} replica{{ if gt .Values.api.replicas 1.0 }}s{{ end }})
+  ✓ Lumo API Server ({{ .Values.api.replicas }} replica{{ if ne .Values.api.replicas 1.0 }}s{{ end }})
 {{- end }}
 {{- if .Values.agent.enabled }}
-  ✓ Lumo Agent ({{ .Values.agent.replicas }} replica{{ if gt .Values.agent.replicas 1.0 }}s{{ end }}, mode: {{ .Values.agent.mode }})
+  ✓ Lumo Agent ({{ .Values.agent.replicas }} replica{{ if ne .Values.agent.replicas 1.0 }}s{{ end }}, mode: {{ .Values.agent.mode }})
 {{- end }}
 
 ====================================================================
@@ -50,8 +50,8 @@ Deployed Components:
   Configuration
 ====================================================================
 
-AI Provider:  {{ .Values.ai.provider }}
-AI Enabled:   {{ .Values.ai.enabled }}
+AI Provider:  {{ .Values.global.ai.provider }}
+AI Enabled:   {{ .Values.global.ai.enabled }}
 RBAC Created: {{ .Values.rbac.create }}
 Remediation:  {{ .Values.rbac.enableRemediation }}
 

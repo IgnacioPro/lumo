@@ -40,26 +40,26 @@ spec:
         env:
         # Database configuration
         - name: LUMO_DATABASE_HOST
-          value: {{ if .Values.externalPostgresql.enabled }}{{ .Values.externalPostgresql.host }}{{ else }}"postgres"{{ end }}
+          value: {{ if .Values.global.externalPostgresql.enabled }}{{ .Values.global.externalPostgresql.host }}{{ else }}"postgres"{{ end }}
         - name: LUMO_DATABASE_PORT
-          value: {{ if .Values.externalPostgresql.enabled }}"{{ .Values.externalPostgresql.port }}"{{ else }}"5432"{{ end }}
+          value: {{ if .Values.global.externalPostgresql.enabled }}"{{ .Values.global.externalPostgresql.port }}"{{ else }}"5432"{{ end }}
         - name: LUMO_DATABASE_NAME
-          value: {{ if .Values.externalPostgresql.enabled }}{{ .Values.externalPostgresql.database }}{{ else }}"lumo"{{ end }}
+          value: {{ if .Values.global.externalPostgresql.enabled }}{{ .Values.global.externalPostgresql.database }}{{ else }}"lumo"{{ end }}
         - name: LUMO_DATABASE_USER
-          value: {{ if .Values.externalPostgresql.enabled }}{{ .Values.externalPostgresql.username }}{{ else }}"lumo"{{ end }}
+          value: {{ if .Values.global.externalPostgresql.enabled }}{{ .Values.global.externalPostgresql.username }}{{ else }}"lumo"{{ end }}
         - name: LUMO_DATABASE_PASSWORD
-          value: {{ if .Values.externalPostgresql.enabled }}{{ .Values.externalPostgresql.password | quote }}{{ else }}{{ .Values.postgresql.auth.password | quote }}{{ end }}
+          value: {{ if .Values.global.externalPostgresql.enabled }}{{ default .Values.global.databasePassword .Values.global.externalPostgresql.password | quote }}{{ else }}{{ .Values.global.databasePassword | quote }}{{ end }}
         - name: LUMO_DATABASE_SSLMODE
-          value: {{ if .Values.externalPostgresql.enabled }}{{ .Values.externalPostgresql.sslMode }}{{ else }}"disable"{{ end }}
+          value: {{ if .Values.global.externalPostgresql.enabled }}{{ .Values.global.externalPostgresql.sslMode }}{{ else }}"disable"{{ end }}
 
         # Redis configuration
         - name: LUMO_REDIS_HOST
-          value: {{ if .Values.externalRedis.enabled }}{{ .Values.externalRedis.host }}{{ else }}"lumo-redis"{{ end }}
+          value: {{ if .Values.global.externalRedis.enabled }}{{ .Values.global.externalRedis.host }}{{ else }}"lumo-redis"{{ end }}
         - name: LUMO_REDIS_PORT
-          value: {{ if .Values.externalRedis.enabled }}"{{ .Values.externalRedis.port }}"{{ else }}"6379"{{ end }}
-        {{- if .Values.externalRedis.password }}
+          value: {{ if .Values.global.externalRedis.enabled }}"{{ .Values.global.externalRedis.port }}"{{ else }}"6379"{{ end }}
+        {{- if .Values.global.externalRedis.password }}
         - name: LUMO_REDIS_PASSWORD
-          value: {{ .Values.externalRedis.password | quote }}
+          value: {{ .Values.global.externalRedis.password | quote }}
         {{- end }}
 
         # API server configuration
@@ -72,20 +72,20 @@ spec:
 
         # AI configuration
         - name: LUMO_AI_ENABLED
-          value: {{ .Values.ai.enabled | quote }}
+          value: {{ .Values.global.ai.enabled | quote }}
         - name: LUMO_AI_PROVIDER
-          value: {{ .Values.ai.provider }}
-        {{- if .Values.ai.keys.anthropic }}
+          value: {{ .Values.global.ai.provider }}
+        {{- if .Values.global.ai.keys.anthropic }}
         - name: LUMO_ANTHROPIC_API_KEY
-          value: {{ .Values.ai.keys.anthropic | quote }}
+          value: {{ .Values.global.ai.keys.anthropic | quote }}
         {{- end }}
-        {{- if .Values.ai.keys.openai }}
+        {{- if .Values.global.ai.keys.openai }}
         - name: LUMO_OPENAI_API_KEY
-          value: {{ .Values.ai.keys.openai | quote }}
+          value: {{ .Values.global.ai.keys.openai | quote }}
         {{- end }}
-        {{- if .Values.ai.keys.gemini }}
+        {{- if .Values.global.ai.keys.gemini }}
         - name: LUMO_GEMINI_API_KEY
-          value: {{ .Values.ai.keys.gemini | quote }}
+          value: {{ .Values.global.ai.keys.gemini | quote }}
         {{- end }}
 
         ports:

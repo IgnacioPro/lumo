@@ -40,7 +40,7 @@ spec:
         - name: POSTGRES_USER
           value: {{ .Values.auth.username }}
         - name: POSTGRES_PASSWORD
-          value: {{ .Values.auth.password | quote }}
+          value: {{ default .Values.auth.password .Values.global.databasePassword | quote }}
         - name: PGDATA
           value: /var/lib/postgresql/data/pgdata
         ports:
