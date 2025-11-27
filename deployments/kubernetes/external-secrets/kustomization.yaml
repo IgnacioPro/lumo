@@ -1,0 +1,33 @@
+# Kustomization for GCP Secret Manager integration
+#
+# Usage:
+#   kubectl apply -k .
+#
+# This deploys:
+#   - ClusterSecretStore for GCP authentication
+#   - ExternalSecrets to sync secrets from GCP to K8s
+#
+# Prerequisites:
+#   1. External Secrets Operator installed
+#   2. GCP credentials configured (Workload Identity or service account key)
+#   3. Secrets created in GCP Secret Manager
+#
+# Note: Update cluster-secret-store.yaml with your GCP project ID before applying
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: lumo-system
+
+resources:
+  - cluster-secret-store.yaml
+  - external-secrets.yaml
+
+# Common labels for all resources
+commonLabels:
+  app.kubernetes.io/managed-by: external-secrets
+  app.kubernetes.io/part-of: lumo
+
+# Annotations
+commonAnnotations:
+  secrets.lumo.io/provider: gcp-secret-manager
