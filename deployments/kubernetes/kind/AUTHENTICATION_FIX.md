@@ -15,7 +15,7 @@ Agents were unable to submit events to the API server, receiving **401 Unauthori
 
 ## Solution
 
-### 1. Bootstrap API Key Creation (`test-agent.sh`)
+### 1. Bootstrap API Key Creation (`deploy-lumo.sh`)
 
 Added `bootstrap_api_key()` function that:
 - Creates API key from agent token using SHA-256 hash
@@ -42,7 +42,7 @@ Created special system agent with:
 
 ```bash
 cd deployments/kubernetes/kind
-./test-agent.sh
+./deploy-lumo.sh
 ```
 
 ## Verification
@@ -56,7 +56,7 @@ cd deployments/kubernetes/kind
 
 ## Files Changed
 
-1. `deployments/kubernetes/kind/test-agent.sh` - Added `bootstrap_api_key()` function
+1. `deployments/kubernetes/kind/deploy-lumo.sh` - Added `bootstrap_api_key()` function
 2. `internal/api/handlers/events.go` - Made `agent_id` optional in SubmitEvents
 
 ## Deployment Flow

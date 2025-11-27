@@ -53,12 +53,12 @@ Previous session completed:
 
 **Solution:**
 
-1. **Bootstrap API Key** (`test-agent.sh`)
+1. **Bootstrap API Key** (`deploy-lumo.sh`)
    - Hash agent token with SHA-256
    - Insert API key with full permissions
    - Commit: `95f0f34`
 
-2. **System Agent Creation** (`test-agent.sh`)
+2. **System Agent Creation** (`deploy-lumo.sh`)
    - Create agent with `uuid.Nil` (all zeros)
    - Satisfies foreign key constraint for events
    - Labels: `{"type": "system", "auth": "api-key"}`
@@ -149,7 +149,7 @@ SELECT event_type, severity, COUNT(*) FROM events GROUP BY event_type, severity;
 1. `deployments/kubernetes/base/deployment-agent.yaml` - 7 fixes (naming, config, cache, env vars)
 2. `deployments/kubernetes/base/configmap-agent.yaml` - Renamed, cache path added
 3. `deployments/kubernetes/base/service.yaml` - Consolidated naming
-4. `deployments/kubernetes/kind/test-agent.sh` - Redis deployment, bootstrap function, bash fixes
+4. `deployments/kubernetes/kind/deploy-lumo.sh` - Redis deployment, bootstrap function, bash fixes
 5. `internal/config/config.go` - Viper bindings, mode validation
 6. `internal/api/handlers/events.go` - Optional agent_id for API key auth
 
@@ -186,10 +186,10 @@ INSERT INTO agents (id, name, hostname, platform, status, labels) VALUES (
 cd deployments/kubernetes/kind
 
 # Fresh deployment (all steps)
-./test-agent.sh
+./deploy-lumo.sh
 
 # Skip existing cluster/images
-SKIP_CLUSTER_SETUP=true SKIP_BUILD=true ./test-agent.sh
+SKIP_CLUSTER_SETUP=true SKIP_BUILD=true ./deploy-lumo.sh
 
 # Check status
 kubectl get pods -n lumo-system

@@ -21,6 +21,8 @@ SKIP_BUILD="${SKIP_BUILD:-false}"
 SKIP_DEPLOY="${SKIP_DEPLOY:-false}"
 SKIP_INFRASTRUCTURE="${SKIP_INFRASTRUCTURE:-false}"
 SKIP_API="${SKIP_API:-false}"
+SKIP_MONITORING="${SKIP_MONITORING:-false}"
+WITH_MONITORING="${WITH_MONITORING:-false}"
 
 # Functions
 log_info() {
@@ -825,6 +827,8 @@ Options:
   --skip-infrastructure  Skip PostgreSQL deployment
   --skip-api             Skip API server deployment
   --skip-deploy          Skip agent deployment
+  --with-monitoring      Deploy Prometheus + Grafana monitoring stack
+  --skip-monitoring      Skip monitoring deployment (if --with-monitoring is set)
   --cluster-name         Name of kind cluster (default: lumo-test)
   --namespace            Kubernetes namespace (default: lumo-system)
   -h, --help             Show this help message
@@ -835,12 +839,16 @@ Environment variables:
   SKIP_INFRASTRUCTURE     Set to 'true' to skip PostgreSQL deployment
   SKIP_API                Set to 'true' to skip API server deployment
   SKIP_DEPLOY             Set to 'true' to skip agent deployment
+  WITH_MONITORING         Set to 'true' to deploy monitoring stack
   KIND_CLUSTER_NAME       Name of kind cluster
   LUMO_NAMESPACE          Kubernetes namespace
 
 Examples:
   # Full stack deployment (recommended)
   $0
+
+  # Full stack with monitoring (Prometheus + Grafana)
+  $0 --with-monitoring
 
   # Use existing cluster but rebuild everything
   $0 --skip-cluster
@@ -877,6 +885,14 @@ parse_args() {
                 SKIP_DEPLOY=true
                 shift
                 ;;
+            --skip-monitoring)
+                SKIP_MONITORING=true
+                shift
+                ;;
+            --with-monitoring)
+                WITH_MONITORING=true
+                shift
+                ;;
             --cluster-name)
                 CLUSTER_NAME="$2"
                 shift 2
@@ -896,6 +912,49 @@ parse_args() {
                 ;;
         esac
     done
+}
+
+deploy_monitoring() {
+    if [ "$WITH_MONITORING" != "true" ]; then
+        log_info "Skipping monitoring (use --with-monitoring to enable)"
+        return 0
+    fi
+
+    if [ "$SKIP_MONITORING" = "true" ]; then
+        log_info "Skipping monitoring deployment (SKIP_MONITORING=true)"
+        return 0
+    fi
+
+    echo "========================================"
+    echo "  Deploying Monitoring Stack"
+    echo "========================================"
+
+    local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local MONITORING_DIR="${SCRIPT_DIR}/../monitoring"
+
+    if [ ! -f "${MONITORING_DIR}/deploy-monitoring.sh" ]; then
+        log_error "Monitoring deploy script not found at ${MONITORING_DIR}/deploy-monitoring.sh"
+        return 1
+    fi
+
+    log_info "Deploying Prometheus and Grafana..."
+    bash "${MONITORING_DIR}/deploy-monitoring.sh" --with-prometheus
+
+    # Wait for Grafana to be ready
+    log_info "Waiting for Grafana to be ready..."
+    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=grafana -n monitoring --timeout=120s 2>/dev/null || {
+        log_error "Grafana failed to become ready"
+        kubectl get pods -n monitoring
+        return 1
+    }
+
+    log_success "Monitoring stack deployed successfully"
+
+    echo ""
+    log_info "Access Grafana:"
+    echo "  kubectl port-forward -n monitoring svc/grafana 3000:80"
+    echo "  Open: http://localhost:3000 (admin/admin)"
+    echo ""
 }
 
 main() {
@@ -921,6 +980,9 @@ main() {
     echo ""
 
     deploy_agent
+    echo ""
+
+    deploy_monitoring
     echo ""
 
     run_component_tests

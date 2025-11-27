@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
@@ -151,6 +152,9 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 	agentsHandler := handlers.NewAgentsHandler(agentRepo, logger)
 	approvalsHandler := handlers.NewApprovalsHandler(approvalRepo, logger)
 	eventsHandler := handlers.NewEventsHandler(eventRepo, agentRepo, aiProvider, notifiers, logger, aiEnabled, notifEnabled)
+
+	// Prometheus metrics endpoint (public, no auth required)
+	r.Handle("/metrics", promhttp.Handler())
 
 	// API v1 routes
 	r.Route("/api/v1", func(r chi.Router) {
