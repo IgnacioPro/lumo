@@ -1,0 +1,86 @@
+====================================================================
+  Lumo Full Stack Deployment - Successfully Installed!
+====================================================================
+
+Release Name: {{ .Release.Name }}
+Namespace:    {{ .Values.global.namespace }}
+Version:      {{ .Chart.Version }}
+App Version:  {{ .Chart.AppVersion }}
+
+Deployed Components:
+{{- if .Values.postgresql.enabled }}
+  ✓ PostgreSQL (embedded for testing)
+{{- else if .Values.externalPostgresql.enabled }}
+  ✓ PostgreSQL (external: {{ .Values.externalPostgresql.host }}:{{ .Values.externalPostgresql.port }})
+{{- end }}
+{{- if .Values.redis.enabled }}
+  ✓ Redis (embedded for testing)
+{{- else if .Values.externalRedis.enabled }}
+  ✓ Redis (external: {{ .Values.externalRedis.host }}:{{ .Values.externalRedis.port }})
+{{- end }}
+{{- if .Values.api.enabled }}
+  ✓ Lumo API Server ({{ .Values.api.replicas }} replica{{ if gt .Values.api.replicas 1.0 }}s{{ end }})
+{{- end }}
+{{- if .Values.agent.enabled }}
+  ✓ Lumo Agent ({{ .Values.agent.replicas }} replica{{ if gt .Values.agent.replicas 1.0 }}s{{ end }}, mode: {{ .Values.agent.mode }})
+{{- end }}
+
+====================================================================
+  Next Steps
+====================================================================
+
+1. Check deployment status:
+   kubectl get pods -n {{ .Values.global.namespace }} -w
+
+2. View API server logs:
+   kubectl logs -f -n {{ .Values.global.namespace }} -l app.kubernetes.io/component=api
+
+3. View agent logs:
+   kubectl logs -f -n {{ .Values.global.namespace }} -l app.kubernetes.io/component=agent
+
+4. Access API server (port-forward):
+   kubectl port-forward -n {{ .Values.global.namespace }} svc/lumo-api {{ .Values.api.service.port }}:{{ .Values.api.service.port }}
+   curl http://localhost:{{ .Values.api.service.port }}/api/v1/health
+
+5. Check Prometheus metrics:
+   kubectl port-forward -n {{ .Values.global.namespace }} svc/lumo-agent-metrics 9090:9090
+   curl http://localhost:9090/metrics
+
+====================================================================
+  Configuration
+====================================================================
+
+AI Provider:  {{ .Values.ai.provider }}
+AI Enabled:   {{ .Values.ai.enabled }}
+RBAC Created: {{ .Values.rbac.create }}
+Remediation:  {{ .Values.rbac.enableRemediation }}
+
+{{- if .Values.postgresql.enabled }}
+
+⚠️  PRODUCTION WARNING ⚠️
+You are using the embedded PostgreSQL deployment. For production:
+  1. Set postgresql.enabled=false
+  2. Enable externalPostgresql with your managed database
+  3. Configure proper persistence and backups
+{{- end }}
+
+{{- if .Values.redis.enabled }}
+
+⚠️  PRODUCTION WARNING ⚠️
+You are using the embedded Redis deployment. For production:
+  1. Set redis.enabled=false
+  2. Enable externalRedis with your managed cache
+  3. Configure proper persistence and backups
+{{- end }}
+
+====================================================================
+  Documentation
+====================================================================
+
+Project:      https://github.com/ignacio/lumo
+Issues:       https://github.com/ignacio/lumo/issues
+Examples:     See examples/ directory for usage patterns
+
+For support, visit: https://github.com/ignacio/lumo/discussions
+
+====================================================================

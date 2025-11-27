@@ -1,0 +1,267 @@
+# Default values for lumo-stack
+# This is a YAML-formatted file for the complete Lumo deployment.
+
+global:
+  namespace: lumo-system
+
+# PostgreSQL (embedded for testing, disable for production with managed databases)
+postgresql:
+  enabled: true
+
+  image:
+    repository: postgres
+    tag: 15-alpine
+    pullPolicy: IfNotPresent
+
+  auth:
+    database: lumo
+    username: lumo
+    password: ""  # REQUIRED: Set via --set postgresql.auth.password or use externalPostgresql
+
+  persistence:
+    enabled: false  # Set to true for production
+    size: 8Gi
+    storageClass: ""
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# External PostgreSQL (production - managed database)
+externalPostgresql:
+  enabled: false
+  host: ""        # e.g., postgres.database.svc.cluster.local or RDS endpoint
+  port: 5432
+  database: lumo
+  username: lumo
+  password: ""    # REQUIRED if enabled
+  sslMode: require  # disable|allow|prefer|require|verify-ca|verify-full
+
+# Redis (embedded for testing, disable for production with managed Redis)
+redis:
+  enabled: true
+
+  image:
+    repository: redis
+    tag: 7-alpine
+    pullPolicy: IfNotPresent
+
+  persistence:
+    enabled: false  # Set to true for production
+    size: 2Gi
+    storageClass: ""
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# External Redis (production - managed Redis)
+externalRedis:
+  enabled: false
+  host: ""        # e.g., redis.cache.svc.cluster.local or ElastiCache endpoint
+  port: 6379
+  password: ""    # Optional
+  tls: false
+
+# Lumo API Server
+api:
+  enabled: true
+  replicas: 1
+
+  image:
+    repository: ghcr.io/ignacio/lumo-api
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  # JWT secret for API authentication (REQUIRED)
+  jwtSecret: ""   # Set via --set api.jwtSecret or use secret reference
+
+  # Database migrations
+  migrations:
+    enabled: true
+    runOnUpgrade: true
+
+  service:
+    type: ClusterIP
+    port: 8080
+    targetPort: 8080
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1000
+    capabilities:
+      drop:
+        - ALL
+
+# Lumo Agent (event-driven monitoring)
+agent:
+  enabled: true
+  replicas: 2  # HA deployment
+
+  image:
+    repository: ghcr.io/ignacio/lumo-agent
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  # Agent authentication token (REQUIRED)
+  token: ""  # Set via --set agent.token or use secret reference
+
+  # Operational mode (event-driven is recommended for Kubernetes)
+  mode: event-driven
+
+  # Event-driven configuration
+  eventDriven:
+    enabled: true
+    debounceWindow: 45s
+    maxDebounceWindow: 3m
+    resyncPeriod: 0s  # Pure event-driven (no polling)
+    groupRelatedEvents: true
+    maxEventsPerMin: 100
+    minSeverity: low
+
+    # Resource watchers
+    watchPodEvents: true
+    watchWorkloads: true
+    watchVolumes: true
+    watchNodes: true
+    watchEvents: true
+
+  # Enabled diagnostic checks
+  enabledChecks:
+    - cpu
+    - memory
+    - disk
+    - process
+    - service
+    - network
+    - kubernetes
+
+  # Kubernetes configuration
+  kubernetes:
+    enabled: true
+    scope: cluster  # cluster-wide monitoring
+
+  # Cache configuration
+  cache:
+    enabled: true
+    ttl: 5m
+    maxSize: 100
+
+  # Health and metrics
+  healthCheckPort: 8080
+  metricsPort: 9090
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+  # Pod anti-affinity for HA
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - agent
+            topologyKey: kubernetes.io/hostname
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1000
+    capabilities:
+      drop:
+        - ALL
+
+# AI Configuration
+ai:
+  provider: anthropic  # anthropic|openai|gemini|ollama|openrouter
+  enabled: true
+
+  # API keys (use secret references in production)
+  keys:
+    anthropic: ""
+    openai: ""
+    gemini: ""
+    openrouter: ""
+
+# RBAC configuration
+rbac:
+  create: true
+
+  # Enable remediation permissions (write access to K8s resources)
+  # WARNING: Grants write permissions. Enable only if auto-remediation is required.
+  enableRemediation: false
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: "lumo-agent"
+
+# NetworkPolicy
+networkPolicy:
+  enabled: true
+  monitoringNamespace: monitoring
+  apiNamespace: lumo-system
+
+# Prometheus monitoring
+prometheus:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+
+# Additional labels to add to all resources
+labels: {}
+
+# Additional annotations to add to all resources
+annotations: {}
+
+# Pod annotations
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
+  prometheus.io/path: "/metrics"

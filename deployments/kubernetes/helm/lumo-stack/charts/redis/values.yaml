@@ -1,0 +1,22 @@
+# Redis sub-chart values
+# These are inherited from parent lumo-stack chart
+
+enabled: true
+
+image:
+  repository: redis
+  tag: 7-alpine
+  pullPolicy: IfNotPresent
+
+persistence:
+  enabled: false
+  size: 2Gi
+  storageClass: ""
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi

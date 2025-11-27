@@ -1,0 +1,13 @@
+apiVersion: v2
+name: postgresql
+description: PostgreSQL database for Lumo (testing only - use managed DB in production)
+type: application
+version: 1.0.0
+appVersion: "15"
+
+keywords:
+  - postgresql
+  - database
+  - lumo
+
+kubeVersion: ">=1.24.0-0"

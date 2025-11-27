@@ -1,0 +1,13 @@
+apiVersion: v2
+name: redis
+description: Redis cache for Lumo (testing only - use managed Redis in production)
+type: application
+version: 1.0.0
+appVersion: "7"
+
+keywords:
+  - redis
+  - cache
+  - lumo
+
+kubeVersion: ">=1.24.0-0"

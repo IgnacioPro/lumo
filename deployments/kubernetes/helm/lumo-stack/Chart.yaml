@@ -1,0 +1,66 @@
+apiVersion: v2
+name: lumo-stack
+description: Complete Lumo SRE/DevOps automation stack for Kubernetes
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - lumo
+  - sre
+  - devops
+  - automation
+  - monitoring
+  - ai
+  - kubernetes
+  - observability
+
+home: https://github.com/ignacio/lumo
+sources:
+  - https://github.com/ignacio/lumo
+
+maintainers:
+  - name: Lumo Team
+    email: lumo@example.com
+
+icon: https://raw.githubusercontent.com/ignacio/lumo/main/assets/logo.png
+
+kubeVersion: ">=1.24.0-0"
+
+dependencies: []
+
+annotations:
+  category: Monitoring
+
+  capabilities: |
+    - Full stack deployment (PostgreSQL, Redis, API Server, Agent)
+    - System diagnostics (CPU, memory, disk, network, processes, services)
+    - Kubernetes monitoring (pods, nodes, deployments, statefulsets, jobs)
+    - Event-driven monitoring with <60s latency
+    - AI-powered analysis (Anthropic Claude, OpenAI, Gemini, OpenRouter, Ollama)
+    - Auto-remediation with human-in-the-loop approval
+    - TOON format for 30-60% AI token reduction
+    - Prometheus metrics export
+    - Multi-channel notifications (Slack, Telegram, Email, Webhook)
+
+  licenses: MIT
+
+  artifacthub.io/changes: |
+    - kind: added
+      description: Umbrella chart for full Lumo stack deployment
+    - kind: added
+      description: Embedded PostgreSQL and Redis for testing
+    - kind: added
+      description: External database support for production
+    - kind: added
+      description: Lumo API server deployment
+    - kind: added
+      description: Event-driven agent deployment with HA
+    - kind: added
+      description: Configurable AI providers (5 supported)
+    - kind: added
+      description: Secrets management via values
+
+  artifacthub.io/containsSecurityUpdates: "false"
+  artifacthub.io/prerelease: "false"
+  artifacthub.io/operator: "false"

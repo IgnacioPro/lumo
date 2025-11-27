@@ -1,0 +1,99 @@
+{{- if .Values.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: postgres
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: lumo
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # Required for volume mounts
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/component: database
+    spec:
+      securityContext:
+        fsGroup: 999  # postgres group
+        runAsNonRoot: true
+        runAsUser: 999  # postgres user
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: postgres
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: POSTGRES_DB
+          value: {{ .Values.auth.database }}
+        - name: POSTGRES_USER
+          value: {{ .Values.auth.username }}
+        - name: POSTGRES_PASSWORD
+          value: {{ .Values.auth.password | quote }}
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - name: postgresql
+          containerPort: 5432
+          protocol: TCP
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U {{ .Values.auth.username }}
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U {{ .Values.auth.username }}
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false  # PostgreSQL needs to write to data dir
+          runAsNonRoot: true
+          runAsUser: 999
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        - name: tmp
+          mountPath: /tmp
+        - name: run
+          mountPath: /var/run/postgresql
+      volumes:
+      - name: data
+        {{- if .Values.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: postgres-data
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+      - name: tmp
+        emptyDir: {}
+      - name: run
+        emptyDir: {}
+{{- end }}

@@ -1,0 +1,76 @@
+apiVersion: v2
+name: lumo-agent
+description: Lumo Agent - Intelligent SRE/DevOps automation for Kubernetes
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - monitoring
+  - diagnostics
+  - sre
+  - devops
+  - automation
+  - ai
+  - observability
+
+home: https://github.com/ignacio/lumo
+sources:
+  - https://github.com/ignacio/lumo
+
+maintainers:
+  - name: Lumo Team
+    email: lumo@example.com
+
+icon: https://raw.githubusercontent.com/ignacio/lumo/main/assets/logo.png
+
+kubeVersion: ">=1.24.0-0"
+
+dependencies: []
+
+annotations:
+  # Category for Artifact Hub
+  category: Monitoring
+
+  # Capabilities
+  capabilities: |
+    - System diagnostics (CPU, memory, disk, network, processes, services)
+    - Kubernetes monitoring (pods, nodes, deployments, statefulsets, jobs)
+    - AI-powered analysis (Anthropic Claude, OpenAI, Gemini, OpenRouter, Ollama)
+    - Auto-remediation with human-in-the-loop approval
+    - TOON format for 30-60% AI token reduction
+    - Prometheus metrics export
+    - Offline mode support
+
+  # License
+  licenses: MIT
+
+  # Changelog
+  artifacthub.io/changes: |
+    - kind: added
+      description: Initial release with DaemonSet and Deployment support
+    - kind: added
+      description: RBAC configuration with least-privilege access
+    - kind: added
+      description: NetworkPolicy for security
+    - kind: added
+      description: Prometheus metrics integration
+    - kind: added
+      description: Configurable AI providers (5 supported)
+    - kind: added
+      description: TOON format support for token efficiency
+
+  # Images
+  artifacthub.io/containsSecurityUpdates: "false"
+  artifacthub.io/prerelease: "false"
+  artifacthub.io/recommendations: |
+    - url: https://github.com/ignacio/lumo
+
+  # Operator support
+  artifacthub.io/operator: "false"
+  artifacthub.io/operatorCapabilities: Basic Install
+
+  # Screenshots (when available)
+  # artifacthub.io/screenshots: |
+  #   - title: Lumo Dashboard
+  #     url: https://raw.githubusercontent.com/ignacio/lumo/main/docs/screenshots/dashboard.png

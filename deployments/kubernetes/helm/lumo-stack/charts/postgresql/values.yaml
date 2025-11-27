@@ -1,0 +1,27 @@
+# PostgreSQL sub-chart values
+# These are inherited from parent lumo-stack chart
+
+enabled: true
+
+image:
+  repository: postgres
+  tag: 15-alpine
+  pullPolicy: IfNotPresent
+
+auth:
+  database: lumo
+  username: lumo
+  password: ""  # Inherited from parent
+
+persistence:
+  enabled: false
+  size: 8Gi
+  storageClass: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

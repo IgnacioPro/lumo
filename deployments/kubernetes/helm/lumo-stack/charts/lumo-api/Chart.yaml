@@ -1,0 +1,14 @@
+apiVersion: v2
+name: lumo-api
+description: Lumo API Server - Central intelligence and coordination
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - lumo
+  - api
+  - sre
+  - devops
+
+kubeVersion: ">=1.24.0-0"
