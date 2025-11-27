@@ -240,6 +240,16 @@ func (r *EventRepository) List(ctx context.Context, filters map[string]interface
 		query += fmt.Sprintf(" AND severity = $%d", argCount)
 		args = append(args, severity)
 		argCount++
+	} else if severities, ok := filters["severities"].([]models.EventSeverity); ok && len(severities) > 0 {
+		// Support multiple severities with IN clause
+		query += fmt.Sprintf(" AND severity = ANY($%d)", argCount)
+		// Convert to string slice for pq.Array
+		strSeverities := make([]string, len(severities))
+		for i, s := range severities {
+			strSeverities[i] = string(s)
+		}
+		args = append(args, pq.Array(strSeverities))
+		argCount++
 	}
 
 	if eventType, ok := filters["event_type"].(string); ok {
@@ -295,17 +305,20 @@ func (r *EventRepository) List(ctx context.Context, filters map[string]interface
 		}
 	}
 
-	// Sorting
-	if sort, ok := filters["sort"].(string); ok && sort != "" {
-		switch sort {
-		case "event_timestamp", "created_at", "severity", "event_type":
-			query += " ORDER BY " + sort + " DESC"
-		default:
-			query += " ORDER BY event_timestamp DESC"
-		}
-	} else {
-		query += " ORDER BY event_timestamp DESC"
+	// Sorting - use safe column mapping to prevent SQL injection
+	sortColumnMap := map[string]string{
+		"event_timestamp": "event_timestamp",
+		"created_at":      "created_at",
+		"severity":        "severity",
+		"event_type":      "event_type",
 	}
+	sortColumn := "event_timestamp" // default
+	if sort, ok := filters["sort"].(string); ok && sort != "" {
+		if col, valid := sortColumnMap[sort]; valid {
+			sortColumn = col
+		}
+	}
+	query += " ORDER BY " + sortColumn + " DESC"
 
 	// Pagination
 	if limit, ok := filters["limit"].(int); ok && limit > 0 {

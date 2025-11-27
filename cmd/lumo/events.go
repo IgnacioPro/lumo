@@ -18,6 +18,13 @@ import (
 	"github.com/ignacio/lumo/internal/database/repository"
 )
 
+const (
+	// MaxEventLimit prevents DoS via excessive result sets
+	MaxEventLimit = 10000
+	// DefaultEventLimit is the default number of events to return
+	DefaultEventLimit = 20
+)
+
 var eventsCmd = &cobra.Command{
 	Use:   "events",
 	Short: "Query events from the database",
@@ -50,7 +57,7 @@ func init() {
 	rootCmd.AddCommand(eventsCmd)
 
 	// Query filters
-	eventsCmd.Flags().IntP("limit", "l", 20, "Maximum number of events to return")
+	eventsCmd.Flags().IntP("limit", "l", DefaultEventLimit, "Maximum number of events to return (max: 10000)")
 	eventsCmd.Flags().StringP("severity", "s", "", "Filter by severity (low, medium, high, critical) - comma-separated for multiple")
 	eventsCmd.Flags().StringP("type", "t", "", "Filter by event type (e.g., oom-killed, crash-loop-backoff)")
 	eventsCmd.Flags().StringP("namespace", "n", "", "Filter by Kubernetes namespace")
@@ -102,32 +109,32 @@ func runEvents(cmd *cobra.Command, args []string) error {
 	// Parse flags and build filters
 	filters := make(map[string]interface{})
 
-	// Limit
+	// Limit with bounds validation
 	limit, _ := cmd.Flags().GetInt("limit")
-	if limit > 0 {
-		filters["limit"] = limit
+	if limit <= 0 {
+		limit = DefaultEventLimit
 	}
+	if limit > MaxEventLimit {
+		log.Warnf("Limit %d exceeds maximum (%d), using maximum", limit, MaxEventLimit)
+		limit = MaxEventLimit
+	}
+	filters["limit"] = limit
 
-	// Severity filter
+	// Severity filter (supports multiple comma-separated values)
 	if severityStr, _ := cmd.Flags().GetString("severity"); severityStr != "" {
-		// Support multiple severities comma-separated
 		severities := strings.Split(severityStr, ",")
-		if len(severities) == 1 {
-			// Single severity
-			severity := models.EventSeverity(strings.TrimSpace(severities[0]))
+		validSeverities := make([]models.EventSeverity, 0, len(severities))
+		for _, s := range severities {
+			severity := models.EventSeverity(strings.TrimSpace(s))
 			if !isValidSeverity(severity) {
 				return fmt.Errorf("invalid severity: %s (must be: low, medium, high, critical)", severity)
 			}
-			filters["severity"] = severity
+			validSeverities = append(validSeverities, severity)
+		}
+		if len(validSeverities) == 1 {
+			filters["severity"] = validSeverities[0]
 		} else {
-			// Multiple severities - we'll need to query multiple times and combine
-			// For now, use the first one and log a warning
-			log.Warn("Multiple severity filtering not yet supported, using first severity only")
-			severity := models.EventSeverity(strings.TrimSpace(severities[0]))
-			if !isValidSeverity(severity) {
-				return fmt.Errorf("invalid severity: %s (must be: low, medium, high, critical)", severity)
-			}
-			filters["severity"] = severity
+			filters["severities"] = validSeverities
 		}
 	}
 
@@ -193,89 +200,23 @@ func outputTable(events []*models.Event, noAnalysis, showMetadata bool) error {
 		_ = w.Flush()
 	}()
 
-	// Header
-	if noAnalysis && !showMetadata {
-		_, _ = fmt.Fprintln(w, "EVENT TYPE\tSEVERITY\tRESOURCE\tNAMESPACE\tTIMESTAMP")
-	} else if noAnalysis && showMetadata {
-		_, _ = fmt.Fprintln(w, "EVENT TYPE\tSEVERITY\tRESOURCE\tNAMESPACE\tMETADATA\tTIMESTAMP")
-	} else if !noAnalysis && showMetadata {
-		_, _ = fmt.Fprintln(w, "EVENT TYPE\tSEVERITY\tRESOURCE\tNAMESPACE\tMETADATA\tAI ANALYSIS\tTIMESTAMP")
-	} else {
-		_, _ = fmt.Fprintln(w, "EVENT TYPE\tSEVERITY\tRESOURCE\tNAMESPACE\tAI ANALYSIS\tTIMESTAMP")
+	// Build columns dynamically based on options
+	columns := []string{"EVENT TYPE", "SEVERITY", "RESOURCE", "NAMESPACE"}
+	if showMetadata {
+		columns = append(columns, "METADATA")
 	}
+	if !noAnalysis {
+		columns = append(columns, "AI ANALYSIS")
+	}
+	columns = append(columns, "TIMESTAMP")
+
+	// Print header
+	_, _ = fmt.Fprintln(w, strings.Join(columns, "\t"))
 
 	// Rows
 	for _, event := range events {
-		// Format resource name
-		resource := fmt.Sprintf("%s/%s", event.ResourceKind, event.ResourceName)
-
-		// Format namespace
-		namespace := "-"
-		if event.Namespace != nil && *event.Namespace != "" {
-			namespace = *event.Namespace
-		}
-
-		// Format timestamp
-		timestamp := event.EventTimestamp.Format("2006-01-02 15:04:05")
-
-		// Format AI analysis status
-		aiStatus := "No"
-		if event.HasAIAnalysis() {
-			aiStatus = "Yes"
-		}
-
-		// Format metadata
-		metadata := "-"
-		if showMetadata && event.Metadata != nil {
-			metaJSON, err := json.Marshal(event.Metadata)
-			if err == nil {
-				// Truncate if too long
-				metaStr := string(metaJSON)
-				if len(metaStr) > 40 {
-					metaStr = metaStr[:37] + "..."
-				}
-				metadata = metaStr
-			}
-		}
-
-		// Print row based on column selection
-		if noAnalysis && !showMetadata {
-			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-				event.EventType,
-				event.Severity,
-				resource,
-				namespace,
-				timestamp,
-			)
-		} else if noAnalysis && showMetadata {
-			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				event.EventType,
-				event.Severity,
-				resource,
-				namespace,
-				metadata,
-				timestamp,
-			)
-		} else if !noAnalysis && showMetadata {
-			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				event.EventType,
-				event.Severity,
-				resource,
-				namespace,
-				metadata,
-				aiStatus,
-				timestamp,
-			)
-		} else {
-			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				event.EventType,
-				event.Severity,
-				resource,
-				namespace,
-				aiStatus,
-				timestamp,
-			)
-		}
+		row := formatEventRow(event, noAnalysis, showMetadata)
+		_, _ = fmt.Fprintln(w, strings.Join(row, "\t"))
 	}
 
 	// Summary
@@ -283,6 +224,46 @@ func outputTable(events []*models.Event, noAnalysis, showMetadata bool) error {
 	_, _ = fmt.Fprintf(w, "Total events: %d\n", len(events))
 
 	return nil
+}
+
+// formatEventRow formats a single event as a slice of column values
+func formatEventRow(event *models.Event, noAnalysis, showMetadata bool) []string {
+	// Base columns
+	resource := fmt.Sprintf("%s/%s", event.ResourceKind, event.ResourceName)
+	namespace := "-"
+	if event.Namespace != nil && *event.Namespace != "" {
+		namespace = *event.Namespace
+	}
+	timestamp := event.EventTimestamp.Format("2006-01-02 15:04:05")
+
+	row := []string{event.EventType, string(event.Severity), resource, namespace}
+
+	// Optional metadata column
+	if showMetadata {
+		metadata := "-"
+		if event.Metadata != nil {
+			if metaJSON, err := json.Marshal(event.Metadata); err == nil {
+				metaStr := string(metaJSON)
+				if len(metaStr) > 40 {
+					metaStr = metaStr[:37] + "..."
+				}
+				metadata = metaStr
+			}
+		}
+		row = append(row, metadata)
+	}
+
+	// Optional AI analysis column
+	if !noAnalysis {
+		aiStatus := "No"
+		if event.HasAIAnalysis() {
+			aiStatus = "Yes"
+		}
+		row = append(row, aiStatus)
+	}
+
+	row = append(row, timestamp)
+	return row
 }
 
 func outputJSON(events []*models.Event) error {
