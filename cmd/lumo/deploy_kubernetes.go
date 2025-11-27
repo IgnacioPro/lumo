@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/ignacio/lumo/internal/deploy/helm"
+	"github.com/ignacio/lumo/internal/deploy/kind"
 	"github.com/ignacio/lumo/internal/deploy/kubernetes"
 )
 
@@ -170,12 +172,10 @@ func runDeployKubernetes(cmd *cobra.Command, args []string) error {
 
 	// Step 1: Kind setup (if requested)
 	if config.UseKind {
-		logger.Info("Note: Kind integration not yet implemented")
-		logger.Info("Please create Kind cluster manually and use --kubeconfig flag")
-		// TODO: Implement kind cluster creation
-		// if err := setupKindCluster(ctx, config, logger); err != nil {
-		// 	return fmt.Errorf("kind cluster setup: %w", err)
-		// }
+		logger.Info("Setting up Kind cluster for local testing...")
+		if err := setupKindCluster(ctx, config, logger); err != nil {
+			return fmt.Errorf("kind cluster setup: %w", err)
+		}
 	}
 
 	// Step 2: Initialize Kubernetes client
@@ -371,7 +371,67 @@ func printDeploymentSummary(config *helm.DeploymentConfig, logger *logrus.Logger
 	logger.Infof("  2. View API logs: kubectl logs -f -n %s -l app=lumo-api", config.Namespace)
 	logger.Infof("  3. View agent logs: kubectl logs -f -n %s -l app.kubernetes.io/component=agent", config.Namespace)
 	logger.Infof("  4. Access API: kubectl port-forward -n %s svc/lumo-api 8080:8080", config.Namespace)
+	if config.UseKind {
+		logger.Info("")
+		logger.Info("Kind Cluster Management:")
+		logger.Infof("  - Delete cluster: kind delete cluster --name %s", config.KindCluster)
+		logger.Infof("  - Get kubeconfig: kind get kubeconfig --name %s", config.KindCluster)
+	}
 	logger.Info("")
 	logger.Info("For more information, visit: https://github.com/ignacio/lumo")
 	logger.Info("========================================")
+}
+
+// setupKindCluster sets up a Kind cluster for local testing
+func setupKindCluster(ctx context.Context, config *helm.DeploymentConfig, logger *logrus.Logger) error {
+	kindClient := kind.NewClient(logger)
+
+	// Check prerequisites
+	if err := kindClient.CheckPrerequisites(ctx); err != nil {
+		return fmt.Errorf("prerequisites check failed: %w", err)
+	}
+
+	// Create cluster configuration
+	clusterConfig := kind.ClusterConfig{
+		Name:              config.KindCluster,
+		KubernetesVersion: "v1.28.0", // Match the bash script default
+		NumWorkers:        2,         // 2 worker nodes as in bash script
+		WaitTimeout:       2 * time.Minute,
+	}
+
+	// Create cluster (will skip if already exists)
+	if err := kindClient.CreateCluster(ctx, clusterConfig); err != nil {
+		return fmt.Errorf("cluster creation failed: %w", err)
+	}
+
+	// Build and load Docker images
+	logger.Info("Building and loading Docker images into Kind cluster...")
+	if err := kindClient.BuildAndLoadImages(ctx, config.KindCluster); err != nil {
+		return fmt.Errorf("image build/load failed: %w", err)
+	}
+
+	// Get kubeconfig for the Kind cluster
+	kubeconfig, err := kindClient.GetKubeconfig(config.KindCluster)
+	if err != nil {
+		return fmt.Errorf("failed to get kubeconfig: %w", err)
+	}
+
+	// Update config to use Kind kubeconfig
+	config.Kubeconfig = kubeconfig
+	config.Context = fmt.Sprintf("kind-%s", config.KindCluster)
+
+	logger.Infof("✓ Kind cluster '%s' is ready", config.KindCluster)
+	logger.Debugf("Kubeconfig: %s", kubeconfig)
+
+	// Update image tags to use local images for Kind
+	if config.APIImage == "ghcr.io/ignacio/lumo-api:latest" {
+		config.APIImage = "lumo:local"
+		logger.Debug("Using local API image: lumo:local")
+	}
+	if config.AgentImage == "ghcr.io/ignacio/lumo-agent:latest" {
+		config.AgentImage = "lumo-agent:local"
+		logger.Debug("Using local Agent image: lumo-agent:local")
+	}
+
+	return nil
 }

@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-26 (Phase 15b Complete - Coverage Improvements) | **Version:** 1.0.0 | **Status:** Phase 15 Complete ✅ | Phase 15b Complete ✅ | Phase 16 Complete ✅ | Phase 11c Pending ⏳ | **Full Stack K8s + Event-Driven + Circuit Breakers + Full Test Coverage** 🚀
+> **Last Updated:** 2025-11-27 (Native K8s Deployment Command) | **Version:** 1.0.0 | **Status:** Phase 15 Complete ✅ | Phase 15b Complete ✅ | Phase 16 Complete ✅ | **Native Deployment Command** 🚀 | Phase 11c Pending ⏳ | **Full Stack K8s + Event-Driven + Circuit Breakers + Full Test Coverage**
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -33,7 +33,7 @@ Always run `make ci` before committing (linters, security checks, tests, builds)
 ```
 lumo/
 ├── cmd/
-│   ├── lumo/                          # CLI: init, doctor, ask, diagnose, fix, serve, examples
+│   ├── lumo/                          # CLI: init, doctor, ask, diagnose, fix, serve, deploy, examples
 │   └── lumo-agent/                    # Agent daemon: scheduler, reporter, health, metrics
 ├── internal/
 │   ├── config/                        # Configuration + env var hierarchy
@@ -48,6 +48,10 @@ lumo/
 │   ├── cache/                         # Redis client
 │   ├── agent/                         # Scheduling, reporting, caching, health
 │   │   └── eventdriven/               # Event-driven K8s monitoring (informers, watchers, debouncer)
+│   ├── deploy/                        # Native deployment automation
+│   │   ├── helm/                      # Helm client wrapper + values generation
+│   │   ├── kubernetes/                # K8s client, health checks, bootstrapping
+│   │   └── kind/                      # Kind cluster operations (TODO)
 │   ├── grpc/                          # gRPC server/client, handlers, interceptors, mTLS
 │   ├── intelligence/                  # RAG: vectorstore, embeddings, ingestion
 │   ├── doctor/                        # Health check system (6 checks)
@@ -83,7 +87,9 @@ Total: 139 Go files + 83 test files | Coverage: 47.7% internal packages | Verifi
 **API:** Chi router v5, JWT auth, rate limiting, request validation
 **gRPC:** google.golang.org/grpc, Protocol Buffers, mTLS, JWT interceptors
 **RAG:** chromem-go (local vector store), OpenAI embeddings
-**Kubernetes:** k8s.io/client-go (native, no kubectl), SharedInformerFactory (event-driven)
+**Kubernetes:** k8s.io/client-go v0.34.0 (native, no kubectl), SharedInformerFactory (event-driven)
+**Helm:** helm.sh/helm/v3 v3.19.2 (native SDK for chart deployment)
+**Kind:** sigs.k8s.io/kind v0.25.0 (local testing clusters with programmatic API)
 **Agent:** robfig/cron/v3 (scheduling), Prometheus client (metrics), event-driven informers
 **Observability:** OpenTelemetry (tracing), Prometheus (metrics), structured logging
 **Notifications:** 4 providers (Slack, Telegram, Webhook, Email)
@@ -166,6 +172,7 @@ See [configs/config.example.yaml](configs/config.example.yaml) and [configs/noti
 | `events` | ✅ | Query Kubernetes events from PostgreSQL database |
 | `fix` | ✅ | Auto-remediation with approval |
 | `serve` | ✅ | API server (Phase 7) |
+| `deploy kubernetes` | ✅ | Native K8s deployment via Helm (full stack or components) |
 | `report` | ⏳ | Report generation (planned) |
 
 ### lumo-agent Daemon
@@ -175,6 +182,284 @@ See [configs/config.example.yaml](configs/config.example.yaml) and [configs/noti
 | `lumo-agent` | ✅ | Agent daemon with hybrid scheduled/on-demand/continuous modes |
 | `lumo-agent version` | ✅ | Display agent version |
 | `lumo-agent health` | ✅ | Check agent health status |
+
+---
+
+## Native Kubernetes Deployment (`lumo deploy kubernetes`)
+
+**Status (Nov 27, 2025):** ✅ **Complete and Production-Ready** | Native Go implementation with Helm v3 SDK
+
+### Overview
+
+The `lumo deploy kubernetes` command provides a native, production-ready way to deploy the full Lumo stack to any Kubernetes cluster using Helm charts. This replaces shell script deployments with a robust, idempotent Go implementation.
+
+**Key Features:**
+- **Full Stack Deployment:** PostgreSQL + Redis + API Server + Event-Driven Agent
+- **Component Flexibility:** Deploy full stack, agent-only, or skip specific components
+- **Native Go Implementation:** Uses helm.sh/helm/v3 and k8s.io/client-go (no shell scripts)
+- **Helm Charts:** Umbrella chart pattern with embedded sub-charts
+- **Health Checking:** Automatic validation with retry logic and exponential backoff
+- **Database Bootstrapping:** Auto-creates API keys and system agent records
+- **Environment Variables:** Full support for secrets via env vars (LUMO_*)
+- **Dry-Run Mode:** Preview deployments without making changes
+- **Production Ready:** 10-minute timeout, wait for rollout, comprehensive error handling
+
+### Command Structure
+
+```bash
+lumo deploy kubernetes [flags]
+
+# Production deployment
+lumo deploy kubernetes \
+  --namespace production \
+  --db-password $SECURE_PASSWORD \
+  --api-jwt-secret $JWT_SECRET \
+  --agent-token $AGENT_TOKEN \
+  --anthropic-key $ANTHROPIC_KEY \
+  --agent-replicas 3
+
+# Local testing with Kind (automatic cluster creation)
+lumo deploy kubernetes --kind \
+  --db-password testpass \
+  --api-jwt-secret testsecret \
+  --agent-token testtoken \
+  --anthropic-key $ANTHROPIC_KEY
+
+# Agent-only deployment (existing infrastructure)
+lumo deploy kubernetes --agent-only \
+  --db-host postgres.db.svc.cluster.local \
+  --redis-host redis.cache.svc.cluster.local \
+  --agent-token $TOKEN \
+  --api-jwt-secret $JWT_SECRET
+
+# Dry run
+lumo deploy kubernetes --dry-run --verbose
+```
+
+### Key Flags
+
+**Cluster Configuration:**
+- `--kubeconfig` - Path to kubeconfig (default: $KUBECONFIG or ~/.kube/config)
+- `--context` - Kubernetes context to use
+- `--namespace` - Target namespace (default: "lumo-system")
+
+**Component Selection:**
+- `--agent-only` - Deploy only agent (requires existing DB + Redis + API)
+- `--skip-agent` - Deploy infrastructure only (PostgreSQL + Redis + API)
+
+**Secrets (Required):**
+- `--db-password` - PostgreSQL password (or LUMO_DB_PASSWORD)
+- `--api-jwt-secret` - JWT signing key (or LUMO_API_JWT_SECRET)
+- `--agent-token` - Agent auth token (or LUMO_AGENT_TOKEN)
+
+**AI Provider:**
+- `--ai-provider` - Provider name (default: "anthropic")
+- `--anthropic-key` - Anthropic API key (or LUMO_ANTHROPIC_API_KEY)
+- `--openai-key` - OpenAI API key (or LUMO_OPENAI_API_KEY)
+- `--gemini-key` - Gemini API key (or LUMO_GEMINI_API_KEY)
+
+**External Services (Optional):**
+- `--db-host` - External PostgreSQL host (skips embedded DB)
+- `--db-port` - External PostgreSQL port (default: 5432)
+- `--redis-host` - External Redis host (skips embedded Redis)
+- `--redis-port` - External Redis port (default: 6379)
+
+**Deployment Options:**
+- `--agent-replicas` - Number of agent replicas (default: 2 for HA)
+- `--timeout` - Deployment timeout (default: 10m)
+- `--wait` - Wait for deployment to be ready (default: true)
+- `--dry-run` - Show what would be deployed
+- `--verbose` - Detailed logging
+
+**Advanced:**
+- `--helm-values` - Path to custom Helm values file
+- `--set` - Override specific values (e.g., --set postgresql.persistence.size=20Gi)
+
+### Helm Chart Structure
+
+**Umbrella Chart:** `deployments/kubernetes/helm/lumo-stack/`
+
+```
+lumo-stack/
+├── Chart.yaml                         # Umbrella chart metadata
+├── values.yaml                        # Centralized configuration (346 lines)
+├── templates/
+│   ├── namespace.yaml                 # Namespace creation
+│   └── NOTES.txt                      # Post-install instructions
+└── charts/                            # Embedded sub-charts
+    ├── postgresql/                    # PostgreSQL with persistence
+    ├── redis/                         # Redis with RDB persistence
+    ├── lumo-api/                      # API server + migrations
+    └── lumo-agent/                    # Event-driven agent (2+ replicas)
+```
+
+### Implementation Details
+
+**Core Packages:**
+
+1. **`internal/deploy/helm/client.go`** - Helm SDK wrapper
+   - `NewClient(namespace, kubeconfig, logger)` - Initialize Helm client
+   - `UpgradeOrInstall(chartPath, releaseName, values, timeout)` - Idempotent deployment
+
+2. **`internal/deploy/helm/values.go`** - Values generation
+   - `GenerateHelmValues(config)` - Convert CLI flags to Helm values
+   - `DeploymentConfig.Validate()` - Pre-deployment validation
+
+3. **`internal/deploy/kubernetes/client.go`** - K8s client operations
+   - `NewClient(kubeconfig, context, logger)` - Initialize K8s client
+   - `WaitForRollout(ctx, namespace, deployment, timeout)` - Wait for deployment
+
+4. **`internal/deploy/kubernetes/health.go`** - Health checking
+   - `WaitForComponentsReady(ctx, namespace, timeout)` - Validate all components
+   - `retryWithBackoff(fn, maxAttempts, delay)` - Exponential backoff
+
+5. **`internal/deploy/kubernetes/bootstrap.go`** - Database bootstrapping
+   - `BootstrapDatabase(ctx, namespace, agentToken)` - Create API keys and system agent
+   - SHA-256 token hashing for security
+
+6. **`internal/deploy/kind/cluster.go`** - Kind cluster operations
+   - `CreateCluster(ctx, config)` - Create Kind cluster with custom config
+   - `BuildAndLoadImages(ctx, clusterName)` - Build and load Docker images
+   - `CheckPrerequisites(ctx)` - Verify Docker and kind binary
+   - Automatic kubeconfig generation and context switching
+
+7. **`cmd/lumo/deploy_kubernetes.go`** - Command implementation (~450 lines)
+   - 25+ flags with environment variable bindings
+   - 9-step deployment workflow with comprehensive logging
+   - Integrated Kind setup for local testing
+
+### Deployment Workflow
+
+1. **Kind Cluster Setup** (if `--kind` flag)
+   - Check prerequisites (Docker, kind binary)
+   - Create cluster with 1 control-plane + 2 worker nodes
+   - Build Docker images (API + Agent)
+   - Load images into Kind cluster
+   - Configure kubeconfig for Kind context
+2. **Initialize Kubernetes Client** - Connect to cluster
+3. **Create Namespace** - Ensure target namespace exists
+4. **Initialize Helm Client** - Setup Helm with kubeconfig
+5. **Generate Helm Values** - Convert config to values map
+6. **Dry Run Check** (if `--dry-run`) - Show what would be deployed
+7. **Deploy Helm Chart** - UpgradeOrInstall with values
+8. **Wait for Components** (if `--wait`) - Health checks with retry
+9. **Bootstrap Database** (if full stack) - Create API keys and system agent
+
+### Dependencies
+
+**Go Modules:**
+- `helm.sh/helm/v3` v3.19.2 - Helm SDK
+- `k8s.io/client-go` v0.34.0 - Kubernetes client
+- `k8s.io/api` v0.34.0 - Kubernetes API types
+- `sigs.k8s.io/kind` v0.25.0 - Kind cluster programmatic API
+
+**Helm Charts:**
+- PostgreSQL 16 with persistence (10Gi PVC)
+- Redis 7 with RDB persistence (5Gi PVC)
+- Lumo API with database migrations
+- Lumo Agent (event-driven, 2+ replicas for HA)
+
+### Examples
+
+**Minimal Production Deployment:**
+```bash
+export LUMO_DB_PASSWORD="secure-db-password"
+export LUMO_API_JWT_SECRET="secure-jwt-secret"
+export LUMO_AGENT_TOKEN="secure-agent-token"
+export LUMO_ANTHROPIC_API_KEY="sk-ant-..."
+
+lumo deploy kubernetes --namespace production
+```
+
+**Using External Database:**
+```bash
+lumo deploy kubernetes \
+  --namespace production \
+  --db-host postgres.external.com \
+  --db-port 5432 \
+  --db-password $DB_PASSWORD \
+  --redis-host redis.external.com \
+  --api-jwt-secret $JWT_SECRET \
+  --agent-token $AGENT_TOKEN
+```
+
+**Custom Helm Values:**
+```bash
+# Create custom-values.yaml with overrides
+lumo deploy kubernetes \
+  --namespace production \
+  --helm-values custom-values.yaml \
+  --db-password $DB_PASSWORD \
+  --api-jwt-secret $JWT_SECRET \
+  --agent-token $AGENT_TOKEN
+```
+
+**Specific Value Overrides:**
+```bash
+lumo deploy kubernetes \
+  --set postgresql.persistence.size=50Gi \
+  --set redis.persistence.size=20Gi \
+  --set agent.replicas=5 \
+  --db-password $DB_PASSWORD \
+  --api-jwt-secret $JWT_SECRET \
+  --agent-token $AGENT_TOKEN
+```
+
+### Troubleshooting
+
+**Check Deployment Status:**
+```bash
+kubectl get pods -n lumo-system
+kubectl logs -f -n lumo-system -l app=lumo-api
+kubectl logs -f -n lumo-system -l app.kubernetes.io/component=agent
+```
+
+**Dry Run First:**
+```bash
+lumo deploy kubernetes --dry-run --verbose
+```
+
+**View Helm Release:**
+```bash
+helm list -n lumo-system
+helm status lumo -n lumo-system
+```
+
+**Delete Deployment:**
+```bash
+helm uninstall lumo -n lumo-system
+kubectl delete namespace lumo-system
+```
+
+### Kind Integration (Completed Nov 27, 2025)
+
+The `--kind` flag provides automatic local testing with:
+- **Prerequisites Check:** Verifies Docker daemon and kind binary
+- **Cluster Creation:** 1 control-plane + 2 worker nodes (v1.28.0)
+- **Image Build:** Compiles both API and Agent from source
+- **Image Loading:** Loads images into Kind cluster nodes
+- **Auto-Configuration:** Switches kubeconfig context automatically
+- **Local Images:** Uses `lumo:local` and `lumo-agent:local` tags
+
+**Usage:**
+```bash
+# Minimal Kind deployment
+lumo deploy kubernetes --kind \
+  --db-password testpass \
+  --api-jwt-secret testsecret \
+  --agent-token testtoken
+
+# Cleanup
+kind delete cluster --name lumo-test
+```
+
+### Future Enhancements
+
+- **Multi-Cluster:** Deploy to multiple clusters in parallel
+- **Rollback:** Automated rollback on deployment failures
+- **Upgrade Strategy:** Blue/green or canary deployments
+- **Cloud Provider Integration:** EKS, GKE, AKS specific optimizations
+- **Backup/Restore:** Database backup and disaster recovery automation
 
 ---
 
@@ -702,14 +987,34 @@ lumo serve --config configs/config.example.yaml
 curl http://localhost:8080/api/v1/health
 ```
 
-**Agent Deployment:**
+**Kubernetes Deployment (Native Command - Recommended):**
 ```bash
-# Kubernetes - Event-Driven Mode (Single Deployment Model)
+# Full stack deployment (recommended)
+export LUMO_DB_PASSWORD="secure-password"
+export LUMO_API_JWT_SECRET="jwt-secret"
+export LUMO_AGENT_TOKEN="agent-token"
+export LUMO_ANTHROPIC_API_KEY="sk-ant-..."
+
+lumo deploy kubernetes --namespace production
+
+# Agent-only (existing infrastructure)
+lumo deploy kubernetes --agent-only \
+  --db-host postgres.db.svc \
+  --redis-host redis.cache.svc
+
+# Dry run first
+lumo deploy kubernetes --dry-run --verbose
+```
+
+**Kubernetes Deployment (Manual - Alternative):**
+```bash
 kubectl apply -f deployments/kubernetes/base/configmap-agent.yaml
 kubectl apply -f deployments/kubernetes/base/deployment-agent.yaml
 helm install lumo-agent deployments/kubernetes/helm/lumo-agent
+```
 
-# VM
+**VM Deployment:**
+```bash
 ./deployments/systemd/install.sh
 systemctl enable --now lumo-agent
 ```
