@@ -211,6 +211,9 @@ type EventDrivenConfig struct {
 	MinSeverity        string        `mapstructure:"min_severity"`         // Minimum severity to process (low|medium|high|critical)
 	WatchNamespaces    []string      `mapstructure:"watch_namespaces"`     // Namespaces to watch (empty = all)
 
+	// Leader election (HA)
+	LeaderElectionNamespace string `mapstructure:"leader_election_namespace"` // Namespace for leader election lease (default: lumo-system)
+
 	// Event type filters (empty = watch all)
 	WatchPodEvents bool `mapstructure:"watch_pod_events"` // Watch pod failures (ImagePullBackOff, CrashLoopBackOff, OOMKilled)
 	WatchWorkloads bool `mapstructure:"watch_workloads"`  // Watch workload failures (Deployments, StatefulSets, DaemonSets, Jobs)

@@ -175,3 +175,41 @@ subjects:
 #   - kind: ServiceAccount
 #     name: lumo-agent
 #     namespace: lumo-system
+
+---
+# Role for leader election (namespace-scoped)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lumo-agent-leader-election
+  namespace: lumo-system
+  labels:
+    app.kubernetes.io/name: lumo-agent
+    app.kubernetes.io/component: leader-election
+    app.kubernetes.io/part-of: lumo
+rules:
+  # Lease management for leader election
+  - apiGroups: ["coordination.k8s.io"]
+    resources:
+      - leases
+    verbs: ["get", "create", "update"]
+
+---
+# RoleBinding for leader election
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lumo-agent-leader-election-binding
+  namespace: lumo-system
+  labels:
+    app.kubernetes.io/name: lumo-agent
+    app.kubernetes.io/component: leader-election
+    app.kubernetes.io/part-of: lumo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: lumo-agent-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: lumo-agent
+    namespace: lumo-system

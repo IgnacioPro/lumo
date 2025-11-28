@@ -23,6 +23,7 @@ import (
 
 	"github.com/ignacio/lumo/internal/agent/eventdriven"
 	"github.com/ignacio/lumo/internal/agent/eventdriven/watchers"
+	"github.com/ignacio/lumo/internal/agent/leaderelection"
 )
 
 // Agent represents the Lumo agent daemon
@@ -39,8 +40,9 @@ type Agent struct {
 	scheduler      *Scheduler
 	healthCheck    *HealthCheck
 	metrics        *Metrics
-	eventDrivenMgr *eventdriven.Manager // Kubernetes event-driven manager
-	redisClient    *redis.Client        // Redis client for event-driven mode
+	eventDrivenMgr *eventdriven.Manager  // Kubernetes event-driven manager
+	redisClient    *redis.Client         // Redis client for event-driven mode
+	k8sClient      *kubernetes.Clientset // Kubernetes client (for leader election)
 
 	stopCh chan struct{}
 }
@@ -350,7 +352,8 @@ func (a *Agent) setupHybridMode(_ context.Context) error {
 	return nil
 }
 
-// setupEventDrivenMode sets up Kubernetes event-driven monitoring
+// setupEventDrivenMode sets up Kubernetes event-driven monitoring with leader election.
+// Only the leader agent actively watches events; standby replicas wait to take over.
 func (a *Agent) setupEventDrivenMode(ctx context.Context) error {
 	a.logger.Info("Setting up event-driven mode for Kubernetes monitoring")
 
@@ -369,6 +372,7 @@ func (a *Agent) setupEventDrivenMode(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create Kubernetes client: %w", err)
 	}
+	a.k8sClient = k8sClient // Store for leader election
 
 	// Step 2: Create Redis client for debouncer state tracking
 	a.logger.Info("Initializing Redis client for event state tracking")
@@ -378,10 +382,57 @@ func (a *Agent) setupEventDrivenMode(ctx context.Context) error {
 	}
 	a.redisClient = redisClient // Store for cleanup in Stop()
 
+	// Step 3: Set up leader election
+	// Only the leader actively watches and processes events; standby replicas wait to take over
+	namespace := a.cfg.Agent.EventDriven.LeaderElectionNamespace
+	if namespace == "" {
+		namespace = "lumo-system" // Default namespace
+	}
+
+	elector, err := leaderelection.NewElector(
+		k8sClient,
+		leaderelection.DefaultConfig(namespace),
+		a.logger,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create leader elector: %w", err)
+	}
+
+	a.logger.WithField("namespace", namespace).Info("Starting leader election - standby until elected")
+
+	// Run leader election in a goroutine - it will call startEventWatching when we become leader
+	go func() {
+		err := elector.Run(ctx, leaderelection.Callbacks{
+			OnStartedLeading: func(leaderCtx context.Context) {
+				a.logger.Info("Elected as leader - starting event watchers")
+				if err := a.startEventWatching(leaderCtx, k8sClient, redisClient); err != nil {
+					a.logger.WithError(err).Error("Failed to start event watching")
+				}
+			},
+			OnStoppedLeading: func() {
+				a.logger.Warn("Lost leadership - stopping event watchers")
+				a.stopEventWatching()
+			},
+			OnNewLeader: func(identity string) {
+				if !elector.IsLeader() {
+					a.logger.WithField("leader", identity).Info("Another agent is leader - standing by for failover")
+				}
+			},
+		})
+		if err != nil {
+			a.logger.WithError(err).Error("Leader election failed")
+		}
+	}()
+
+	return nil
+}
+
+// startEventWatching starts the actual Kubernetes event watchers (called when elected leader)
+func (a *Agent) startEventWatching(ctx context.Context, k8sClient *kubernetes.Clientset, redisClient *redis.Client) error {
 	// Note: AI analysis and notifications now handled by API server
 	a.logger.Info("Events will be submitted to API server for centralized AI analysis and notifications")
 
-	// Step 3: Create debouncer
+	// Create debouncer
 	a.logger.WithFields(logrus.Fields{
 		"debounce_window":     a.cfg.Agent.EventDriven.DebounceWindow,
 		"max_debounce_window": a.cfg.Agent.EventDriven.MaxDebounceWindow,
@@ -542,6 +593,17 @@ func (a *Agent) setupEventDrivenMode(ctx context.Context) error {
 
 	a.logger.Info("Event-driven mode started successfully - watching for Kubernetes events")
 	return nil
+}
+
+// stopEventWatching stops the event watchers (called when losing leadership)
+func (a *Agent) stopEventWatching() {
+	if a.eventDrivenMgr != nil {
+		a.logger.Info("Stopping event-driven manager")
+		if err := a.eventDrivenMgr.Stop(); err != nil {
+			a.logger.WithError(err).Error("Error stopping event-driven manager")
+		}
+		a.eventDrivenMgr = nil
+	}
 }
 
 // createKubernetesClient creates a Kubernetes client (in-cluster or kubeconfig)
