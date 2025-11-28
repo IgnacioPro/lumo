@@ -19,7 +19,7 @@ COLOR_GREEN=\033[32m
 COLOR_YELLOW=\033[33m
 COLOR_BLUE=\033[34m
 
-.PHONY: help build run clean test test-verbose test-ci test-ssh fmt fmt-check vet lint install coverage coverage-report coverage-html deps check ci ci-lint ci-test ci-build all diagnose-local diagnose-local-json version proto proto-gen proto-clean proto-fmt proto-lint docker-build-cli docker-build-agent docker-build docker-push-cli docker-push-agent docker-push setup
+.PHONY: help build run clean test deploy deploy-startup deploy-small-business deploy-enterprise deploy-hyperscale deploy-quick deploy-monitoring test-verbose test-ci test-ssh fmt fmt-check vet lint install coverage coverage-report coverage-html deps check ci ci-lint ci-test ci-build all diagnose-local diagnose-local-json version proto proto-gen proto-clean proto-fmt proto-lint docker-build-cli docker-build-agent docker-build docker-push-cli docker-push-agent docker-push setup
 
 # Default target
 .DEFAULT_GOAL := help
@@ -310,3 +310,24 @@ docker-push-agent:
 ## docker-push: Push both CLI and agent Docker images to registry
 docker-push: docker-push-cli docker-push-agent
 	@echo "$(COLOR_GREEN)✓ All Docker images pushed$(COLOR_RESET)"
+
+# Deployment targets
+deploy:
+	@cd deployments/kubernetes/kind && ./deploy-lumo.sh --profile s
+
+deploy-xs:
+	@cd deployments/kubernetes/kind && ./deploy-lumo.sh --profile xs
+
+deploy-s:
+	@cd deployments/kubernetes/kind && ./deploy-lumo.sh --profile s
+
+deploy-m:
+	@cd deployments/kubernetes/kind && ./deploy-lumo.sh --profile m
+
+deploy-xl:
+	@cd deployments/kubernetes/kind && ./deploy-lumo.sh --profile xl
+
+deploy-quick:
+	@cd deployments/kubernetes/kind && ./deploy-lumo.sh --skip-cluster --skip-build
+
+.PHONY: deploy deploy-xs deploy-s deploy-m deploy-xl deploy-quick

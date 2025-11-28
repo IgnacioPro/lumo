@@ -25,6 +25,7 @@ SKIP_MONITORING="${SKIP_MONITORING:-false}"
 WITH_MONITORING="${WITH_MONITORING:-false}"
 WITH_GCP_SECRETS="${WITH_GCP_SECRETS:-false}"
 GCP_SA_KEY_FILE="${GCP_SA_KEY_FILE:-}"
+MESSAGING_PROFILE="${MESSAGING_PROFILE:-s}"  # xs, s, m, xl
 
 # Functions
 log_info() {
@@ -870,10 +871,17 @@ Environment variables:
   LUMO_SLACK_WEBHOOK_URL  Slack webhook URL (stored in GCP Secret Manager)
   KIND_CLUSTER_NAME       Name of kind cluster
   LUMO_NAMESPACE          Kubernetes namespace
+  MESSAGING_PROFILE       Messaging profile (xs|s|m|xl)
 
 Examples:
   # Full stack deployment with hardcoded test secrets (local dev)
   $0
+
+  # With XS profile (minimal, uses existing Redis)
+  $0 --profile xs
+
+  # With M profile (NATS with enhanced resources)
+  $0 --profile m
 
   # Full stack with monitoring (Prometheus + Grafana)
   $0 --with-monitoring
@@ -945,6 +953,10 @@ parse_args() {
                 NAMESPACE="$2"
                 shift 2
                 ;;
+            --profile)
+                MESSAGING_PROFILE="$2"
+                shift 2
+                ;;
             -h|--help)
                 show_usage
                 exit 0
@@ -956,6 +968,18 @@ parse_args() {
                 ;;
         esac
     done
+    
+    # Validate profile
+    case "$MESSAGING_PROFILE" in
+        xs|s|m|xl)
+            log_info "Using messaging profile: $MESSAGING_PROFILE"
+            ;;
+        *)
+            log_error "Invalid profile: $MESSAGING_PROFILE"
+            log_error "Valid profiles: xs, s, m, xl"
+            exit 1
+            ;;
+    esac
 }
 
 deploy_monitoring() {
@@ -1312,6 +1336,163 @@ EOF
     return 1
 }
 
+deploy_messaging() {
+    log_info "Step 3.5/7: Deploying messaging infrastructure (profile: ${MESSAGING_PROFILE})..."
+    
+    case "$MESSAGING_PROFILE" in
+        xs)
+            log_info "XS profile: Using existing Redis for messaging"
+            log_success "✓ Redis already deployed, no additional messaging infrastructure needed"
+            ;;
+        s)
+            log_info "S profile: Deploying NATS single node..."
+            
+            # Check if NATS is already running
+            if kubectl get deployment/nats -n "${NAMESPACE}" &>/dev/null; then
+                log_success "✓ NATS already deployed, skipping"
+                return 0
+            fi
+            
+            # Deploy NATS single server (64MB RAM)
+            cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: nats
+  ports:
+  - port: 4222
+    name: client
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nats
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nats
+  template:
+    metadata:
+      labels:
+        app: nats
+    spec:
+      containers:
+      - name: nats
+        image: nats:2.10-alpine
+        args: ["-js", "-m", "8222"]
+        ports:
+        - containerPort: 4222
+          name: client
+        - containerPort: 8222
+          name: monitoring
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+EOF
+            log_info "Waiting for NATS to be ready..."
+            kubectl wait --for=condition=available --timeout=60s deployment/nats -n "${NAMESPACE}"
+            log_success "✓ NATS deployed successfully"
+            ;;
+        m)
+            log_info "M profile: Deploying NATS with enhanced resources..."
+            
+            # Check if NATS Deployment exists
+            if kubectl get deployment/nats -n "${NAMESPACE}" &>/dev/null; then
+                log_success "✓ NATS already deployed, skipping"
+                return 0
+            fi
+            
+            # Deploy NATS cluster with StatefulSet
+            # Simplified: Use 1 replica for now (clustering is complex for JetStream)
+            cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: nats
+  ports:
+  - port: 4222
+    name: client
+  - port: 8222
+    name: monitoring
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nats
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nats
+  template:
+    metadata:
+      labels:
+        app: nats
+    spec:
+      containers:
+      - name: nats
+        image: nats:2.10-alpine
+        args: ["-js", "-m", "8222"]
+        ports:
+        - containerPort: 4222
+          name: client
+        - containerPort: 8222
+          name: monitoring
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+          limits:
+            memory: "512Mi"
+            cpu: "1"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8222
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8222
+          initialDelaySeconds: 5
+          periodSeconds: 5
+EOF
+            log_info "Waiting for NATS to be ready..."
+            kubectl wait --for=condition=available --timeout=60s deployment/nats -n "${NAMESPACE}"
+            log_success "✓ NATS (enhanced resources) deployed successfully"
+            ;;
+        xl)
+            log_warn "XL profile (Kafka): Not yet implemented"
+            log_info "For now, falling back to NATS cluster..."
+            log_info "Full Kafka deployment coming in Week 3"
+            
+            # For now, deploy NATS cluster as fallback
+            MESSAGING_PROFILE=m
+            deploy_messaging
+            ;;
+        *)
+            log_error "Unknown messaging profile: $MESSAGING_PROFILE"
+            return 1
+            ;;
+    esac
+}
+
 main() {
     parse_args "$@"
 
@@ -1326,6 +1507,9 @@ main() {
     echo ""
 
     deploy_infrastructure
+    echo ""
+
+    deploy_messaging
     echo ""
 
     # Deploy GCP secrets before API server (if enabled)

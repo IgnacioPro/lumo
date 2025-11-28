@@ -452,3 +452,42 @@ rag:
 #
 # Note: OpenAI API key required for embeddings
 # Set via: LUMO_OPENAI_API_KEY=sk-...
+
+# =============================================================================
+# Messaging Configuration (Phase 11c)
+# =============================================================================
+# Pub/sub messaging system for high-throughput event distribution
+# Supports: NATS, Kafka, RabbitMQ, Redis Streams
+messaging:
+  enabled: false  # Enable messaging system
+  provider: nats  # nats, kafka, rabbitmq, redis
+  
+  # Broker configuration (provider-specific)
+  brokers:
+    - "localhost:4222"  # NATS default
+    # - "localhost:9092"  # Kafka default
+    # - "localhost:5672"  # RabbitMQ default
+    # - "localhost:6379"  # Redis default
+  
+  # Authentication (optional)
+  username: ""
+  password_env_var: "LUMO_MESSAGING_PASSWORD"  # Set password via env var for security
+  tls: false
+  
+  # Topics
+  event_topic: "lumo.events"
+  dead_letter_topic: "lumo.events.dlq"
+  
+  # Reliability settings
+  max_retries: 3
+  retry_backoff: "5s"
+  ack_wait_timeout: "30s"
+  consumer_group: "lumo-api-consumer"
+  max_in_flight: 10  # Maximum concurrent message processing
+
+# Environment Variables for Messaging:
+#   LUMO_MESSAGING_ENABLED=true
+#   LUMO_MESSAGING_PROVIDER=nats
+#   LUMO_MESSAGING_BROKERS=nats://localhost:4222
+#   LUMO_MESSAGING_PASSWORD=secret
+#   LUMO_MESSAGING_EVENT_TOPIC=lumo.events
