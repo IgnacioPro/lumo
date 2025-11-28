@@ -22,10 +22,10 @@ SKIP_DEPLOY="${SKIP_DEPLOY:-false}"
 SKIP_INFRASTRUCTURE="${SKIP_INFRASTRUCTURE:-false}"
 SKIP_API="${SKIP_API:-false}"
 SKIP_MONITORING="${SKIP_MONITORING:-false}"
-WITH_MONITORING="${WITH_MONITORING:-false}"
+WITH_MONITORING="${WITH_MONITORING:-true}"
 WITH_GCP_SECRETS="${WITH_GCP_SECRETS:-false}"
 GCP_SA_KEY_FILE="${GCP_SA_KEY_FILE:-}"
-MESSAGING_PROFILE="${MESSAGING_PROFILE:-s}"  # xs, s, m, xl
+MESSAGING_PROFILE="${MESSAGING_PROFILE:-xs}"  # xs (Redis only), s/m (NATS), xl (Kafka)
 
 # Functions
 log_info() {
@@ -811,27 +811,27 @@ print_summary() {
     echo ""
     if [ "$WITH_GCP_SECRETS" = "true" ]; then
         log_info "Secrets managed by GCP Secret Manager:"
-        echo "  ${BLUE}kubectl get externalsecrets -n ${NAMESPACE}${NC}"
-        echo "  ${BLUE}kubectl get clustersecretstore gcp-secret-manager${NC}"
+        echo -e "  ${BLUE}kubectl get externalsecrets -n ${NAMESPACE}${NC}"
+        echo -e "  ${BLUE}kubectl get clustersecretstore gcp-secret-manager${NC}"
         echo ""
     fi
     log_info "View component logs:"
-    echo "  PostgreSQL:  ${BLUE}kubectl logs -n ${NAMESPACE} -l app=postgres -f${NC}"
-    echo "  API Server:  ${BLUE}kubectl logs -n ${NAMESPACE} -l app=lumo-api -f${NC}"
-    echo "  Agents:      ${BLUE}kubectl logs -n ${NAMESPACE} -l app.kubernetes.io/name=lumo-agent -f${NC}"
+    echo -e "  PostgreSQL:  ${BLUE}kubectl logs -n ${NAMESPACE} -l app=postgres -f${NC}"
+    echo -e "  API Server:  ${BLUE}kubectl logs -n ${NAMESPACE} -l app=lumo-api -f${NC}"
+    echo -e "  Agents:      ${BLUE}kubectl logs -n ${NAMESPACE} -l app.kubernetes.io/name=lumo-agent -f${NC}"
     echo ""
     log_info "Access services:"
-    echo "  API Server:  ${BLUE}kubectl port-forward -n ${NAMESPACE} svc/lumo-api 8080:8080${NC}"
-    echo "               ${BLUE}curl http://localhost:8080/api/v1/health${NC}"
+    echo -e "  API Server:  ${BLUE}kubectl port-forward -n ${NAMESPACE} svc/lumo-api 8080:8080${NC}"
+    echo -e "               ${BLUE}curl http://localhost:8080/api/v1/health${NC}"
     echo ""
-    echo "  PostgreSQL:  ${BLUE}kubectl port-forward -n ${NAMESPACE} svc/postgres 5432:5432${NC}"
-    echo "               ${BLUE}PGPASSWORD=lumo psql -h localhost -U lumo -d lumo${NC}"
+    echo -e "  PostgreSQL:  ${BLUE}kubectl port-forward -n ${NAMESPACE} svc/postgres 5432:5432${NC}"
+    echo -e "               ${BLUE}PGPASSWORD=lumo psql -h localhost -U lumo -d lumo${NC}"
     echo ""
     log_info "Check all pods:"
-    echo "  ${BLUE}kubectl get pods -n ${NAMESPACE} -o wide${NC}"
+    echo -e "  ${BLUE}kubectl get pods -n ${NAMESPACE} -o wide${NC}"
     echo ""
     log_info "To tear down the test environment:"
-    echo "  ${BLUE}kind delete cluster --name ${CLUSTER_NAME}${NC}"
+    echo -e "  ${BLUE}kind delete cluster --name ${CLUSTER_NAME}${NC}"
     echo ""
 }
 
