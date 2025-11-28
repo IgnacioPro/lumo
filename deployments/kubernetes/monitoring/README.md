@@ -39,6 +39,8 @@ Default credentials: `admin` / `admin`
 | `values.yaml` | Helm chart values with datasource and sidecar config |
 | `dashboard-configmap.yaml` | Kubernetes ConfigMap with Lumo dashboard |
 | `dashboards/lumo-overview.json` | Full dashboard JSON for import |
+| `REDIS_MONITORING.md` | Complete Redis monitoring guide |
+| `REDIS_QUICKSTART.md` | Quick start guide for Redis metrics |
 
 ### Dashboard Panels
 
@@ -54,6 +56,7 @@ The **Lumo Overview** dashboard includes:
 | AI Analysis & Notifications | AI Analysis Rate, AI Duration, Notifications by Provider |
 | API Server Metrics | API Events Processed, API AI Duration, API Notifications |
 | Agent Info | Table of active agents with hostname, mode, platform, version |
+| **Redis Metrics** | **Connected Clients, Memory %, Status, Memory Bytes, Total Keys, Commands/sec, Cache Hit Rate %, Network I/O, Keys by DB, Evicted/Expired Keys** |
 
 ### Metrics Visualized
 
@@ -76,6 +79,18 @@ The **Lumo Overview** dashboard includes:
 | `lumo_api_events_processed_total` | Counter | API | API event pipeline |
 | `lumo_api_ai_analysis_duration_seconds` | Histogram | API | API-side AI latency |
 | `lumo_api_notifications_sent_total` | Counter | API | API notifications |
+| `redis_up` | Gauge | Redis | Redis availability (1=up, 0=down) |
+| `redis_connected_clients` | Gauge | Redis | Number of client connections |
+| `redis_memory_used_bytes` | Gauge | Redis | Current memory usage |
+| `redis_memory_max_bytes` | Gauge | Redis | Maximum memory limit |
+| `redis_commands_total` | Counter | Redis | Total commands by type |
+| `redis_keyspace_hits_total` | Counter | Redis | Cache hits |
+| `redis_keyspace_misses_total` | Counter | Redis | Cache misses |
+| `redis_db_keys` | Gauge | Redis | Number of keys per database |
+| `redis_evicted_keys_total` | Counter | Redis | Keys evicted due to memory pressure |
+| `redis_expired_keys_total` | Counter | Redis | Keys expired via TTL |
+| `redis_net_input_bytes_total` | Counter | Redis | Network input bytes |
+| `redis_net_output_bytes_total` | Counter | Redis | Network output bytes |
 
 ## Configuration
 
@@ -94,6 +109,65 @@ Grafana sidecar is configured to auto-load dashboards from ConfigMaps with label
 ```yaml
 grafana_dashboard: "1"
 ```
+
+## Redis Monitoring
+
+**Architecture Note:** Redis is deployed in the `lumo-system` namespace (via `deployments/kubernetes/kind/deploy-lumo.sh`), not in the `monitoring` namespace. The monitoring stack observes Redis via Prometheus auto-discovery using pod annotations.
+
+### Redis in Lumo Architecture
+
+Redis serves as the caching layer for:
+- **Agent cache operations** - Reducing API server load
+- **Event debouncing** - Preventing duplicate event submissions
+- **Session management** - Temporary state storage
+
+Redis deployment features:
+- ✅ Deployed in `lumo-system` namespace with the main application
+- ✅ Redis Exporter sidecar for Prometheus metrics (port 9121)
+- ✅ Automatic Prometheus discovery via pod annotations
+- ✅ Cross-namespace monitoring (Prometheus in `monitoring` scrapes Redis in `lumo-system`)
+
+### Redis Metrics Dashboard
+
+The "Redis Metrics" section in the Lumo Overview dashboard provides:
+
+**Health & Status:**
+- Redis availability (up/down indicator)
+- Connected clients (current connections)
+- Memory usage % (gauge with thresholds)
+
+**Performance:**
+- Commands/sec by type (GET, SET, DEL breakdown)
+- Cache hit rate % (efficiency indicator)
+- Network I/O (throughput monitoring)
+
+**Capacity:**
+- Memory usage in bytes (used vs max)
+- Total keys across all databases
+- Keys by database (distribution)
+- Evicted/Expired keys (memory pressure indicators)
+
+### Key Performance Indicators
+
+| Metric | Good | Warning | Critical | Action |
+|--------|------|---------|----------|--------|
+| Cache Hit Rate | >80% | 50-80% | <50% | Increase TTL or memory |
+| Memory Usage | <70% | 70-90% | >90% | Increase memory limit |
+| Evicted Keys/sec | 0-10 | 10-100 | >100 | Scale Redis or reduce TTL |
+| Connected Clients | <50 | 50-100 | >100 | Check connection pooling |
+
+### Documentation
+
+For detailed Redis monitoring information:
+- **Quick Start**: [grafana/REDIS_QUICKSTART.md](grafana/REDIS_QUICKSTART.md)
+- **Full Guide**: [grafana/REDIS_MONITORING.md](grafana/REDIS_MONITORING.md)
+
+Includes:
+- Architecture diagrams
+- All available metrics
+- Performance baselines
+- Troubleshooting guide
+- Alert rules
 
 ## Production Considerations
 
