@@ -67,6 +67,12 @@ helm upgrade --install grafana grafana/grafana \
 echo ""
 echo "=== Deployment Complete ==="
 echo ""
+echo "Components deployed:"
+echo "  ✓ Grafana (with Lumo dashboards)"
+if [ "$WITH_PROMETHEUS" = true ]; then
+    echo "  ✓ Prometheus"
+fi
+echo ""
 echo "Grafana admin password: admin"
 echo ""
 echo "Access Grafana:"
@@ -81,4 +87,12 @@ if [ "$WITH_PROMETHEUS" = true ]; then
     echo ""
 fi
 
+echo "Redis Monitoring:"
+echo "  Redis is deployed in lumo-system namespace (via deploy-lumo.sh)"
+echo "  Prometheus auto-discovers Redis metrics via pod annotations"
+echo "  Access Redis: kubectl port-forward -n lumo-system svc/lumo-redis 6379:6379"
+echo "  Redis metrics: kubectl port-forward -n lumo-system svc/lumo-redis 9121:9121"
+echo "  Then: curl http://localhost:9121/metrics"
+echo ""
 echo "Lumo Dashboard: Navigate to Dashboards > Lumo > Lumo Overview"
+echo "  - Scroll to 'Redis Metrics' section for comprehensive Redis monitoring"

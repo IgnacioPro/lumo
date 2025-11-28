@@ -1,5 +1,6 @@
 ---
 # Redis Deployment for Lumo Event-Driven Agent State Tracking
+# Used for ephemeral debounce/dedup state - events are persisted in PostgreSQL
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,6 +19,10 @@ spec:
       labels:
         app: lumo-redis
         component: cache
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9121"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
         - name: redis
@@ -44,6 +49,34 @@ spec:
                 - ping
             initialDelaySeconds: 5
             periodSeconds: 5
+        # Redis Exporter - Exposes Prometheus metrics
+        - name: redis-exporter
+          image: oliver006/redis_exporter:v1.55.0-alpine
+          ports:
+            - containerPort: 9121
+              name: metrics
+          env:
+            - name: REDIS_ADDR
+              value: "localhost:6379"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9121
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9121
+            initialDelaySeconds: 5
+            periodSeconds: 5
 
 ---
 # Redis Service
@@ -64,3 +97,7 @@ spec:
       targetPort: 6379
       protocol: TCP
       name: redis
+    - port: 9121
+      targetPort: 9121
+      protocol: TCP
+      name: metrics
