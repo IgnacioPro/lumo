@@ -22,6 +22,7 @@ type Config struct {
 	Agent         AgentConfig         `mapstructure:"agent"`
 	Notifications NotificationsConfig `mapstructure:"notifications"`
 	RAG           RAGConfig           `mapstructure:"rag"`
+	Messaging     MessagingConfig     `mapstructure:"messaging"`
 }
 
 // SSHConfig contains SSH connection settings
@@ -257,6 +258,23 @@ type RAGConfig struct {
 	BatchInterval     int     `mapstructure:"batch_interval"`     // 300 seconds
 }
 
+// MessagingConfig contains messaging system settings
+type MessagingConfig struct {
+	Enabled         bool          `mapstructure:"enabled"`           // Enable messaging system
+	Provider        string        `mapstructure:"provider"`          // nats, kafka, rabbitmq, redis
+	Brokers         []string      `mapstructure:"brokers"`           // Broker addresses
+	Username        string        `mapstructure:"username"`          // Authentication username
+	PasswordEnvVar  string        `mapstructure:"password_env_var"`  // Environment variable for password
+	TLS             bool          `mapstructure:"tls"`               // Enable TLS
+	EventTopic      string        `mapstructure:"event_topic"`       // Main event topic
+	DeadLetterTopic string        `mapstructure:"dead_letter_topic"` // Dead-letter topic for failed messages
+	MaxRetries      int           `mapstructure:"max_retries"`       // Maximum retry attempts
+	RetryBackoff    time.Duration `mapstructure:"retry_backoff"`     // Retry backoff duration
+	AckWaitTimeout  time.Duration `mapstructure:"ack_wait_timeout"`  // Acknowledgment wait timeout
+	ConsumerGroup   string        `mapstructure:"consumer_group"`    // Consumer group name
+	MaxInFlight     int           `mapstructure:"max_in_flight"`     // Maximum in-flight messages
+}
+
 // DefaultConfig returns a Config with sensible defaults
 func DefaultConfig() *Config {
 	return &Config{
@@ -424,6 +442,21 @@ func DefaultConfig() *Config {
 			IngestionMode:     "hybrid",                 // Hybrid ingestion (realtime for critical, batch for low-priority)
 			BatchInterval:     300,                      // 5 minutes batch interval
 		},
+		Messaging: MessagingConfig{
+			Enabled:         false,                      // Disabled by default
+			Provider:        "nats",                     // Default to NATS (low latency, simple)
+			Brokers:         []string{"localhost:4222"}, // Default NATS server
+			Username:        "",
+			PasswordEnvVar:  "LUMO_MESSAGING_PASSWORD",
+			TLS:             false,
+			EventTopic:      "lumo.events",
+			DeadLetterTopic: "lumo.events.dlq",
+			MaxRetries:      3,
+			RetryBackoff:    5 * time.Second,
+			AckWaitTimeout:  30 * time.Second,
+			ConsumerGroup:   "lumo-api-consumer",
+			MaxInFlight:     10,
+		},
 	}
 }
 
@@ -520,6 +553,20 @@ func Load() (*Config, error) {
 	viper.SetDefault("agent.event_driven.watch_volumes", true)
 	viper.SetDefault("agent.event_driven.watch_nodes", true)
 	viper.SetDefault("agent.event_driven.watch_events", true)
+
+	// Messaging defaults (pub/sub framework)
+	_ = viper.BindEnv("messaging.enabled", "LUMO_MESSAGING_ENABLED")
+	viper.SetDefault("messaging.enabled", false)
+	_ = viper.BindEnv("messaging.provider", "LUMO_MESSAGING_PROVIDER")
+	viper.SetDefault("messaging.provider", "nats")
+	_ = viper.BindEnv("messaging.event_topic", "LUMO_MESSAGING_EVENT_TOPIC")
+	viper.SetDefault("messaging.event_topic", "lumo.events")
+	viper.SetDefault("messaging.dead_letter_topic", "lumo.events.dlq")
+	viper.SetDefault("messaging.max_retries", 3)
+	viper.SetDefault("messaging.retry_backoff", "5s")
+	viper.SetDefault("messaging.ack_wait_timeout", "30s")
+	viper.SetDefault("messaging.consumer_group", "lumo-api-consumer")
+	viper.SetDefault("messaging.max_in_flight", 10)
 
 	if err := viper.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
