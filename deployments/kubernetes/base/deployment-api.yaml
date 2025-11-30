@@ -33,9 +33,6 @@ spec:
     spec:
       serviceAccountName: lumo-api
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
 
@@ -54,7 +51,7 @@ spec:
         - name: api
           image: lumo:latest
           imagePullPolicy: IfNotPresent
-          command: ["/app/lumo", "serve"]
+          command: ["/lumo", "serve"]
           args:
             - --config
             - /etc/lumo/config.yaml
@@ -176,8 +173,6 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
-            runAsNonRoot: true
-            runAsUser: 1000
             capabilities:
               drop:
                 - ALL

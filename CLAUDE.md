@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-29 (Phase 16b Complete) | **Version:** 1.0.0 | **Status:** Phase 11c Complete ✅ | Phase 15 Complete ✅ | Phase 15b Complete ✅ | Phase 16 Complete ✅ | Phase 16b Complete ✅ | **Next: Phase 14 (Reporting) → v1.1.0** 🚀 | [Roadmap TODO](ROADMAP_TODO.md)
+> **Last Updated:** 2025-11-30 (Phase 18 In Progress) | **Version:** 1.0.0 | **Status:** Phase 16b Complete ✅ | Phase 18 In Progress 🚧 | **Next: Phase 18 Completion → v2.0.0** 🚀 | [Roadmap TODO](ROADMAP_TODO.md)
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -707,7 +707,7 @@ See [ROADMAP_TODO.md](ROADMAP_TODO.md) for detailed technical implementation tas
 
 **Tier 3 - Commercial Deployment:**
 
-**Phase 18: Multi-Tenant SaaS Architecture** ☁️ - [6-8 weeks]
+**Phase 18: Multi-Tenant SaaS Architecture** ☁️ - [6-8 weeks] - **IN PROGRESS** 🚧
 - **Scope:** Transform to SaaS with hosted control plane + field-deployed agents
 - **Documentation:** [docs/PHASE_18_MULTI_TENANT_SAAS.md](docs/PHASE_18_MULTI_TENANT_SAAS.md)
 - **Key Components:**
@@ -717,7 +717,66 @@ See [ROADMAP_TODO.md](ROADMAP_TODO.md) for detailed technical implementation tas
   - Customer portal backend (auth, dashboard, billing)
   - Stripe integration for subscriptions
 - **Architecture:** Lumo API (our infra) ← HTTPS ← Agents (customer K8s clusters)
-- **Status:** Proposal ready for review
+- **Status:** Phase 18a-b mostly complete, see below
+
+### Current (Phase 18) - IN PROGRESS 🚧
+
+**Phase 18: Multi-Tenant SaaS Architecture** - Started Nov 30, 2025
+
+#### Completed ✅
+
+**Infrastructure & Optimization:**
+- ✅ Docker image optimization: ~80% size reduction (9-11MB final images)
+  - UPX compression (--best --lzma)
+  - scratch base for CLI, distroless for agent
+  - Pinned Alpine 3.21, -trimpath for reproducibility
+- ✅ Removed 736 lines of deadcode
+
+**Multi-Tenant Foundation (Phase 18a):**
+- ✅ Database migration `006_multi_tenant.sql` with tenants, tenant_api_keys, tenant_users tables
+- ✅ Tenant handler: 821 LOC - CRUD, API key management, usage tracking
+- ✅ Customer portal handler: 665 LOC - Dashboard, settings, billing APIs
+- ✅ Enterprise provisioner: 364 LOC - Namespace provisioning infrastructure
+
+**Agent Deployment (Phase 18b):**
+- ✅ E2E deploy script: 984 LOC - Full stack deployment with 3 test tenants
+- ✅ Agent event-driven mode working with centralized API
+- ✅ Leader election per-tenant namespace with RBAC
+- ✅ ClusterRole for node/workload watching
+- ✅ API key authentication working (api_keys table)
+- ✅ Events submitting and storing in database successfully
+
+**Files Created/Modified:**
+- `internal/api/handlers/tenants.go` (821 LOC)
+- `internal/api/handlers/portal.go` (665 LOC)
+- `internal/infrastructure/provisioner.go` (364 LOC)
+- `internal/database/migrations/006_multi_tenant.sql`
+- `deployments/kubernetes/kind/deploy-saas.sh` (984 LOC)
+- `docs/PHASE_18_MULTI_TENANT_SAAS.md`
+- `docs/multi-tenant-architecture.md`
+- `docs/customer-onboarding.md`
+
+#### Remaining 🔄
+
+**Phase 18a-b (Final Items):**
+- [ ] Tenant context middleware - Extract tenant from JWT and set DB schema search path
+- [ ] Schema-per-tenant queries - Repositories dynamically switch schemas
+
+**Phase 18c: Customer Portal (Weeks 5-6):**
+- [ ] Portal authentication - User login/signup endpoints
+- [ ] Dashboard API - Event trends, agent stats, usage graphs
+- [ ] Billing integration - Stripe webhook handling
+
+**Phase 18d: Agent Installation UX (Week 6):**
+- [ ] Helm chart generation - Dynamic chart with tenant token
+- [ ] One-liner install - `curl https://api.lumo.cloud/install | bash`
+- [ ] Installation verification - Agent phone-home confirmation
+
+**Phase 18e: Production Infrastructure (Weeks 7-8):**
+- [ ] Production K8s manifests - HA API deployment
+- [ ] Ingress + TLS - `api.lumo.cloud` with Let's Encrypt
+- [ ] Monitoring stack - Prometheus, Grafana dashboards
+- [ ] Enterprise tier provisioning - Dedicated namespace/DB per customer
 
 **Tier 3 - Quality & Performance (Ongoing):**
 
@@ -742,7 +801,7 @@ See [ROADMAP_TODO.md](ROADMAP_TODO.md) for detailed technical implementation tas
 ### Version Timeline
 
 ```
-v1.0.0 [CURRENT - Nov 28, 2025]
+v1.0.0 [Nov 28, 2025]
 ├─ Enterprise-ready foundation with event-driven K8s monitoring
 └─ Phase 11c: Messaging Integration complete (Redis/NATS/Kafka/RabbitMQ)
 
@@ -752,19 +811,19 @@ v1.1.0 [TARGET - January 2026]
 ├─ Test Coverage 70%+
 └─ Performance optimizations (30-50% latency reduction)
 
-v1.2.0 [Q1 2026]
-├─ Phase 17b: Anomaly Detection + Policy-as-Code
-├─ Backup/Recovery system
-├─ RBAC fine-grained permissions
-├─ Helm advanced features (ingress, TLS, secrets)
-└─ API v2 with GraphQL option
-
-v2.0.0 [Q2-Q3 2026]
-├─ Phase 18: Multi-Tenant SaaS Architecture
+v2.0.0 [CURRENT TARGET - Q1 2026] ← Phase 18 accelerated
+├─ Phase 18: Multi-Tenant SaaS Architecture (IN PROGRESS)
+│   ├─ ✅ Docker optimization (~80% smaller images)
+│   ├─ ✅ Multi-tenant database schema
+│   ├─ ✅ Tenant/Portal handlers (~1,500 LOC)
+│   ├─ ✅ E2E deployment script (3 test tenants working)
+│   ├─ 🔄 Tenant context middleware
+│   ├─ 🔄 Customer portal auth
+│   └─ 🔄 Production infrastructure
 ├─ Hosted control plane + field-deployed agents
 ├─ Customer portal & billing (Stripe)
 ├─ Per-tenant isolation (schema-per-tenant)
-└─ Commercial launch
+└─ Commercial launch ready
 
 v2.x.0 [H2 2026]
 ├─ Distributed agent orchestration

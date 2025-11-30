@@ -6,6 +6,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/ignacio/lumo/internal/api/middleware"
 	"github.com/ignacio/lumo/internal/api/response"
 	"github.com/ignacio/lumo/internal/database/models"
 	"github.com/ignacio/lumo/internal/database/repository"
@@ -37,6 +38,7 @@ type JobListResponse struct {
 func (h *JobsHandler) List(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	opts := repository.ListOptions{
+		TenantID:  middleware.GetTenantID(r.Context()),
 		Limit:     50,
 		Offset:    0,
 		SortBy:    "created_at",

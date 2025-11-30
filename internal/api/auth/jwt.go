@@ -10,12 +10,52 @@ import (
 	"github.com/google/uuid"
 )
 
+// TokenType represents the type of JWT token
+type TokenType string
+
+const (
+	TokenTypeUser  TokenType = "user"
+	TokenTypeAgent TokenType = "agent"
+)
+
 // Claims represents JWT claims for Lumo API
 type Claims struct {
-	UserID   string   `json:"user_id"`
-	Username string   `json:"username"`
+	UserID   string   `json:"user_id,omitempty"`
+	Username string   `json:"username,omitempty"`
 	Scopes   []string `json:"scopes,omitempty"`
+
+	// Multi-tenant fields
+	TenantID   string    `json:"tenant_id,omitempty"`
+	TenantSlug string    `json:"tenant_slug,omitempty"`
+	AgentID    string    `json:"agent_id,omitempty"`
+	TokenType  TokenType `json:"token_type,omitempty"`
+
 	jwt.RegisteredClaims
+}
+
+// IsTenantScoped returns true if the token is scoped to a specific tenant
+func (c *Claims) IsTenantScoped() bool {
+	return c.TenantID != ""
+}
+
+// IsAgentToken returns true if the token is for an agent
+func (c *Claims) IsAgentToken() bool {
+	return c.TokenType == TokenTypeAgent || c.AgentID != ""
+}
+
+// IsUserToken returns true if the token is for a user
+func (c *Claims) IsUserToken() bool {
+	return c.TokenType == TokenTypeUser || c.UserID != ""
+}
+
+// HasScope returns true if the token has the specified scope
+func (c *Claims) HasScope(scope string) bool {
+	for _, s := range c.Scopes {
+		if s == scope {
+			return true
+		}
+	}
+	return false
 }
 
 // JWTManager handles JWT token generation and validation
@@ -44,16 +84,64 @@ func NewJWTManager(secretKey string, expiration time.Duration, issuer string) (*
 	}, nil
 }
 
-// GenerateToken generates a new JWT token
+// GenerateToken generates a new JWT token for a user
 func (m *JWTManager) GenerateToken(userID, username string, scopes []string) (string, error) {
 	now := time.Now()
 	claims := Claims{
-		UserID:   userID,
-		Username: username,
-		Scopes:   scopes,
+		UserID:    userID,
+		Username:  username,
+		Scopes:    scopes,
+		TokenType: TokenTypeUser,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    m.issuer,
 			Subject:   userID,
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(m.expiration)),
+			NotBefore: jwt.NewNumericDate(now),
+			ID:        uuid.New().String(),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(m.secretKey))
+}
+
+// GenerateTenantUserToken generates a JWT token for a user within a tenant
+func (m *JWTManager) GenerateTenantUserToken(userID, username, tenantID, tenantSlug string, scopes []string) (string, error) {
+	now := time.Now()
+	claims := Claims{
+		UserID:     userID,
+		Username:   username,
+		TenantID:   tenantID,
+		TenantSlug: tenantSlug,
+		Scopes:     scopes,
+		TokenType:  TokenTypeUser,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    m.issuer,
+			Subject:   userID,
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(m.expiration)),
+			NotBefore: jwt.NewNumericDate(now),
+			ID:        uuid.New().String(),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(m.secretKey))
+}
+
+// GenerateAgentToken generates a JWT token for an agent
+func (m *JWTManager) GenerateAgentToken(tenantID, tenantSlug, agentID string, scopes []string) (string, error) {
+	now := time.Now()
+	claims := Claims{
+		TenantID:   tenantID,
+		TenantSlug: tenantSlug,
+		AgentID:    agentID,
+		Scopes:     scopes,
+		TokenType:  TokenTypeAgent,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    m.issuer,
+			Subject:   agentID,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(m.expiration)),
 			NotBefore: jwt.NewNumericDate(now),
@@ -94,7 +182,15 @@ func (m *JWTManager) RefreshToken(oldToken string) (string, error) {
 		return "", fmt.Errorf("cannot refresh invalid token: %w", err)
 	}
 
-	// Generate new token with same user info but fresh expiration
+	// Generate new token based on token type
+	if claims.IsAgentToken() {
+		return m.GenerateAgentToken(claims.TenantID, claims.TenantSlug, claims.AgentID, claims.Scopes)
+	}
+
+	if claims.IsTenantScoped() {
+		return m.GenerateTenantUserToken(claims.UserID, claims.Username, claims.TenantID, claims.TenantSlug, claims.Scopes)
+	}
+
 	return m.GenerateToken(claims.UserID, claims.Username, claims.Scopes)
 }
 

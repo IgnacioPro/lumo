@@ -81,6 +81,7 @@ func initConfig() {
 
 		// Search config in home directory with name ".lumo" (without extension)
 		viper.AddConfigPath(filepath.Join(home, ".lumo"))
+		viper.AddConfigPath("/etc/lumo") // Kubernetes ConfigMap mount path
 		viper.AddConfigPath(".")
 		viper.SetConfigName("config")
 		viper.SetConfigType("yaml")
@@ -89,6 +90,10 @@ func initConfig() {
 	// Read environment variables
 	viper.SetEnvPrefix("LUMO")
 	viper.AutomaticEnv()
+
+	// Agent-specific defaults: disable AI (agents submit events to API server for analysis)
+	// This MUST be set before config.Load() which sets ai.enabled=true by default
+	viper.Set("ai.enabled", false)
 
 	// If a config file is found, read it in
 	if err := viper.ReadInConfig(); err == nil {

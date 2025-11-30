@@ -1,26 +1,32 @@
 # Build stage
-FROM golang:1.25-alpine AS builder
+FROM golang:1.25-alpine3.21 AS builder
+
 ARG VERSION=dev
+
 WORKDIR /app
+
+# Cache dependencies
 COPY go.mod go.sum ./
 RUN go mod download
+
+# Build with optimizations
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s -X github.com/ignacio/lumo/internal/version.Version=${VERSION}" -o lumo-agent ./cmd/lumo-agent
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-w -s -X github.com/ignacio/lumo/internal/version.Version=${VERSION}" \
+    -trimpath \
+    -o lumo-agent ./cmd/lumo-agent
 
-# Final stage
-FROM alpine:latest
-WORKDIR /app
+# Compress binary with UPX (reduces size ~50-70%)
+RUN apk add --no-cache upx && upx --best --lzma lumo-agent
 
-# Install runtime dependencies
-RUN apk --no-cache add ca-certificates tzdata
+# Final stage - distroless for security + minimal size
+# Using static-debian12 as it includes timezone data and runs as nonroot by default
+FROM gcr.io/distroless/static-debian12:nonroot
 
-# Create non-root user
-RUN addgroup -g 1000 lumo && \
-    adduser -D -u 1000 -G lumo lumo
+# Copy CA certificates and timezone data (included in distroless/static)
+# Copy binary
+COPY --from=builder /app/lumo-agent /lumo-agent
 
-COPY --from=builder /app/lumo-agent /usr/local/bin/lumo-agent
-RUN chmod +x /usr/local/bin/lumo-agent
-
-USER lumo
 EXPOSE 8080 9090
-ENTRYPOINT ["/usr/local/bin/lumo-agent"]
+
+ENTRYPOINT ["/lumo-agent"]

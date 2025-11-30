@@ -300,3 +300,182 @@ func TestClaims_Structure(t *testing.T) {
 	assert.Equal(t, []string{"read", "write"}, claims.Scopes)
 	assert.Equal(t, "test-issuer", claims.Issuer)
 }
+
+func TestClaims_IsTenantScoped(t *testing.T) {
+	tests := []struct {
+		name     string
+		tenantID string
+		want     bool
+	}{
+		{"with tenant ID", "tenant-123", true},
+		{"without tenant ID", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			claims := &Claims{TenantID: tt.tenantID}
+			if got := claims.IsTenantScoped(); got != tt.want {
+				t.Errorf("IsTenantScoped() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestClaims_IsAgentToken(t *testing.T) {
+	tests := []struct {
+		name      string
+		tokenType TokenType
+		agentID   string
+		want      bool
+	}{
+		{"agent token type", TokenTypeAgent, "", true},
+		{"agent ID set", "", "agent-123", true},
+		{"user token type", TokenTypeUser, "", false},
+		{"no type or agent ID", "", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			claims := &Claims{TokenType: tt.tokenType, AgentID: tt.agentID}
+			if got := claims.IsAgentToken(); got != tt.want {
+				t.Errorf("IsAgentToken() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestClaims_IsUserToken(t *testing.T) {
+	tests := []struct {
+		name      string
+		tokenType TokenType
+		userID    string
+		want      bool
+	}{
+		{"user token type", TokenTypeUser, "", true},
+		{"user ID set", "", "user-123", true},
+		{"agent token type", TokenTypeAgent, "", false},
+		{"no type or user ID", "", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			claims := &Claims{TokenType: tt.tokenType, UserID: tt.userID}
+			if got := claims.IsUserToken(); got != tt.want {
+				t.Errorf("IsUserToken() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestClaims_HasScope(t *testing.T) {
+	claims := &Claims{
+		Scopes: []string{"read", "write", "admin"},
+	}
+
+	tests := []struct {
+		name  string
+		scope string
+		want  bool
+	}{
+		{"has read scope", "read", true},
+		{"has admin scope", "admin", true},
+		{"missing delete scope", "delete", false},
+		{"empty scope", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := claims.HasScope(tt.scope); got != tt.want {
+				t.Errorf("HasScope(%q) = %v, want %v", tt.scope, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestJWTManager_GenerateTenantUserToken(t *testing.T) {
+	manager, err := NewJWTManager("test-secret", 1*time.Hour, "test-issuer")
+	require.NoError(t, err)
+
+	token, err := manager.GenerateTenantUserToken("user-123", "testuser", "tenant-456", "acme", []string{"read"})
+	require.NoError(t, err)
+	assert.NotEmpty(t, token)
+
+	claims, err := manager.ValidateToken(token)
+	require.NoError(t, err)
+	assert.Equal(t, "user-123", claims.UserID)
+	assert.Equal(t, "testuser", claims.Username)
+	assert.Equal(t, "tenant-456", claims.TenantID)
+	assert.Equal(t, "acme", claims.TenantSlug)
+	assert.Equal(t, TokenTypeUser, claims.TokenType)
+	assert.True(t, claims.IsTenantScoped())
+	assert.True(t, claims.IsUserToken())
+	assert.False(t, claims.IsAgentToken())
+}
+
+func TestJWTManager_GenerateAgentToken(t *testing.T) {
+	manager, err := NewJWTManager("test-secret", 1*time.Hour, "test-issuer")
+	require.NoError(t, err)
+
+	token, err := manager.GenerateAgentToken("tenant-456", "acme", "agent-789", []string{"events:submit"})
+	require.NoError(t, err)
+	assert.NotEmpty(t, token)
+
+	claims, err := manager.ValidateToken(token)
+	require.NoError(t, err)
+	assert.Equal(t, "tenant-456", claims.TenantID)
+	assert.Equal(t, "acme", claims.TenantSlug)
+	assert.Equal(t, "agent-789", claims.AgentID)
+	assert.Equal(t, TokenTypeAgent, claims.TokenType)
+	assert.True(t, claims.IsTenantScoped())
+	assert.True(t, claims.IsAgentToken())
+	assert.False(t, claims.IsUserToken())
+}
+
+func TestJWTManager_RefreshToken_AgentToken(t *testing.T) {
+	manager, err := NewJWTManager("test-secret", 1*time.Hour, "test-issuer")
+	require.NoError(t, err)
+
+	// Generate original agent token
+	originalToken, err := manager.GenerateAgentToken("tenant-456", "acme", "agent-789", []string{"events:submit"})
+	require.NoError(t, err)
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Refresh the token
+	refreshedToken, err := manager.RefreshToken(originalToken)
+	require.NoError(t, err)
+	assert.NotEqual(t, originalToken, refreshedToken)
+
+	// Validate refreshed token maintains agent properties
+	claims, err := manager.ValidateToken(refreshedToken)
+	require.NoError(t, err)
+	assert.Equal(t, "tenant-456", claims.TenantID)
+	assert.Equal(t, "acme", claims.TenantSlug)
+	assert.Equal(t, "agent-789", claims.AgentID)
+	assert.True(t, claims.IsAgentToken())
+}
+
+func TestJWTManager_RefreshToken_TenantUserToken(t *testing.T) {
+	manager, err := NewJWTManager("test-secret", 1*time.Hour, "test-issuer")
+	require.NoError(t, err)
+
+	// Generate original tenant user token
+	originalToken, err := manager.GenerateTenantUserToken("user-123", "testuser", "tenant-456", "acme", []string{"read"})
+	require.NoError(t, err)
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Refresh the token
+	refreshedToken, err := manager.RefreshToken(originalToken)
+	require.NoError(t, err)
+	assert.NotEqual(t, originalToken, refreshedToken)
+
+	// Validate refreshed token maintains tenant user properties
+	claims, err := manager.ValidateToken(refreshedToken)
+	require.NoError(t, err)
+	assert.Equal(t, "user-123", claims.UserID)
+	assert.Equal(t, "testuser", claims.Username)
+	assert.Equal(t, "tenant-456", claims.TenantID)
+	assert.Equal(t, "acme", claims.TenantSlug)
+	assert.True(t, claims.IsUserToken())
+}

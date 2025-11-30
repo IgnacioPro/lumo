@@ -14,6 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ignacio/lumo/internal/ai"
+	"github.com/ignacio/lumo/internal/api/middleware"
 	"github.com/ignacio/lumo/internal/api/response"
 	"github.com/ignacio/lumo/internal/database/models"
 	"github.com/ignacio/lumo/internal/database/repository"
@@ -102,6 +103,9 @@ func (h *EventsHandler) SubmitEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	h.logger.WithFields(logFields).Info("Received event submission request")
 
+	// Get tenant ID from context
+	tenantID := middleware.GetTenantID(r.Context())
+
 	// Convert submissions to events
 	events := make([]*models.Event, 0, len(req.Events))
 	var validationErrors []string
@@ -114,6 +118,7 @@ func (h *EventsHandler) SubmitEvents(w http.ResponseWriter, r *http.Request) {
 		}
 
 		event := &models.Event{
+			TenantID:         tenantID,
 			AgentID:          agentID,
 			EventType:        submission.EventType,
 			Severity:         submission.Severity,
@@ -197,6 +202,10 @@ func (h *EventsHandler) GetEvent(w http.ResponseWriter, r *http.Request) {
 func (h *EventsHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	filters := make(map[string]interface{})
+
+	// Tenant filter from context
+	tenantID := middleware.GetTenantID(r.Context())
+	filters["tenant_id"] = tenantID
 
 	if agentID := r.URL.Query().Get("agent_id"); agentID != "" {
 		if id, err := uuid.Parse(agentID); err == nil {

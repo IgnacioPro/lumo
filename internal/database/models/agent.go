@@ -36,6 +36,7 @@ type KubernetesMetadata struct {
 // Agent represents a registered agent
 type Agent struct {
 	ID                 uuid.UUID           `json:"id"`
+	TenantID           uuid.UUID           `json:"tenant_id,omitempty"`
 	Name               string              `json:"name"`
 	Hostname           string              `json:"hostname"`
 	IPAddress          *string             `json:"ip_address,omitempty"`
