@@ -51,6 +51,7 @@ lumo/
 │   ├── grpc/                          # gRPC server/client, handlers, interceptors, mTLS
 │   ├── intelligence/                  # RAG: vectorstore, embeddings, ingestion
 │   ├── doctor/                        # Health check system (6 checks)
+│   ├── infrastructure/                # Enterprise tenant provisioning (K8s namespaces)
 │   ├── messaging/                     # Pub/sub framework (pending: NATS, Kafka, RabbitMQ, Redis)
 │   ├── reliability/                   # Circuit breakers (100% tested)
 │   └── observability/                 # OpenTelemetry tracing, structured observability
@@ -60,17 +61,17 @@ lumo/
 │   └── testutil/                      # Shared test constants and utilities
 ├── deployments/
 │   ├── kubernetes/                    # DaemonSet, Deployment, RBAC, Helm, kind
-│   │   └── kind/                      # Local testing: deploy-lumo.sh, test-failure-scenarios.sh
+│   │   └── kind/                      # Local testing: deploy-lumo.sh, deploy-saas.sh, test-failure-scenarios.sh
 │   └── systemd/                       # Service unit, install scripts, RPM/DEB packaging
 ├── examples/                          # 6 end-to-end examples (3,200+ LOC)
 ├── docs/                              # Getting started, competitive analysis, ROI, investor materials
 ├── website/                           # Next.js 16 landing page with TypeScript + Tailwind (ESLint 9 configured)
 ├── configs/                           # Example configurations
-├── Dockerfile                         # Multi-stage alpine build for lumo CLI
-├── Dockerfile.agent                   # Security-hardened build for lumo-agent (non-root)
+├── Dockerfile                         # Multi-stage scratch build for lumo CLI (~9MB with UPX)
+├── Dockerfile.agent                   # Distroless build for lumo-agent (~11MB, non-root)
 └── docker-compose.yaml                # PostgreSQL + Redis for development
 
-Total: 140 Go files + 83 test files | Coverage: 47.7% internal packages | Verified: 2025-11-29
+Total: 180 Go files + 94 test files | Coverage: 47.7% internal packages | Verified: 2025-11-30
 ```
 
 ---
@@ -751,6 +752,8 @@ See [ROADMAP_TODO.md](ROADMAP_TODO.md) for detailed technical implementation tas
 - `internal/api/handlers/portal.go` (665 LOC)
 - `internal/infrastructure/provisioner.go` (364 LOC)
 - `internal/database/migrations/006_multi_tenant.sql`
+- `internal/api/middleware/tenant.go` (240 LOC) - Schema context middleware
+- `internal/api/middleware/usage.go` (405 LOC) - Usage tracking middleware
 - `deployments/kubernetes/kind/deploy-saas.sh` (984 LOC)
 - `docs/PHASE_18_MULTI_TENANT_SAAS.md`
 - `docs/multi-tenant-architecture.md`
@@ -759,8 +762,8 @@ See [ROADMAP_TODO.md](ROADMAP_TODO.md) for detailed technical implementation tas
 #### Remaining 🔄
 
 **Phase 18a-b (Final Items):**
-- [ ] Tenant context middleware - Extract tenant from JWT and set DB schema search path
-- [ ] Schema-per-tenant queries - Repositories dynamically switch schemas
+- [x] ~~Tenant context middleware - Extract tenant from JWT and set DB schema search path~~ ✅
+- [ ] Schema-per-tenant queries - Repositories dynamically switch schemas (helpers ready)
 
 **Phase 18c: Customer Portal (Weeks 5-6):**
 - [ ] Portal authentication - User login/signup endpoints
