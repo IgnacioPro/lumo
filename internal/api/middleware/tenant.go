@@ -116,7 +116,7 @@ func TenantContext(tenantRepo *repository.TenantRepository) func(http.Handler) h
 			ctx := context.WithValue(r.Context(), TenantIDKey, tenantID)
 			ctx = context.WithValue(ctx, TenantSlugKey, tenant.Slug)
 			ctx = context.WithValue(ctx, TenantKey, tenant)
-			
+
 			// Set schema name for tenant-scoped database queries
 			schemaName := "public" // default uses public schema
 			if tenant.Slug != "default" {
@@ -202,11 +202,11 @@ func StoreClaimsInContext(ctx context.Context, claims *auth.Claims) context.Cont
 // For the default tenant or when no tenant context exists, it uses the public schema.
 func SetTenantSchema(ctx context.Context, db *sql.DB, logger *logrus.Logger) error {
 	schema := GetTenantSchema(ctx)
-	
+
 	// Set the search_path for this connection
 	// Using search_path ensures all unqualified table references use the tenant schema
 	query := fmt.Sprintf("SET search_path TO %s, public", schema)
-	
+
 	_, err := db.ExecContext(ctx, query)
 	if err != nil {
 		if logger != nil {
@@ -214,11 +214,11 @@ func SetTenantSchema(ctx context.Context, db *sql.DB, logger *logrus.Logger) err
 		}
 		return fmt.Errorf("failed to set tenant schema %s: %w", schema, err)
 	}
-	
+
 	if logger != nil {
 		logger.WithField("schema", schema).Debug("Set tenant schema search_path")
 	}
-	
+
 	return nil
 }
 
@@ -230,12 +230,12 @@ func WithTenantSchema(ctx context.Context, db *sql.DB, logger *logrus.Logger, fn
 	if err := SetTenantSchema(ctx, db, logger); err != nil {
 		return err
 	}
-	
+
 	// Execute the function
 	fnErr := fn()
-	
+
 	// Reset to public schema (best effort)
 	_, _ = db.ExecContext(ctx, "SET search_path TO public")
-	
+
 	return fnErr
 }
