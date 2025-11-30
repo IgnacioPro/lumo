@@ -19,6 +19,7 @@ const (
 // Event represents a Kubernetes event reported by an agent
 type Event struct {
 	ID                   uuid.UUID     `json:"id"`
+	TenantID             uuid.UUID     `json:"tenant_id,omitempty"`
 	AgentID              uuid.UUID     `json:"agent_id"`
 	EventType            string        `json:"event_type"`
 	Severity             EventSeverity `json:"severity"`

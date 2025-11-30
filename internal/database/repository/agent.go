@@ -61,10 +61,10 @@ func (r *AgentRepository) Create(ctx context.Context, agent *models.Agent) error
 
 	query := `
 		INSERT INTO agents (
-			id, name, hostname, ip_address, platform, architecture, version,
+			id, tenant_id, name, hostname, ip_address, platform, architecture, version,
 			status, capabilities, labels, kubernetes_metadata,
 			last_heartbeat_at, registered_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING id, registered_at, updated_at, last_heartbeat_at
 	`
 
@@ -74,10 +74,17 @@ func (r *AgentRepository) Create(ctx context.Context, agent *models.Agent) error
 		labelsStr = string(labelsJSON)
 	}
 
+	// Use default tenant if not specified
+	tenantID := agent.TenantID
+	if tenantID == uuid.Nil {
+		tenantID = models.DefaultTenantID
+	}
+
 	err = r.db.QueryRowContext(
 		ctx,
 		query,
 		agent.ID,
+		tenantID,
 		agent.Name,
 		agent.Hostname,
 		agent.IPAddress,
@@ -97,11 +104,12 @@ func (r *AgentRepository) Create(ctx context.Context, agent *models.Agent) error
 		return fmt.Errorf("failed to create agent: %w", err)
 	}
 
+	agent.TenantID = tenantID
 	return nil
 }
 
 // agentColumns is the list of columns for agent queries
-const agentColumns = `id, name, hostname, ip_address, platform, architecture, version,
+const agentColumns = `id, tenant_id, name, hostname, ip_address, platform, architecture, version,
 		   status, capabilities, labels, kubernetes_metadata,
 		   last_heartbeat_at, registered_at, updated_at`
 
@@ -116,6 +124,7 @@ func (r *AgentRepository) scanAgent(scanner interface {
 
 	err := scanner.Scan(
 		&agent.ID,
+		&agent.TenantID,
 		&agent.Name,
 		&agent.Hostname,
 		&agent.IPAddress,
@@ -184,6 +193,13 @@ func (r *AgentRepository) List(ctx context.Context, filters map[string]interface
 
 	args := []interface{}{}
 	argCount := 1
+
+	// Tenant filter (required for multi-tenant mode)
+	if tenantID, ok := filters["tenant_id"].(uuid.UUID); ok && tenantID != uuid.Nil {
+		query += fmt.Sprintf(" AND tenant_id = $%d", argCount)
+		args = append(args, tenantID)
+		argCount++
+	}
 
 	// Apply filters
 	if status, ok := filters["status"].(models.AgentStatus); ok {
@@ -478,4 +494,39 @@ func (r *AgentRepository) CountByPlatform(ctx context.Context) (map[string]int, 
 	}
 
 	return counts, nil
+}
+
+// CountByTenant returns the count of agents for a specific tenant
+func (r *AgentRepository) CountByTenant(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	query := `SELECT COUNT(*) FROM agents WHERE tenant_id = $1`
+
+	var count int
+	err := r.db.QueryRowContext(ctx, query, tenantID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count agents by tenant: %w", err)
+	}
+
+	return count, nil
+}
+
+// ListByTenant retrieves all agents for a specific tenant
+func (r *AgentRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID) ([]*models.Agent, error) {
+	return r.List(ctx, map[string]interface{}{
+		"tenant_id": tenantID,
+	})
+}
+
+// GetByHostnameAndTenant retrieves an agent by hostname within a specific tenant
+func (r *AgentRepository) GetByHostnameAndTenant(ctx context.Context, hostname string, tenantID uuid.UUID) (*models.Agent, error) {
+	query := `SELECT ` + agentColumns + ` FROM agents WHERE hostname = $1 AND tenant_id = $2`
+
+	agent, err := r.scanAgent(r.db.QueryRowContext(ctx, query, hostname, tenantID))
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("agent not found: %w", err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get agent: %w", err)
+	}
+
+	return agent, nil
 }
