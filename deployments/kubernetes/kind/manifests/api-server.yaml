@@ -23,7 +23,7 @@ spec:
       - name: lumo-api
         image: lumo:local
         imagePullPolicy: Never
-        command: ["/app/lumo", "serve", "--config", "/etc/lumo/config.yaml"]
+        command: ["/lumo", "serve", "--config", "/etc/lumo/config.yaml"]
         env:
         - name: LUMO_DATABASE_HOST
           value: postgres
