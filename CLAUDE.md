@@ -705,6 +705,20 @@ See [ROADMAP_TODO.md](ROADMAP_TODO.md) for detailed technical implementation tas
 - **Dependency:** None (Phase 11c messaging complete)
 - **Status:** Planned for v1.2.0
 
+**Tier 3 - Commercial Deployment:**
+
+**Phase 18: Multi-Tenant SaaS Architecture** ☁️ - [6-8 weeks]
+- **Scope:** Transform to SaaS with hosted control plane + field-deployed agents
+- **Documentation:** [docs/PHASE_18_MULTI_TENANT_SAAS.md](docs/PHASE_18_MULTI_TENANT_SAAS.md)
+- **Key Components:**
+  - Schema-per-tenant PostgreSQL isolation
+  - Tenant API keys for agent provisioning
+  - Per-tenant usage tracking and rate limiting
+  - Customer portal backend (auth, dashboard, billing)
+  - Stripe integration for subscriptions
+- **Architecture:** Lumo API (our infra) ← HTTPS ← Agents (customer K8s clusters)
+- **Status:** Proposal ready for review
+
 **Tier 3 - Quality & Performance (Ongoing):**
 
 **Test Coverage Enhancement** - [1-2 weeks]
@@ -746,10 +760,17 @@ v1.2.0 [Q1 2026]
 └─ API v2 with GraphQL option
 
 v2.0.0 [Q2-Q3 2026]
+├─ Phase 18: Multi-Tenant SaaS Architecture
+├─ Hosted control plane + field-deployed agents
+├─ Customer portal & billing (Stripe)
+├─ Per-tenant isolation (schema-per-tenant)
+└─ Commercial launch
+
+v2.x.0 [H2 2026]
 ├─ Distributed agent orchestration
 ├─ Advanced ML models (behavior-based anomaly detection)
 ├─ Custom plugin system
-└─ SaaS multi-tenancy
+└─ White-labeling for partners
 ```
 
 ---
