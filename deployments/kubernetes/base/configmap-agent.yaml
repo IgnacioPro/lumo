@@ -75,6 +75,10 @@ data:
       format: json
       output: stdout
 
+    # AI is disabled for agents - all AI analysis is handled by the API server
+    ai:
+      enabled: false
+
     diagnostics:
       kubernetes:
         enabled: true
