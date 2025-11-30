@@ -6,6 +6,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/ignacio/lumo/internal/api/middleware"
 	"github.com/ignacio/lumo/internal/api/response"
 	"github.com/ignacio/lumo/internal/database/models"
 	"github.com/ignacio/lumo/internal/database/repository"
@@ -94,8 +95,9 @@ func (h *AgentsHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if agent with this hostname already exists
-	existingAgent, err := h.agentRepo.GetByHostname(r.Context(), req.Hostname)
+	// Check if agent with this hostname already exists (within tenant)
+	tenantID := middleware.GetTenantID(r.Context())
+	existingAgent, err := h.agentRepo.GetByHostnameAndTenant(r.Context(), req.Hostname, tenantID)
 	if err == nil && existingAgent != nil {
 		// Agent already registered - update it instead
 		h.logger.WithField("hostname", req.Hostname).Info("Agent already registered, updating")
@@ -159,6 +161,7 @@ func (h *AgentsHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	// Create new agent
 	agent := &models.Agent{
+		TenantID:           tenantID,
 		Name:               req.Name,
 		Hostname:           req.Hostname,
 		Platform:           req.Platform,
@@ -232,6 +235,10 @@ func (h *AgentsHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 func (h *AgentsHandler) List(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	filters := make(map[string]interface{})
+
+	// Tenant filter from context
+	tenantID := middleware.GetTenantID(r.Context())
+	filters["tenant_id"] = tenantID
 
 	// Status filter
 	if status := r.URL.Query().Get("status"); status != "" {
