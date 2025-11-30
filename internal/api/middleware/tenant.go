@@ -2,9 +2,12 @@ package middleware
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 
 	"github.com/ignacio/lumo/internal/api/auth"
 	"github.com/ignacio/lumo/internal/api/response"
@@ -14,10 +17,11 @@ import (
 
 // Context keys for tenant information (using the existing contextKey type from auth.go)
 const (
-	TenantIDKey   contextKey = "tenant_id"
-	TenantSlugKey contextKey = "tenant_slug"
-	TenantKey     contextKey = "tenant"
-	ClaimsKey     contextKey = "claims"
+	TenantIDKey     contextKey = "tenant_id"
+	TenantSlugKey   contextKey = "tenant_slug"
+	TenantKey       contextKey = "tenant"
+	ClaimsKey       contextKey = "claims"
+	TenantSchemaKey contextKey = "tenant_schema"
 )
 
 // GetTenantID extracts the tenant ID from the context
@@ -34,6 +38,18 @@ func GetTenantSlug(ctx context.Context) string {
 		return slug
 	}
 	return "default"
+}
+
+// GetTenantSchema returns the schema name for the current tenant
+func GetTenantSchema(ctx context.Context) string {
+	if schema, ok := ctx.Value(TenantSchemaKey).(string); ok {
+		return schema
+	}
+	slug := GetTenantSlug(ctx)
+	if slug == "default" || slug == "" {
+		return "public"
+	}
+	return fmt.Sprintf("tenant_%s", slug)
 }
 
 // GetTenant extracts the full tenant from the context
@@ -100,6 +116,13 @@ func TenantContext(tenantRepo *repository.TenantRepository) func(http.Handler) h
 			ctx := context.WithValue(r.Context(), TenantIDKey, tenantID)
 			ctx = context.WithValue(ctx, TenantSlugKey, tenant.Slug)
 			ctx = context.WithValue(ctx, TenantKey, tenant)
+			
+			// Set schema name for tenant-scoped database queries
+			schemaName := "public" // default uses public schema
+			if tenant.Slug != "default" {
+				schemaName = fmt.Sprintf("tenant_%s", tenant.Slug)
+			}
+			ctx = context.WithValue(ctx, TenantSchemaKey, schemaName)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -172,4 +195,47 @@ func TenantRateLimiter(baseLimiter func(http.Handler) http.Handler) func(http.Ha
 // This is called by the JWT authentication middleware.
 func StoreClaimsInContext(ctx context.Context, claims *auth.Claims) context.Context {
 	return context.WithValue(ctx, ClaimsKey, claims)
+}
+
+// SetTenantSchema sets the PostgreSQL search_path to the tenant's schema.
+// This should be called at the beginning of database transactions for tenant-scoped queries.
+// For the default tenant or when no tenant context exists, it uses the public schema.
+func SetTenantSchema(ctx context.Context, db *sql.DB, logger *logrus.Logger) error {
+	schema := GetTenantSchema(ctx)
+	
+	// Set the search_path for this connection
+	// Using search_path ensures all unqualified table references use the tenant schema
+	query := fmt.Sprintf("SET search_path TO %s, public", schema)
+	
+	_, err := db.ExecContext(ctx, query)
+	if err != nil {
+		if logger != nil {
+			logger.WithError(err).WithField("schema", schema).Error("Failed to set tenant schema")
+		}
+		return fmt.Errorf("failed to set tenant schema %s: %w", schema, err)
+	}
+	
+	if logger != nil {
+		logger.WithField("schema", schema).Debug("Set tenant schema search_path")
+	}
+	
+	return nil
+}
+
+// WithTenantSchema wraps a database operation with tenant schema context.
+// It sets the schema at the start and resets to public after completion.
+// This is useful for single-query operations that need tenant isolation.
+func WithTenantSchema(ctx context.Context, db *sql.DB, logger *logrus.Logger, fn func() error) error {
+	// Set tenant schema
+	if err := SetTenantSchema(ctx, db, logger); err != nil {
+		return err
+	}
+	
+	// Execute the function
+	fnErr := fn()
+	
+	// Reset to public schema (best effort)
+	_, _ = db.ExecContext(ctx, "SET search_path TO public")
+	
+	return fnErr
 }
