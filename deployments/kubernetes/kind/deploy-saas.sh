@@ -467,6 +467,27 @@ EOF
 deploy_tenant_agents() {
     log_step "Step 7/8: Deploying agents to cluster..."
     
+    # Create shared ClusterRole for agent cluster-wide read access (created once)
+    cat <<'EOF' | kubectl apply -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lumo-agent-cluster-reader
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods", "events", "persistentvolumeclaims"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources: ["jobs", "cronjobs"]
+  verbs: ["get", "list", "watch"]
+EOF
+    
     local i=0
     for tenant_key in "${TENANT_KEYS[@]}"; do
         local tenant_id="${TENANT_IDS[$i]}"
@@ -529,7 +550,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: view
+  name: lumo-agent-cluster-reader
 subjects:
   - kind: ServiceAccount
     name: lumo-agent
