@@ -28,6 +28,7 @@ data:
       strict_host_key_checking: false
 
     ai:
+      enabled: false  # AI analysis is handled by the API server, not agents
       provider: ""
       api_key: ""
       model: ""

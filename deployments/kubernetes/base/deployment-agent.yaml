@@ -64,10 +64,6 @@ spec:
             - name: LUMO_AGENT_MODE
               value: "event-driven"
 
-            # Disable AI in agents (AI analysis handled by API server)
-            - name: LUMO_AI_ENABLED
-              value: "false"
-
             # Kubernetes metadata (injected by K8s)
             - name: LUMO_AGENT_KUBERNETES_ENABLED
               value: "true"

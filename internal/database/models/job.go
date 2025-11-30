@@ -31,6 +31,7 @@ const (
 // Job represents a diagnostic or remediation job
 type Job struct {
 	ID          uuid.UUID       `json:"id"`
+	TenantID    uuid.UUID       `json:"tenant_id,omitempty"`
 	Type        JobType         `json:"type"`
 	Status      JobStatus       `json:"status"`
 	Target      string          `json:"target"`

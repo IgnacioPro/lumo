@@ -25,14 +25,20 @@ func NewJobRepository(db *sql.DB) *JobRepository {
 // Create creates a new job in the database
 func (r *JobRepository) Create(ctx context.Context, job *models.Job) error {
 	query := `
-		INSERT INTO jobs (id, type, status, target, created_at, created_by, metadata)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO jobs (id, tenant_id, type, status, target, created_at, created_by, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id, created_at
 	`
 
 	// Generate UUID if not provided
 	if job.ID == uuid.Nil {
 		job.ID = uuid.New()
+	}
+
+	// Use default tenant if not specified
+	tenantID := job.TenantID
+	if tenantID == uuid.Nil {
+		tenantID = models.DefaultTenantID
 	}
 
 	// Set default status if not provided
@@ -49,6 +55,7 @@ func (r *JobRepository) Create(ctx context.Context, job *models.Job) error {
 		ctx,
 		query,
 		job.ID,
+		tenantID,
 		job.Type,
 		job.Status,
 		job.Target,
@@ -61,13 +68,14 @@ func (r *JobRepository) Create(ctx context.Context, job *models.Job) error {
 		return fmt.Errorf("failed to create job: %w", err)
 	}
 
+	job.TenantID = tenantID
 	return nil
 }
 
 // GetByID retrieves a job by its ID
 func (r *JobRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Job, error) {
 	query := `
-		SELECT id, type, status, target, created_at, started_at, completed_at,
+		SELECT id, tenant_id, type, status, target, created_at, started_at, completed_at,
 		       created_by, result, error, metadata
 		FROM jobs
 		WHERE id = $1
@@ -76,6 +84,7 @@ func (r *JobRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Job,
 	job := &models.Job{}
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&job.ID,
+		&job.TenantID,
 		&job.Type,
 		&job.Status,
 		&job.Target,
@@ -100,6 +109,7 @@ func (r *JobRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Job,
 
 // ListOptions contains options for listing jobs
 type ListOptions struct {
+	TenantID  uuid.UUID
 	Limit     int
 	Offset    int
 	Status    *models.JobStatus
@@ -116,6 +126,13 @@ func (r *JobRepository) List(ctx context.Context, opts ListOptions) ([]*models.J
 	where := "WHERE 1=1"
 	args := []interface{}{}
 	argPos := 1
+
+	// Tenant filter
+	if opts.TenantID != uuid.Nil {
+		where += fmt.Sprintf(" AND tenant_id = $%d", argPos)
+		args = append(args, opts.TenantID)
+		argPos++
+	}
 
 	if opts.Status != nil {
 		where += fmt.Sprintf(" AND status = $%d", argPos)
@@ -183,7 +200,7 @@ func (r *JobRepository) List(ctx context.Context, opts ListOptions) ([]*models.J
 
 	// Build final query
 	query := fmt.Sprintf(`
-		SELECT id, type, status, target, created_at, started_at, completed_at,
+		SELECT id, tenant_id, type, status, target, created_at, started_at, completed_at,
 		       created_by, result, error, metadata
 		FROM jobs
 		%s
@@ -206,6 +223,7 @@ func (r *JobRepository) List(ctx context.Context, opts ListOptions) ([]*models.J
 		job := &models.Job{}
 		err := rows.Scan(
 			&job.ID,
+			&job.TenantID,
 			&job.Type,
 			&job.Status,
 			&job.Target,
