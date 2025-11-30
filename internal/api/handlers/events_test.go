@@ -269,11 +269,12 @@ func TestEventsHandler_BuildNotificationMessage(t *testing.T) {
 
 	notification := handler.buildNotificationMessage(event)
 
-	assert.Contains(t, notification.Title, "crash-loop-backoff")
+	// New format: "🔴 K8s Alert: Crash Loop Backoff" (title case, not kebab-case)
+	assert.Contains(t, notification.Title, "Crash Loop Backoff")
 	assert.Contains(t, notification.Title, "🔴") // Critical severity emoji
-	assert.Contains(t, notification.Message, "critical")
 	assert.Contains(t, notification.Message, "Pod/my-app-pod")
 	assert.Contains(t, notification.Message, "default")
+	assert.Contains(t, notification.Message, "CrashLoopBackOff") // Event message
 }
 
 func TestEventsHandler_BuildNotificationMessage_AllSeverities(t *testing.T) {
