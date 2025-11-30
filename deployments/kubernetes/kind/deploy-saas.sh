@@ -437,21 +437,19 @@ provision_agents() {
             ) ON CONFLICT (id) DO NOTHING;
 EOF
         
-        # Create tenant API key for this agent
+        # Create API key for this agent (in api_keys table used by auth middleware)
         local key_prefix="${agent_token_raw:0:12}"
         kubectl exec -i -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo -v ON_ERROR_STOP=1 <<-EOF
-            INSERT INTO tenant_api_keys (
-                id, tenant_id, name, key_hash, key_prefix,
-                scopes, created_at
+            INSERT INTO api_keys (
+                id, key_hash, name, scopes, created_at, metadata
             ) VALUES (
                 gen_random_uuid(),
-                '${tenant_id}',
-                '${tenant_key}-agent-key',
                 '${token_hash}',
-                '${key_prefix}',
+                '${tenant_key}-agent-key',
                 ARRAY['agent:register', 'agent:heartbeat', 'events:submit'],
-                NOW()
-            ) ON CONFLICT (key_prefix) DO NOTHING;
+                NOW(),
+                '{"tenant_id": "${tenant_id}", "agent_id": "${agent_id}"}'::jsonb
+            ) ON CONFLICT (key_hash) DO NOTHING;
 EOF
         
         AGENT_TOKENS[$i]="$agent_token_raw"
