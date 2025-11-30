@@ -569,3 +569,109 @@ func (r *TenantRepository) scanAPIKeyRow(rows *sql.Rows) (*models.TenantAPIKey, 
 
 	return &key, nil
 }
+
+// IncrementUsage increments the usage counters for a tenant
+func (r *TenantRepository) IncrementUsage(ctx context.Context, tenantID uuid.UUID, apiCalls, events int64) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	today := time.Now().Truncate(24 * time.Hour)
+
+	query := `
+		INSERT INTO tenant_usage (id, tenant_id, date, event_count)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (tenant_id, date)
+		DO UPDATE SET
+			event_count = tenant_usage.event_count + $4,
+			updated_at = NOW()
+	`
+
+	_, err := r.db.ExecContext(ctx, query, uuid.New(), tenantID, today, events)
+	if err != nil {
+		return fmt.Errorf("failed to increment usage: %w", err)
+	}
+
+	return nil
+}
+
+// GetUsage retrieves usage for a tenant within a date range
+func (r *TenantRepository) GetUsage(ctx context.Context, tenantID uuid.UUID, from, to time.Time) ([]*models.TenantUsage, error) {
+	query := `
+		SELECT id, tenant_id, date, agent_count, event_count, ai_analysis_count,
+		       notification_count, storage_used_bytes, peak_agents, created_at, updated_at
+		FROM tenant_usage
+		WHERE tenant_id = $1 AND date >= $2 AND date <= $3
+		ORDER BY date DESC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, tenantID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get usage: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var usages []*models.TenantUsage
+	for rows.Next() {
+		var u models.TenantUsage
+		err := rows.Scan(
+			&u.ID,
+			&u.TenantID,
+			&u.Date,
+			&u.AgentCount,
+			&u.EventCount,
+			&u.AIAnalysisCount,
+			&u.NotificationCount,
+			&u.StorageUsedBytes,
+			&u.PeakAgents,
+			&u.CreatedAt,
+			&u.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan usage: %w", err)
+		}
+		usages = append(usages, &u)
+	}
+
+	return usages, rows.Err()
+}
+
+// GetTodayUsage retrieves today's usage for a tenant
+func (r *TenantRepository) GetTodayUsage(ctx context.Context, tenantID uuid.UUID) (*models.TenantUsage, error) {
+	today := time.Now().Truncate(24 * time.Hour)
+
+	query := `
+		SELECT id, tenant_id, date, agent_count, event_count, ai_analysis_count,
+		       notification_count, storage_used_bytes, peak_agents, created_at, updated_at
+		FROM tenant_usage
+		WHERE tenant_id = $1 AND date = $2
+	`
+
+	var u models.TenantUsage
+	err := r.db.QueryRowContext(ctx, query, tenantID, today).Scan(
+		&u.ID,
+		&u.TenantID,
+		&u.Date,
+		&u.AgentCount,
+		&u.EventCount,
+		&u.AIAnalysisCount,
+		&u.NotificationCount,
+		&u.StorageUsedBytes,
+		&u.PeakAgents,
+		&u.CreatedAt,
+		&u.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		// Return empty usage for today
+		return &models.TenantUsage{
+			TenantID: tenantID,
+			Date:     today,
+		}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get today's usage: %w", err)
+	}
+
+	return &u, nil
+}
