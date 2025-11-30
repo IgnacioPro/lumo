@@ -47,11 +47,13 @@ type NotifierConfig struct {
 	Enabled bool
 
 	// Slack-specific configuration
-	WebhookURL string // Used by Slack, Webhook
+	WebhookURL    string // Used by Slack webhook (legacy)
+	SlackBotToken string // Slack Bot Token for API access (enables threading)
+	SlackChannel  string // Slack channel ID (required for Bot Token mode)
 
 	// Telegram-specific configuration
-	BotToken string // Telegram bot token
-	ChatID   string // Telegram chat ID
+	TelegramBotToken string // Telegram bot token
+	TelegramChatID   string // Telegram chat ID
 
 	// Webhook-specific configuration
 	Headers map[string]string // Custom HTTP headers
@@ -65,6 +67,9 @@ type NotifierConfig struct {
 	From         string   // Email sender address
 	To           []string // Email recipient addresses
 	UseTLS       bool     // Use TLS connection
+
+	// API base URL for "View Full Analysis" links (e.g., "https://lumo.example.com")
+	APIBaseURL string
 
 	// Timeout for notification requests (default: 30s)
 	Timeout int

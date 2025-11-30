@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-28 (Phase 11c Complete) | **Version:** 1.0.0 | **Status:** Phase 11c Complete ✅ | Phase 15 Complete ✅ | Phase 15b Complete ✅ | Phase 16 Complete ✅ | **Next: Phase 14 (Reporting) → v1.1.0** 🚀 | [Roadmap TODO](ROADMAP_TODO.md)
+> **Last Updated:** 2025-11-29 (Phase 16b Complete) | **Version:** 1.0.0 | **Status:** Phase 11c Complete ✅ | Phase 15 Complete ✅ | Phase 15b Complete ✅ | Phase 16 Complete ✅ | Phase 16b Complete ✅ | **Next: Phase 14 (Reporting) → v1.1.0** 🚀 | [Roadmap TODO](ROADMAP_TODO.md)
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -70,7 +70,7 @@ lumo/
 ├── Dockerfile.agent                   # Security-hardened build for lumo-agent (non-root)
 └── docker-compose.yaml                # PostgreSQL + Redis for development
 
-Total: 139 Go files + 83 test files | Coverage: 47.7% internal packages | Verified: 2025-11-26
+Total: 140 Go files + 83 test files | Coverage: 47.7% internal packages | Verified: 2025-11-29
 ```
 
 ---
@@ -312,7 +312,11 @@ For rate limiting and DB pool config, see [configs/config.example.yaml](configs/
 **Remediation:** executor, approval, audit, actions (disk, service, process, Kubernetes), suggestion engine - comprehensive test coverage with all tests passing (disk cleanup, log rotation, service management with command injection prevention)
 
 **Notifications (4 providers):**
-- Slack: Webhook + rich attachments
+- Slack: Block Kit UI (modern formatting) + action button linking to full analysis
+  - Header blocks with severity emoji and title
+  - Structured field sections for metadata
+  - AI analysis section with smart truncation (1,500 chars)
+  - "View Full Analysis" button (public shareable HTML page)
 - Telegram: Bot API + Markdown
 - Webhook: Generic (Discord, Teams, Mattermost)
 - Email: SMTP + TLS + HTML
@@ -649,7 +653,26 @@ See [EVENT_DRIVEN_IMPLEMENTATION.md](EVENT_DRIVEN_IMPLEMENTATION.md) for complet
 - Location: `internal/agent/eventdriven/` with full documentation in `EVENT_DRIVEN_IMPLEMENTATION.md`
 - All CI checks passed
 
-### Strategic Roadmap (Nov 27, 2025)
+### Completed (Phase 16b)
+
+**Phase 16b: Enhanced Slack Notifications & AI Analysis Presentation** - COMPLETE ✅ (Nov 29, 2025)
+- Modern Block Kit UI replacing legacy attachments
+  - Header blocks with severity emoji + title
+  - Structured field sections with event metadata
+  - AI analysis section with smart truncation (1,500 chars)
+- New HTML analysis endpoint: `GET /api/v1/events/{id}/analysis` (public, no auth)
+  - Beautiful responsive design with gradient header
+  - Complete AI analysis (no truncation)
+  - Markdown rendering and syntax-highlighted code blocks
+  - Mobile-friendly CSS
+- Enhanced AI prompts with structured 5-section format
+  - Root Cause, Impact Assessment, Immediate Actions, Prevention, Monitoring Recommendations
+- Event-specific metadata extraction (memory limits, restart counts, exit codes)
+- Configuration: APIBaseURL field for notification provider (`internal/notifications/notifier.go`)
+- Files: 1 new file (event_analysis.go, 340 lines), 3 files modified
+- Testing: OOMKilled detection, AI analysis generation, Slack notification formatting verified
+
+### Strategic Roadmap (Nov 29, 2025)
 
 **Current Maturity:** Enterprise-Ready v1.0.0 - Production deployment ready with comprehensive features
 

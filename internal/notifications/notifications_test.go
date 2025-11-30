@@ -244,8 +244,35 @@ func TestSlackNotifier(t *testing.T) {
 	if len(receivedPayload.Attachments) == 0 {
 		t.Error("expected attachments in payload")
 	}
-	if len(receivedPayload.Attachments[0].Fields) != 2 {
-		t.Errorf("expected 2 fields, got %d", len(receivedPayload.Attachments[0].Fields))
+
+	// Check that blocks are present (new Block Kit format)
+	if len(receivedPayload.Attachments[0].Blocks) == 0 {
+		t.Error("expected blocks in attachment (Block Kit format)")
+	}
+
+	// Verify blocks contain expected structure (header, context, sections, footer)
+	blocks := receivedPayload.Attachments[0].Blocks
+	hasHeader := false
+	hasFields := false
+	for _, block := range blocks {
+		if blockType, ok := block["type"].(string); ok {
+			if blockType == "header" {
+				hasHeader = true
+			}
+			// Check for fields section
+			if blockType == "section" {
+				if fields, ok := block["fields"].([]interface{}); ok && len(fields) > 0 {
+					hasFields = true
+				}
+			}
+		}
+	}
+
+	if !hasHeader {
+		t.Error("expected header block in Slack message")
+	}
+	if !hasFields {
+		t.Error("expected fields section in Slack message")
 	}
 }
 
@@ -273,12 +300,12 @@ func TestTelegramNotifier(t *testing.T) {
 	log.SetOutput(io.Discard)
 
 	config := &NotifierConfig{
-		Name:     "test-telegram",
-		Type:     NotifierTelegram,
-		Enabled:  true,
-		BotToken: "test-token",
-		ChatID:   "12345",
-		Timeout:  5,
+		Name:             "test-telegram",
+		Type:             NotifierTelegram,
+		Enabled:          true,
+		TelegramBotToken: "test-token",
+		TelegramChatID:   "12345",
+		Timeout:          5,
 	}
 
 	notifier, err := NewTelegramNotifier(config, log)
@@ -446,11 +473,11 @@ func TestNewNotifierFactory(t *testing.T) {
 		{
 			name: "telegram notifier",
 			config: &NotifierConfig{
-				Name:     "test-telegram",
-				Type:     NotifierTelegram,
-				Enabled:  true,
-				BotToken: "test-token",
-				ChatID:   "12345",
+				Name:             "test-telegram",
+				Type:             NotifierTelegram,
+				Enabled:          true,
+				TelegramBotToken: "test-token",
+				TelegramChatID:   "12345",
 			},
 			shouldErr: false,
 		},

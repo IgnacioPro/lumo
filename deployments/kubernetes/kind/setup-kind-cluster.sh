@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 # Configuration
 CLUSTER_NAME="${KIND_CLUSTER_NAME:-lumo-test}"
 KIND_VERSION="${KIND_VERSION:-v0.20.0}"
-K8S_VERSION="${K8S_VERSION:-v1.28.0}"
+K8S_VERSION="${K8S_VERSION:-v1.33.0}"
 
 # Functions
 log_info() {

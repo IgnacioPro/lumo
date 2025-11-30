@@ -398,35 +398,30 @@ func (h *EventsHandler) analyzeEventWithAI(ctx context.Context, event *models.Ev
 	h.logger.WithField("event_id", event.ID).Info("Starting AI analysis")
 	startTime := time.Now()
 
-	// Build prompt for AI analysis
-	prompt := fmt.Sprintf(`A Kubernetes event has been detected:
+	// Extract metadata for context (JSONB is already map[string]interface{})
+	metadata := make(map[string]interface{})
+	if event.Metadata != nil {
+		metadata = event.Metadata
+	}
 
-Event Type: %s
-Severity: %s
-Resource: %s/%s
-Namespace: %s
-Message: %s
-
-Please analyze this event and provide:
-1. Root cause analysis
-2. Potential impact assessment
-3. Recommended remediation steps
-4. Prevention strategies
-
-Keep the response concise and actionable.`,
-		event.EventType,
-		event.Severity,
-		event.ResourceKind,
-		event.ResourceName,
-		stringOrEmpty(event.Namespace),
-		event.Message,
-	)
+	// Build enhanced prompt for AI analysis with structured output
+	prompt := h.buildAIAnalysisPrompt(event, metadata)
 
 	// Call AI provider
 	analysisCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	response, _, err := h.aiProvider.Ask(analysisCtx, "You are a Kubernetes SRE expert. Analyze the following event and provide actionable insights.", prompt)
+	systemPrompt := `You are a Kubernetes SRE expert with deep knowledge of container orchestration, cloud-native architecture, and incident response.
+
+Your analysis should be:
+- Clear and concise (3-5 sentences per section)
+- Actionable with specific kubectl commands or configuration changes
+- Prioritized by impact and urgency
+- Formatted in Markdown with proper sections
+
+Always include specific commands, file paths, or configuration snippets when suggesting remediation.`
+
+	response, _, err := h.aiProvider.Ask(analysisCtx, systemPrompt, prompt)
 	if err != nil {
 		aiAnalysisTotal.WithLabelValues("failure").Inc()
 		return fmt.Errorf("AI provider analysis failed: %w", err)
@@ -436,13 +431,116 @@ Keep the response concise and actionable.`,
 	aiAnalysisDuration.WithLabelValues(h.aiProvider.Name()).Observe(time.Since(startTime).Seconds())
 	aiAnalysisTotal.WithLabelValues("success").Inc()
 
-	// Store AI analysis
+	// Store AI analysis in database
 	if err := h.eventRepo.UpdateAIAnalysis(ctx, event.ID, response); err != nil {
 		return fmt.Errorf("failed to store AI analysis: %w", err)
 	}
 
+	// Update the in-memory event object so notification includes AI analysis
+	event.AIAnalysis = &response
+
 	h.logger.WithField("event_id", event.ID).Info("AI analysis completed and stored")
 	return nil
+}
+
+// buildAIAnalysisPrompt creates a comprehensive, structured prompt for AI analysis
+func (h *EventsHandler) buildAIAnalysisPrompt(event *models.Event, metadata map[string]interface{}) string {
+	var prompt strings.Builder
+
+	prompt.WriteString("# Kubernetes Event Analysis Request\n\n")
+
+	// Event Overview
+	prompt.WriteString("## Event Details\n")
+	prompt.WriteString(fmt.Sprintf("- **Event Type**: `%s`\n", event.EventType))
+	prompt.WriteString(fmt.Sprintf("- **Severity**: `%s`\n", event.Severity))
+	prompt.WriteString(fmt.Sprintf("- **Resource**: `%s/%s`\n", event.ResourceKind, event.ResourceName))
+	prompt.WriteString(fmt.Sprintf("- **Namespace**: `%s`\n", stringOrEmpty(event.Namespace)))
+	prompt.WriteString(fmt.Sprintf("- **Timestamp**: `%s`\n", event.EventTimestamp.Format(time.RFC3339)))
+	prompt.WriteString(fmt.Sprintf("- **Message**: %s\n\n", event.Message))
+
+	// Additional metadata if available
+	if len(metadata) > 0 {
+		prompt.WriteString("## Additional Context\n")
+		if labels, ok := metadata["labels"].(map[string]interface{}); ok && len(labels) > 0 {
+			prompt.WriteString("**Labels**:\n")
+			for k, v := range labels {
+				prompt.WriteString(fmt.Sprintf("- `%s`: `%v`\n", k, v))
+			}
+		}
+
+		// Add specific context based on event type
+		h.addEventSpecificContext(&prompt, event, metadata)
+		prompt.WriteString("\n")
+	}
+
+	// Analysis request
+	prompt.WriteString("## Required Analysis\n\n")
+	prompt.WriteString("Provide a structured analysis with the following sections:\n\n")
+
+	prompt.WriteString("### 1. Root Cause\n")
+	prompt.WriteString("Identify the most likely root cause(s) of this event. ")
+	prompt.WriteString("Be specific about what failed and why.\n\n")
+
+	prompt.WriteString("### 2. Impact Assessment\n")
+	prompt.WriteString("Evaluate the impact on:\n")
+	prompt.WriteString("- User-facing services\n")
+	prompt.WriteString("- System resources\n")
+	prompt.WriteString("- Related workloads\n\n")
+
+	prompt.WriteString("### 3. Immediate Actions\n")
+	prompt.WriteString("Provide 3-5 immediate remediation steps with specific commands. Example:\n")
+	prompt.WriteString("```bash\n")
+	prompt.WriteString("kubectl describe pod <pod-name> -n <namespace>\n")
+	prompt.WriteString("```\n\n")
+
+	prompt.WriteString("### 4. Long-term Prevention\n")
+	prompt.WriteString("Suggest configuration changes, resource adjustments, or architectural improvements ")
+	prompt.WriteString("to prevent recurrence. Include YAML snippets if relevant.\n\n")
+
+	prompt.WriteString("### 5. Monitoring Recommendations\n")
+	prompt.WriteString("Suggest specific metrics, alerts, or logs to monitor for early detection.\n\n")
+
+	return prompt.String()
+}
+
+// addEventSpecificContext adds context specific to the event type
+func (h *EventsHandler) addEventSpecificContext(prompt *strings.Builder, event *models.Event, metadata map[string]interface{}) {
+	switch event.EventType {
+	case "oom-killed":
+		if limits, ok := metadata["container_limits"].(map[string]interface{}); ok {
+			prompt.WriteString("\n**Container Resource Limits**:\n")
+			if memory, ok := limits["memory"].(string); ok {
+				fmt.Fprintf(prompt, "- Memory Limit: `%s`\n", memory)
+			}
+		}
+		if usage, ok := metadata["last_memory_usage"].(string); ok {
+			fmt.Fprintf(prompt, "- Last Memory Usage: `%s`\n", usage)
+		}
+
+	case "image-pull-backoff":
+		if image, ok := metadata["image"].(string); ok {
+			fmt.Fprintf(prompt, "\n**Image**: `%s`\n", image)
+		}
+		if reason, ok := metadata["reason"].(string); ok {
+			fmt.Fprintf(prompt, "**Pull Error**: %s\n", reason)
+		}
+
+	case "crash-loop-backoff":
+		if restarts, ok := metadata["restart_count"].(float64); ok {
+			fmt.Fprintf(prompt, "\n**Restart Count**: `%.0f`\n", restarts)
+		}
+		if exitCode, ok := metadata["exit_code"].(float64); ok {
+			fmt.Fprintf(prompt, "**Last Exit Code**: `%.0f`\n", exitCode)
+		}
+
+	case "pvc-provision-failed":
+		if storageClass, ok := metadata["storage_class"].(string); ok {
+			fmt.Fprintf(prompt, "\n**Storage Class**: `%s`\n", storageClass)
+		}
+		if requestedSize, ok := metadata["requested_size"].(string); ok {
+			fmt.Fprintf(prompt, "**Requested Size**: `%s`\n", requestedSize)
+		}
+	}
 }
 
 // sendEventNotifications sends notifications for an event
@@ -503,26 +601,31 @@ func (h *EventsHandler) buildNotificationMessage(event *models.Event) notificati
 	}
 
 	emoji := severityEmoji[event.Severity]
-	title := fmt.Sprintf("%s Kubernetes Event: %s", emoji, event.EventType)
+	title := fmt.Sprintf("%s K8s Alert: %s", emoji, formatEventTypeName(event.EventType))
 
-	body := fmt.Sprintf(`*Severity:* %s
-*Resource:* %s/%s
-*Namespace:* %s
-*Time:* %s
+	// Build structured message body
+	var body strings.Builder
 
-*Message:*
-%s`,
-		event.Severity,
-		event.ResourceKind,
-		event.ResourceName,
-		stringOrEmpty(event.Namespace),
-		event.EventTimestamp.Format(time.RFC3339),
-		event.Message,
-	)
+	// Resource information section
+	body.WriteString(fmt.Sprintf("*Resource:* `%s/%s`\n", event.ResourceKind, event.ResourceName))
+	if event.Namespace != nil && *event.Namespace != "" {
+		body.WriteString(fmt.Sprintf("*Namespace:* `%s`\n", *event.Namespace))
+	}
+
+	// Event message
+	body.WriteString(fmt.Sprintf("\n*Event Details:*\n%s\n", event.Message))
+
+	// Add metadata context if available (JSONB is already map[string]interface{})
+	if event.Metadata != nil {
+		contextInfo := h.extractContextInfo(event.Metadata)
+		if contextInfo != "" {
+			body.WriteString(fmt.Sprintf("\n*Context:*\n%s\n", contextInfo))
+		}
+	}
 
 	// Add AI analysis if available
 	if event.HasAIAnalysis() {
-		body += fmt.Sprintf("\n\n*AI Analysis:*\n%s", *event.AIAnalysis)
+		body.WriteString(fmt.Sprintf("\n*AI Analysis:*\n%s", *event.AIAnalysis))
 	}
 
 	// Map event severity to notification level
@@ -538,13 +641,86 @@ func (h *EventsHandler) buildNotificationMessage(event *models.Event) notificati
 		level = notifications.LevelInfo
 	}
 
+	// Build tags
+	tags := []string{"kubernetes", string(event.Severity), event.EventType}
+	if event.Namespace != nil {
+		tags = append(tags, fmt.Sprintf("ns:%s", *event.Namespace))
+	}
+
+	// Add fields for structured display (used by Slack Block Kit)
+	fields := make(map[string]string)
+	if event.ResourceUID != nil {
+		fields["Resource UID"] = *event.ResourceUID
+	}
+	fields["Event ID"] = event.ID.String()
+	// Add analysis URL for "View Full Analysis" links
+	fields["_event_url"] = fmt.Sprintf("/api/v1/events/%s/analysis", event.ID.String())
+
 	return notifications.Notification{
 		Title:     title,
-		Message:   body,
+		Message:   body.String(),
 		Level:     level,
 		Timestamp: event.EventTimestamp,
-		Tags:      []string{"kubernetes", "event", string(event.Severity), event.EventType},
+		Tags:      tags,
+		Fields:    fields,
 	}
+}
+
+// formatEventTypeName converts event type to human-readable format
+func formatEventTypeName(eventType string) string {
+	// Convert kebab-case to Title Case
+	words := strings.Split(eventType, "-")
+	for i, word := range words {
+		if len(word) > 0 {
+			words[i] = strings.ToUpper(word[:1]) + word[1:]
+		}
+	}
+	return strings.Join(words, " ")
+}
+
+// extractContextInfo extracts relevant context information from metadata
+func (h *EventsHandler) extractContextInfo(metadata map[string]interface{}) string {
+	var context strings.Builder
+
+	// Extract restart count for pod events
+	if restarts, ok := metadata["restart_count"].(float64); ok && restarts > 0 {
+		context.WriteString(fmt.Sprintf("• Restart count: `%.0f`\n", restarts))
+	}
+
+	// Extract exit code for crash events
+	if exitCode, ok := metadata["exit_code"].(float64); ok {
+		context.WriteString(fmt.Sprintf("• Exit code: `%.0f`\n", exitCode))
+	}
+
+	// Extract image information
+	if image, ok := metadata["image"].(string); ok {
+		context.WriteString(fmt.Sprintf("• Image: `%s`\n", image))
+	}
+
+	// Extract container limits for resource events
+	if limits, ok := metadata["container_limits"].(map[string]interface{}); ok {
+		if memory, ok := limits["memory"].(string); ok {
+			context.WriteString(fmt.Sprintf("• Memory limit: `%s`\n", memory))
+		}
+		if cpu, ok := limits["cpu"].(string); ok {
+			context.WriteString(fmt.Sprintf("• CPU limit: `%s`\n", cpu))
+		}
+	}
+
+	// Extract storage information for PVC events
+	if storageClass, ok := metadata["storage_class"].(string); ok {
+		context.WriteString(fmt.Sprintf("• Storage class: `%s`\n", storageClass))
+	}
+	if requestedSize, ok := metadata["requested_size"].(string); ok {
+		context.WriteString(fmt.Sprintf("• Requested size: `%s`\n", requestedSize))
+	}
+
+	// Extract node information
+	if nodeName, ok := metadata["node_name"].(string); ok {
+		context.WriteString(fmt.Sprintf("• Node: `%s`\n", nodeName))
+	}
+
+	return context.String()
 }
 
 // stringOrEmpty returns the dereferenced string or "N/A" if nil

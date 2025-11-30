@@ -114,8 +114,6 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 				Type:         notifications.NotifierType(cfgNotifier.Type),
 				Enabled:      cfgNotifier.Enabled,
 				WebhookURL:   expandEnvVar(cfgNotifier.WebhookURL),
-				BotToken:     expandEnvVar(cfgNotifier.BotToken),
-				ChatID:       expandEnvVar(cfgNotifier.ChatID),
 				Headers:      cfgNotifier.Headers,
 				Method:       cfgNotifier.Method,
 				SMTPHost:     cfgNotifier.SMTPHost,
@@ -124,6 +122,21 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 				SMTPPassword: expandEnvVar(cfgNotifier.SMTPPass),
 				From:         cfgNotifier.From,
 				To:           cfgNotifier.To,
+				UseTLS:       cfgNotifier.UseTLS,
+				Timeout:      cfgNotifier.Timeout,
+			}
+
+			// Map bot_token and chat_id based on notifier type
+			botToken := expandEnvVar(cfgNotifier.BotToken)
+			chatID := expandEnvVar(cfgNotifier.ChatID)
+
+			switch cfgNotifier.Type {
+			case "slack":
+				notifCfg.SlackBotToken = botToken
+				notifCfg.SlackChannel = chatID
+			case "telegram":
+				notifCfg.TelegramBotToken = botToken
+				notifCfg.TelegramChatID = chatID
 			}
 			notifier, err := notifications.NewNotifier(notifCfg, logger)
 			if err != nil {
@@ -163,6 +176,9 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 		r.Get("/health", healthHandler.Health)
 		r.Get("/ready", healthHandler.Ready)
 		r.Get("/live", healthHandler.Live)
+
+		// Public event analysis view (shareable HTML page)
+		r.Get("/events/{id}/analysis", eventsHandler.GetEventAnalysisHTML)
 
 		// Auth endpoints (public - used to obtain JWT tokens)
 		r.Post("/auth/token", authHandler.GenerateToken)

@@ -30,10 +30,10 @@ type telegramMessage struct {
 
 // NewTelegramNotifier creates a new Telegram notifier.
 func NewTelegramNotifier(config *NotifierConfig, log *logrus.Logger) (*TelegramNotifier, error) {
-	if config.BotToken == "" {
+	if config.TelegramBotToken == "" {
 		return nil, fmt.Errorf("telegram bot token is required")
 	}
-	if config.ChatID == "" {
+	if config.TelegramChatID == "" {
 		return nil, fmt.Errorf("telegram chat ID is required")
 	}
 
@@ -70,7 +70,7 @@ func (t *TelegramNotifier) sendInternal(ctx context.Context, notification *Notif
 	}
 
 	// Build API URL
-	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", t.config.BotToken)
+	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", t.config.TelegramBotToken)
 
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(payload))
@@ -104,10 +104,10 @@ func (t *TelegramNotifier) sendInternal(ctx context.Context, notification *Notif
 
 // Health checks if the Telegram bot is configured.
 func (t *TelegramNotifier) Health(ctx context.Context) error {
-	if t.config.BotToken == "" {
+	if t.config.TelegramBotToken == "" {
 		return fmt.Errorf("telegram bot token not configured")
 	}
-	if t.config.ChatID == "" {
+	if t.config.TelegramChatID == "" {
 		return fmt.Errorf("telegram chat ID not configured")
 	}
 	return nil
@@ -139,7 +139,7 @@ func (t *TelegramNotifier) buildMessage(notification *Notification) *telegramMes
 	}
 
 	return &telegramMessage{
-		ChatID:    t.config.ChatID,
+		ChatID:    t.config.TelegramChatID,
 		Text:      sb.String(),
 		ParseMode: "Markdown",
 	}
