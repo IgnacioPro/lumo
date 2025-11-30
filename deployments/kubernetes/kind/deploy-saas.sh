@@ -513,6 +513,7 @@ data:
         enabled: true
         debounce_window: 10s
         max_debounce_window: 30s
+        leader_election_namespace: ${agent_namespace}
 EOF
         
         # Deploy agent
@@ -535,6 +536,30 @@ subjects:
   - kind: ServiceAccount
     name: lumo-agent
     namespace: ${agent_namespace}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lumo-agent-leader-election
+  namespace: ${agent_namespace}
+rules:
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lumo-agent-leader-election
+  namespace: ${agent_namespace}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: lumo-agent-leader-election
+subjects:
+- kind: ServiceAccount
+  name: lumo-agent
+  namespace: ${agent_namespace}
 ---
 apiVersion: apps/v1
 kind: Deployment
