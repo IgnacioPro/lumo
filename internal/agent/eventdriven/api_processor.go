@@ -9,10 +9,31 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ignacio/lumo/internal/config"
+)
+
+var (
+	eventsProcessedTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "lumo_events_processed_total",
+			Help: "Total number of Kubernetes events processed",
+		},
+		[]string{"event_type", "severity", "namespace"},
+	)
+
+	eventProcessingDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "lumo_event_processing_duration_seconds",
+			Help:    "Duration of event processing",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"event_type"},
+	)
 )
 
 // APIEventProcessor submits events to the API server instead of processing them locally
