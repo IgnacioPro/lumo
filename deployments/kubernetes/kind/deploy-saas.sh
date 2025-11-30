@@ -496,11 +496,17 @@ metadata:
   namespace: ${agent_namespace}
 data:
   config.yaml: |
+    ai:
+      enabled: false
     api:
       endpoint: http://lumo-api.${NAMESPACE}.svc.cluster.local:8080
+    cache:
+      enabled: true
+      redis_url: redis://lumo-redis.${NAMESPACE}.svc.cluster.local:6379/0
     agent:
       mode: event-driven
       tenant_id: "${tenant_id}"
+      cache_path: /tmp/lumo-cache
       enabled_checks:
         - kubernetes
       event_driven:
@@ -773,6 +779,51 @@ run_validation_tests() {
     
     kill $pf_pid 2>/dev/null || true
     wait $pf_pid 2>/dev/null || true
+    
+    # Test 8: Verify agents are actually working (check logs for successful startup)
+    log_info "Test 8: Verifying agents are initialized correctly..."
+    local agents_working=0
+    local agents_failed=0
+    local m=0
+    for tenant_key in "${TENANT_KEYS[@]}"; do
+        local tenant_slug="${TENANT_SLUGS[$m]}"
+        local agent_namespace="tenant-${tenant_slug}"
+        
+        # Check for startup success or error messages in logs
+        local agent_logs
+        agent_logs=$(kubectl logs -n "${agent_namespace}" -l app=lumo-agent --tail=50 2>/dev/null || echo "")
+        
+        # Check for fatal errors (config issues, crashes)
+        if echo "$agent_logs" | grep -qi "failed to load config\|Error:\|panic:"; then
+            log_error "✗ Agent ${tenant_key} has startup errors:"
+            echo "$agent_logs" | grep -i "error\|failed\|panic" | head -5
+            agents_failed=$((agents_failed + 1))
+        elif echo "$agent_logs" | grep -qi "Starting Lumo Agent\|Agent started\|informer\|event-driven"; then
+            log_success "✓ Agent ${tenant_key} started successfully"
+            agents_working=$((agents_working + 1))
+        else
+            # Check if pod is still starting
+            local restart_count
+            restart_count=$(kubectl get pods -n "${agent_namespace}" -l app=lumo-agent -o jsonpath='{.items[0].status.containerStatuses[0].restartCount}' 2>/dev/null || echo "0")
+            if [ "$restart_count" -gt "0" ]; then
+                log_error "✗ Agent ${tenant_key} has restarted ${restart_count} times"
+                agents_failed=$((agents_failed + 1))
+            else
+                log_warn "⚠ Agent ${tenant_key} logs not yet available (may still be starting)"
+            fi
+        fi
+        m=$((m + 1))
+    done
+    
+    if [ "$agents_failed" -eq "0" ] && [ "$agents_working" -eq "3" ]; then
+        log_success "✓ All 3 agents initialized correctly"
+        tests_passed=$((tests_passed + 1))
+    elif [ "$agents_failed" -gt "0" ]; then
+        log_error "✗ ${agents_failed}/3 agents failed to start"
+        tests_failed=$((tests_failed + 1))
+    else
+        log_warn "⚠ Only ${agents_working}/3 agents verified as working"
+    fi
     
     # Summary
     echo ""
