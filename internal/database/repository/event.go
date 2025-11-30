@@ -47,17 +47,24 @@ func (r *EventRepository) Create(ctx context.Context, event *models.Event) error
 
 	query := `
 		INSERT INTO events (
-			id, agent_id, event_type, severity, resource_kind, resource_name,
+			id, tenant_id, agent_id, event_type, severity, resource_kind, resource_name,
 			resource_uid, namespace, message, metadata, event_timestamp,
 			notification_sent, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING id, created_at, updated_at
 	`
+
+	// Use default tenant if not specified
+	tenantID := event.TenantID
+	if tenantID == uuid.Nil {
+		tenantID = models.DefaultTenantID
+	}
 
 	err := r.db.QueryRowContext(
 		ctx,
 		query,
 		event.ID,
+		tenantID,
 		event.AgentID,
 		event.EventType,
 		event.Severity,
@@ -77,6 +84,7 @@ func (r *EventRepository) Create(ctx context.Context, event *models.Event) error
 		return fmt.Errorf("failed to create event: %w", err)
 	}
 
+	event.TenantID = tenantID
 	return nil
 }
 
@@ -98,10 +106,10 @@ func (r *EventRepository) CreateBatch(ctx context.Context, events []*models.Even
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO events (
-			id, agent_id, event_type, severity, resource_kind, resource_name,
+			id, tenant_id, agent_id, event_type, severity, resource_kind, resource_name,
 			resource_uid, namespace, message, metadata, event_timestamp,
 			notification_sent, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 	`)
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
@@ -115,6 +123,12 @@ func (r *EventRepository) CreateBatch(ctx context.Context, events []*models.Even
 		// Generate UUID if not provided
 		if event.ID == uuid.Nil {
 			event.ID = uuid.New()
+		}
+
+		// Use default tenant if not specified
+		tenantID := event.TenantID
+		if tenantID == uuid.Nil {
+			tenantID = models.DefaultTenantID
 		}
 
 		// Set timestamps
@@ -134,6 +148,7 @@ func (r *EventRepository) CreateBatch(ctx context.Context, events []*models.Even
 		_, err := stmt.ExecContext(
 			ctx,
 			event.ID,
+			tenantID,
 			event.AgentID,
 			event.EventType,
 			event.Severity,
@@ -163,7 +178,7 @@ func (r *EventRepository) CreateBatch(ctx context.Context, events []*models.Even
 // GetByID retrieves an event by ID
 func (r *EventRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Event, error) {
 	query := `
-		SELECT id, agent_id, event_type, severity, resource_kind, resource_name,
+		SELECT id, tenant_id, agent_id, event_type, severity, resource_kind, resource_name,
 		       resource_uid, namespace, message, metadata, event_timestamp,
 		       ai_analysis, ai_analyzed_at, notification_sent, notification_sent_at,
 		       notification_channels, created_at, updated_at
@@ -177,6 +192,7 @@ func (r *EventRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Ev
 
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&event.ID,
+		&event.TenantID,
 		&event.AgentID,
 		&event.EventType,
 		&event.Severity,
@@ -218,7 +234,7 @@ func (r *EventRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Ev
 // List retrieves events with optional filtering
 func (r *EventRepository) List(ctx context.Context, filters map[string]interface{}) ([]*models.Event, error) {
 	query := `
-		SELECT id, agent_id, event_type, severity, resource_kind, resource_name,
+		SELECT id, tenant_id, agent_id, event_type, severity, resource_kind, resource_name,
 		       resource_uid, namespace, message, metadata, event_timestamp,
 		       ai_analysis, ai_analyzed_at, notification_sent, notification_sent_at,
 		       notification_channels, created_at, updated_at
@@ -228,6 +244,13 @@ func (r *EventRepository) List(ctx context.Context, filters map[string]interface
 
 	args := []interface{}{}
 	argCount := 1
+
+	// Tenant filter (required for multi-tenant mode)
+	if tenantID, ok := filters["tenant_id"].(uuid.UUID); ok && tenantID != uuid.Nil {
+		query += fmt.Sprintf(" AND tenant_id = $%d", argCount)
+		args = append(args, tenantID)
+		argCount++
+	}
 
 	// Apply filters
 	if agentID, ok := filters["agent_id"].(uuid.UUID); ok {
@@ -348,6 +371,7 @@ func (r *EventRepository) List(ctx context.Context, filters map[string]interface
 
 		err := rows.Scan(
 			&event.ID,
+			&event.TenantID,
 			&event.AgentID,
 			&event.EventType,
 			&event.Severity,
