@@ -86,7 +86,8 @@ func (e *Event) IsRecent(threshold time.Duration) bool {
 
 // SubmitEventRequest represents a request to submit one or more events
 type SubmitEventRequest struct {
-	Events []EventSubmission `json:"events" validate:"required,dive"`
+	AgentID string            `json:"agent_id,omitempty"` // Agent ID (optional, can be derived from API key)
+	Events  []EventSubmission `json:"events" validate:"required,dive"`
 }
 
 // EventSubmission represents a single event submission from an agent

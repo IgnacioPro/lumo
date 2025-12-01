@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ignacio/lumo/internal/api/response"
@@ -49,6 +50,16 @@ func APIKeyAuth(apiKeyRepo *repository.APIKeyRepository, logger *logrus.Logger) 
 
 			// Add API key to request context
 			ctx := context.WithValue(r.Context(), APIKeyContextKey, key)
+
+			// Extract tenant_id from API key metadata and set in context
+			if key.Metadata != nil {
+				if tenantIDStr, ok := key.Metadata["tenant_id"].(string); ok && tenantIDStr != "" {
+					if tenantID, err := uuid.Parse(tenantIDStr); err == nil {
+						ctx = context.WithValue(ctx, TenantIDKey, tenantID)
+						logger.WithField("tenant_id", tenantID).Debug("Tenant ID set from API key metadata")
+					}
+				}
+			}
 
 			// Log successful authentication
 			logger.WithFields(logrus.Fields{

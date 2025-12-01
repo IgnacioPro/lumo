@@ -68,20 +68,31 @@ func NewEventsHandler(
 // SubmitEvents handles POST /api/v1/events
 // This is the main endpoint for agents to submit Kubernetes events
 func (h *EventsHandler) SubmitEvents(w http.ResponseWriter, r *http.Request) {
-	// Get agent ID from context (optional - may be Nil for API key auth)
-	agentID, err := h.getAgentIDFromContext(r.Context())
-	if err != nil {
-		// Agent ID is optional - use Nil UUID for events submitted via API key
-		h.logger.Debug("No agent ID in context, using API key authentication")
-		agentID = uuid.Nil
-	}
-
-	// Parse request
+	// Parse request first to get agent_id if provided
 	var req models.SubmitEventRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.logger.WithError(err).Warn("Failed to decode event submission request")
 		response.BadRequest(w, "Invalid request body")
 		return
+	}
+
+	// Get agent ID - priority: request body > context (API key metadata)
+	var agentID uuid.UUID
+	var err error
+	if req.AgentID != "" {
+		agentID, err = uuid.Parse(req.AgentID)
+		if err != nil {
+			h.logger.WithError(err).Warn("Invalid agent_id in request")
+			response.BadRequest(w, "Invalid agent_id format")
+			return
+		}
+	} else {
+		// Try to get from context (API key metadata)
+		agentID, err = h.getAgentIDFromContext(r.Context())
+		if err != nil {
+			h.logger.Debug("No agent ID in request or context")
+			agentID = uuid.Nil
+		}
 	}
 
 	// Validate request
@@ -342,6 +353,15 @@ func (h *EventsHandler) getAgentIDFromContext(ctx context.Context) (uuid.UUID, e
 	// Alternative: look for it as a string
 	if agentIDStr, ok := ctx.Value("agent_id").(string); ok {
 		return uuid.Parse(agentIDStr)
+	}
+
+	// Try to extract from API key metadata (set during agent API key creation)
+	if apiKey, ok := middleware.GetAPIKeyFromContext(ctx); ok && apiKey != nil {
+		if apiKey.Metadata != nil {
+			if agentIDStr, ok := apiKey.Metadata["agent_id"].(string); ok && agentIDStr != "" {
+				return uuid.Parse(agentIDStr)
+			}
+		}
 	}
 
 	return uuid.Nil, fmt.Errorf("agent_id not found in context")
