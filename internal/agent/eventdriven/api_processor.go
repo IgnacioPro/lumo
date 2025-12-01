@@ -254,9 +254,10 @@ func (p *APIEventProcessor) convertToSubmission(event *KubernetesEvent) EventSub
 
 // submitToAPI submits events to the API server
 func (p *APIEventProcessor) submitToAPI(submissions []EventSubmission) error {
-	// Build request
+	// Build request with agent_id
 	requestBody := map[string]interface{}{
-		"events": submissions,
+		"agent_id": p.agentID.String(),
+		"events":   submissions,
 	}
 
 	jsonData, err := json.Marshal(requestBody)

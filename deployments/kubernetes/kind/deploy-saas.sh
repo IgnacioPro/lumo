@@ -384,6 +384,28 @@ EOF
         tenant_id=$(kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
             psql -U lumo -d lumo -t -c "SELECT id FROM tenants WHERE slug = '${slug}';" | tr -d ' \n')
         
+        # Create tenant API key for multi-tenant SaaS
+        # key_prefix is VARCHAR(12), so use short slug prefix + random suffix
+        local tenant_api_key key_hash key_prefix short_slug
+        short_slug="${slug:0:4}"
+        tenant_api_key="lmt_${short_slug}_$(openssl rand -hex 16)"
+        key_hash=$(echo -n "${tenant_api_key}" | shasum -a 256 | awk '{print $1}')
+        key_prefix="${tenant_api_key:0:12}"
+        
+        kubectl exec -i -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo -v ON_ERROR_STOP=1 <<-EOF
+            INSERT INTO tenant_api_keys (
+                id, tenant_id, name, key_hash, key_prefix, scopes, created_at
+            ) VALUES (
+                gen_random_uuid(),
+                '${tenant_id}',
+                '${slug}-api-key',
+                '${key_hash}',
+                '${key_prefix}',
+                ARRAY['agent:register', 'agent:read', 'events:submit', 'events:read'],
+                NOW()
+            ) ON CONFLICT (key_prefix) DO NOTHING;
+EOF
+        
         TENANT_IDS[$i]="$tenant_id"
         
         log_success "✓ Created tenant: ${name} (ID: ${tenant_id:0:8}...)"
@@ -397,7 +419,7 @@ EOF
 }
 
 provision_agents() {
-    log_step "Step 6/8: Provisioning agents for each tenant..."
+    log_step "Step 6/8: Creating agent API keys for each tenant..."
     
     local pg_pod
     pg_pod=$(kubectl get pods -n "${NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}')
@@ -405,39 +427,15 @@ provision_agents() {
     local i=0
     for tenant_key in "${TENANT_KEYS[@]}"; do
         local tenant_id="${TENANT_IDS[$i]}"
-        local agent_id agent_token_raw token_hash
+        local agent_token_raw token_hash
         
-        agent_id=$(uuidgen | tr '[:upper:]' '[:lower:]')
+        # Generate agent token (agents will self-register when they start)
         agent_token_raw="lumo_${tenant_key}_$(openssl rand -hex 16)"
         token_hash=$(echo -n "${agent_token_raw}" | shasum -a 256 | awk '{print $1}')
         
-        log_info "Provisioning agent for ${tenant_key} (tenant: ${tenant_id:0:8}...)..."
+        log_info "Creating API key for ${tenant_key} agents (tenant: ${tenant_id:0:8}...)..."
         
-        # Create agent in database
-        kubectl exec -i -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo -v ON_ERROR_STOP=1 <<-EOF
-            INSERT INTO agents (
-                id, tenant_id, name, hostname, ip_address,
-                platform, architecture, version, status,
-                capabilities, labels,
-                registered_at, last_heartbeat_at
-            ) VALUES (
-                '${agent_id}',
-                '${tenant_id}',
-                '${tenant_key}-agent-1',
-                '${tenant_key}-cluster-1',
-                '10.0.1.${i}',
-                'kubernetes',
-                'amd64',
-                'v1.1.0',
-                'offline',
-                ARRAY['kubernetes', 'events', 'diagnostics'],
-                '{"env": "test", "tenant": "${tenant_key}"}'::jsonb,
-                NOW(),
-                NOW()
-            ) ON CONFLICT (id) DO NOTHING;
-EOF
-        
-        # Create API key for this agent (in api_keys table used by auth middleware)
+        # Create API key for this tenant's agents (agents will self-register on startup)
         local key_prefix="${agent_token_raw:0:12}"
         kubectl exec -i -n "${NAMESPACE}" "${pg_pod}" -- psql -U lumo -d lumo -v ON_ERROR_STOP=1 <<-EOF
             INSERT INTO api_keys (
@@ -448,20 +446,17 @@ EOF
                 '${tenant_key}-agent-key',
                 ARRAY['agent:register', 'agent:heartbeat', 'events:submit'],
                 NOW(),
-                '{"tenant_id": "${tenant_id}", "agent_id": "${agent_id}"}'::jsonb
+                '{"tenant_id": "${tenant_id}"}'::jsonb
             ) ON CONFLICT (key_hash) DO NOTHING;
 EOF
         
         AGENT_TOKENS[$i]="$agent_token_raw"
         
-        log_success "✓ Provisioned agent for ${tenant_key} (Agent ID: ${agent_id:0:8}...)"
+        log_success "✓ Created API key for ${tenant_key} agents"
         i=$((i + 1))
     done
     
-    # Verify agents
-    log_info "Verifying agents in database..."
-    kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
-        psql -U lumo -d lumo -c "SELECT a.name, t.slug as tenant, a.status FROM agents a JOIN tenants t ON a.tenant_id = t.id WHERE t.slug != 'default';"
+    log_info "Agents will self-register when pods start"
 }
 
 deploy_tenant_agents() {
@@ -690,14 +685,23 @@ run_validation_tests() {
         tests_failed=$((tests_failed + 1))
     fi
     
-    # Test 2: Verify agents per tenant
-    log_info "Test 2: Verifying agents per tenant..."
-    local agent_count
-    agent_count=$(kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
-        psql -U lumo -d lumo -t -c "SELECT COUNT(*) FROM agents WHERE tenant_id != '00000000-0000-0000-0000-000000000000';" | tr -d ' \n')
+    # Test 2: Verify agents per tenant (agents self-register, so we wait for them)
+    log_info "Test 2: Verifying agents have self-registered..."
+    local agent_count=0
+    local max_wait=30
+    local wait_count=0
+    
+    while [ "$agent_count" -lt "3" ] && [ "$wait_count" -lt "$max_wait" ]; do
+        agent_count=$(kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+            psql -U lumo -d lumo -t -c "SELECT COUNT(*) FROM agents WHERE tenant_id != '00000000-0000-0000-0000-000000000000';" | tr -d ' \n')
+        if [ "$agent_count" -lt "3" ]; then
+            sleep 2
+            wait_count=$((wait_count + 2))
+        fi
+    done
     
     if [ "$agent_count" -eq "3" ]; then
-        log_success "✓ All 3 agents provisioned (one per tenant)"
+        log_success "✓ All 3 agents self-registered successfully"
         tests_passed=$((tests_passed + 1))
     else
         log_error "✗ Expected 3 agents, found ${agent_count}"
