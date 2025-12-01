@@ -204,7 +204,7 @@ deployments/kubernetes/monitoring/
 
 ### Objective
 
-Define cloud infrastructure as code using Terraform, supporting multiple cloud providers.
+Define cloud infrastructure as code using Terraform with GCP as the primary cloud provider.
 
 ### Directory Structure
 
@@ -212,28 +212,28 @@ Define cloud infrastructure as code using Terraform, supporting multiple cloud p
 infrastructure/
 ├── terraform/
 │   ├── modules/
-│   │   ├── kubernetes-cluster/        # EKS/GKE/AKS cluster
+│   │   ├── gke-cluster/               # GKE Autopilot or Standard cluster
 │   │   │   ├── main.tf
 │   │   │   ├── variables.tf
 │   │   │   ├── outputs.tf
 │   │   │   └── versions.tf
-│   │   ├── postgresql/                # RDS/Cloud SQL/Azure PostgreSQL
+│   │   ├── cloud-sql/                 # Cloud SQL for PostgreSQL
 │   │   │   ├── main.tf
 │   │   │   ├── variables.tf
 │   │   │   └── outputs.tf
-│   │   ├── redis/                     # ElastiCache/Memorystore/Azure Cache
+│   │   ├── memorystore/               # Memorystore for Redis
 │   │   │   ├── main.tf
 │   │   │   ├── variables.tf
 │   │   │   └── outputs.tf
-│   │   ├── networking/                # VPC/Subnets/Security Groups
+│   │   ├── networking/                # VPC, Subnets, Firewall Rules
 │   │   │   ├── main.tf
 │   │   │   ├── variables.tf
 │   │   │   └── outputs.tf
-│   │   ├── observability/             # CloudWatch/Stackdriver/Azure Monitor
+│   │   ├── observability/             # Cloud Monitoring, Cloud Logging
 │   │   │   ├── main.tf
 │   │   │   ├── variables.tf
 │   │   │   └── outputs.tf
-│   │   └── dns/                       # Route53/Cloud DNS/Azure DNS
+│   │   └── dns/                       # Cloud DNS
 │   │       ├── main.tf
 │   │       ├── variables.tf
 │   │       └── outputs.tf
@@ -262,212 +262,500 @@ infrastructure/
 
 ### Module Specifications
 
-#### 2.1 Kubernetes Cluster Module
+#### 2.1 GKE Cluster Module
 
-**File:** `infrastructure/terraform/modules/kubernetes-cluster/main.tf`
+**File:** `infrastructure/terraform/modules/gke-cluster/main.tf`
 
 ```hcl
-# AWS EKS Example
-module "eks" {
-  source  = "terraform-aws-modules/eks/aws"
-  version = "~> 19.0"
+# GKE Autopilot Cluster (recommended for simplicity)
+resource "google_container_cluster" "lumo" {
+  name     = var.cluster_name
+  location = var.region
 
-  cluster_name    = var.cluster_name
-  cluster_version = var.kubernetes_version
+  # Autopilot mode - Google manages nodes
+  enable_autopilot = var.autopilot_enabled
 
-  vpc_id     = var.vpc_id
-  subnet_ids = var.subnet_ids
+  # Network configuration
+  network    = var.network
+  subnetwork = var.subnetwork
 
-  eks_managed_node_groups = {
-    default = {
-      min_size     = var.min_nodes
-      max_size     = var.max_nodes
-      desired_size = var.desired_nodes
+  # Private cluster configuration
+  private_cluster_config {
+    enable_private_nodes    = true
+    enable_private_endpoint = false
+    master_ipv4_cidr_block  = var.master_ipv4_cidr_block
+  }
 
-      instance_types = var.instance_types
-      capacity_type  = var.capacity_type
-    }
+  # IP allocation policy for VPC-native cluster
+  ip_allocation_policy {
+    cluster_secondary_range_name  = var.pods_range_name
+    services_secondary_range_name = var.services_range_name
+  }
 
-    # Dedicated node group for Lumo API (if needed)
-    lumo-api = {
-      min_size     = 2
-      max_size     = 5
-      desired_size = 2
+  # Workload Identity for secure pod authentication
+  workload_identity_config {
+    workload_pool = "${var.project_id}.svc.id.goog"
+  }
 
-      instance_types = ["t3.medium"]
-      labels = {
-        "lumo.io/role" = "api"
-      }
-      taints = []
+  # Release channel for automatic upgrades
+  release_channel {
+    channel = var.release_channel  # RAPID, REGULAR, or STABLE
+  }
+
+  # Maintenance window
+  maintenance_policy {
+    recurring_window {
+      start_time = "2025-01-01T09:00:00Z"
+      end_time   = "2025-01-01T17:00:00Z"
+      recurrence = "FREQ=WEEKLY;BYDAY=SA,SU"
     }
   }
 
-  # Enable IRSA for pod IAM
-  enable_irsa = true
+  # Binary Authorization (optional, for production)
+  binary_authorization {
+    evaluation_mode = var.environment == "production" ? "PROJECT_SINGLETON_POLICY_ENFORCE" : "DISABLED"
+  }
 
-  tags = var.tags
+  # Logging and monitoring
+  logging_config {
+    enable_components = ["SYSTEM_COMPONENTS", "WORKLOADS"]
+  }
+
+  monitoring_config {
+    enable_components = ["SYSTEM_COMPONENTS"]
+    managed_prometheus {
+      enabled = true
+    }
+  }
+
+  # Labels
+  resource_labels = var.labels
+
+  deletion_protection = var.environment == "production"
+}
+
+# Standard node pool (if not using Autopilot)
+resource "google_container_node_pool" "lumo_nodes" {
+  count = var.autopilot_enabled ? 0 : 1
+
+  name       = "lumo-node-pool"
+  location   = var.region
+  cluster    = google_container_cluster.lumo.name
+
+  initial_node_count = var.initial_node_count
+
+  autoscaling {
+    min_node_count = var.min_nodes
+    max_node_count = var.max_nodes
+  }
+
+  node_config {
+    machine_type = var.machine_type
+    disk_size_gb = var.disk_size_gb
+    disk_type    = "pd-ssd"
+
+    # Workload Identity
+    workload_metadata_config {
+      mode = "GKE_METADATA"
+    }
+
+    # Security
+    shielded_instance_config {
+      enable_secure_boot          = true
+      enable_integrity_monitoring = true
+    }
+
+    oauth_scopes = [
+      "https://www.googleapis.com/auth/cloud-platform"
+    ]
+
+    labels = var.labels
+
+    tags = ["lumo-node", var.environment]
+  }
+
+  management {
+    auto_repair  = true
+    auto_upgrade = true
+  }
 }
 ```
 
 **Variables:**
 ```hcl
+variable "project_id" {
+  description = "GCP project ID"
+  type        = string
+}
+
 variable "cluster_name" {
-  description = "EKS cluster name"
+  description = "GKE cluster name"
   type        = string
 }
 
-variable "kubernetes_version" {
-  description = "Kubernetes version"
+variable "region" {
+  description = "GCP region"
   type        = string
-  default     = "1.29"
+  default     = "us-central1"
 }
 
-variable "vpc_id" {
-  description = "VPC ID for the cluster"
+variable "network" {
+  description = "VPC network name"
   type        = string
 }
 
-variable "subnet_ids" {
-  description = "Subnet IDs for the cluster"
-  type        = list(string)
+variable "subnetwork" {
+  description = "VPC subnetwork name"
+  type        = string
+}
+
+variable "autopilot_enabled" {
+  description = "Enable GKE Autopilot mode"
+  type        = bool
+  default     = true
 }
 
 variable "min_nodes" {
-  description = "Minimum number of nodes"
+  description = "Minimum number of nodes (Standard mode only)"
   type        = number
   default     = 2
 }
 
 variable "max_nodes" {
-  description = "Maximum number of nodes"
+  description = "Maximum number of nodes (Standard mode only)"
   type        = number
   default     = 10
 }
 
-variable "desired_nodes" {
-  description = "Desired number of nodes"
+variable "initial_node_count" {
+  description = "Initial number of nodes (Standard mode only)"
   type        = number
   default     = 3
 }
 
-variable "instance_types" {
-  description = "EC2 instance types for nodes"
-  type        = list(string)
-  default     = ["t3.medium"]
-}
-
-variable "capacity_type" {
-  description = "EC2 capacity type (ON_DEMAND or SPOT)"
+variable "machine_type" {
+  description = "Machine type for nodes (Standard mode only)"
   type        = string
-  default     = "ON_DEMAND"
+  default     = "e2-standard-4"
 }
 
-variable "tags" {
-  description = "Tags to apply to all resources"
+variable "disk_size_gb" {
+  description = "Disk size in GB for nodes"
+  type        = number
+  default     = 100
+}
+
+variable "release_channel" {
+  description = "GKE release channel (RAPID, REGULAR, STABLE)"
+  type        = string
+  default     = "REGULAR"
+}
+
+variable "master_ipv4_cidr_block" {
+  description = "CIDR block for the master network"
+  type        = string
+  default     = "172.16.0.0/28"
+}
+
+variable "pods_range_name" {
+  description = "Name of the secondary range for pods"
+  type        = string
+}
+
+variable "services_range_name" {
+  description = "Name of the secondary range for services"
+  type        = string
+}
+
+variable "environment" {
+  description = "Environment name (dev, staging, production)"
+  type        = string
+}
+
+variable "labels" {
+  description = "Labels to apply to all resources"
   type        = map(string)
   default     = {}
 }
 ```
 
-#### 2.2 PostgreSQL Module
+#### 2.2 Cloud SQL Module
 
-**File:** `infrastructure/terraform/modules/postgresql/main.tf`
+**File:** `infrastructure/terraform/modules/cloud-sql/main.tf`
 
 ```hcl
-# AWS RDS PostgreSQL
-resource "aws_db_instance" "lumo" {
-  identifier = "${var.environment}-lumo-postgres"
+# Cloud SQL for PostgreSQL
+resource "google_sql_database_instance" "lumo" {
+  name             = "${var.environment}-lumo-postgres"
+  database_version = "POSTGRES_15"
+  region           = var.region
+  project          = var.project_id
 
-  engine         = "postgres"
-  engine_version = var.postgres_version
-  instance_class = var.instance_class
+  settings {
+    tier              = var.tier
+    availability_type = var.high_availability ? "REGIONAL" : "ZONAL"
+    disk_size         = var.disk_size_gb
+    disk_type         = "PD_SSD"
+    disk_autoresize   = true
 
-  allocated_storage     = var.allocated_storage
-  max_allocated_storage = var.max_allocated_storage
-  storage_type          = "gp3"
-  storage_encrypted     = true
+    # IP configuration
+    ip_configuration {
+      ipv4_enabled    = false
+      private_network = var.network_id
+      require_ssl     = true
+    }
 
-  db_name  = "lumo"
-  username = "lumo"
-  password = var.db_password
+    # Backup configuration
+    backup_configuration {
+      enabled                        = true
+      start_time                     = "03:00"
+      point_in_time_recovery_enabled = true
+      transaction_log_retention_days = var.backup_retention_days
+      backup_retention_settings {
+        retained_backups = var.backup_retention_days
+        retention_unit   = "COUNT"
+      }
+    }
 
-  vpc_security_group_ids = [aws_security_group.rds.id]
-  db_subnet_group_name   = aws_db_subnet_group.lumo.name
+    # Maintenance window
+    maintenance_window {
+      day          = 7  # Sunday
+      hour         = 4  # 4 AM
+      update_track = "stable"
+    }
 
-  # High availability
-  multi_az = var.multi_az
+    # Database flags
+    database_flags {
+      name  = "log_checkpoints"
+      value = "on"
+    }
 
-  # Backups
-  backup_retention_period = var.backup_retention_days
-  backup_window           = "03:00-04:00"
-  maintenance_window      = "Mon:04:00-Mon:05:00"
+    database_flags {
+      name  = "log_connections"
+      value = "on"
+    }
 
-  # Performance Insights
-  performance_insights_enabled          = true
-  performance_insights_retention_period = 7
+    database_flags {
+      name  = "log_disconnections"
+      value = "on"
+    }
 
-  # Parameters
-  parameter_group_name = aws_db_parameter_group.lumo.name
+    database_flags {
+      name  = "log_lock_waits"
+      value = "on"
+    }
 
-  # Deletion protection
+    # Insights (query performance)
+    insights_config {
+      query_insights_enabled  = true
+      query_string_length     = 1024
+      record_application_tags = true
+      record_client_address   = true
+    }
+
+    user_labels = var.labels
+  }
+
   deletion_protection = var.environment == "production"
-
-  tags = var.tags
 }
 
-resource "aws_db_parameter_group" "lumo" {
-  family = "postgres15"
-  name   = "${var.environment}-lumo-postgres"
+# Database
+resource "google_sql_database" "lumo" {
+  name     = "lumo"
+  instance = google_sql_database_instance.lumo.name
+  project  = var.project_id
+}
 
-  parameter {
-    name  = "shared_preload_libraries"
-    value = "pg_stat_statements"
-  }
+# Database user
+resource "google_sql_user" "lumo" {
+  name     = "lumo"
+  instance = google_sql_database_instance.lumo.name
+  password = var.db_password
+  project  = var.project_id
+}
 
-  parameter {
-    name  = "log_statement"
-    value = "ddl"
-  }
+# Private service connection (for VPC peering)
+resource "google_compute_global_address" "private_ip_range" {
+  name          = "${var.environment}-lumo-postgres-ip"
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 16
+  network       = var.network_id
+  project       = var.project_id
+}
+
+resource "google_service_networking_connection" "private_vpc_connection" {
+  network                 = var.network_id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_ip_range.name]
 }
 ```
 
-#### 2.3 Redis Module
+#### 2.3 Memorystore Module
 
-**File:** `infrastructure/terraform/modules/redis/main.tf`
+**File:** `infrastructure/terraform/modules/memorystore/main.tf`
 
 ```hcl
-# AWS ElastiCache Redis
-resource "aws_elasticache_replication_group" "lumo" {
-  replication_group_id = "${var.environment}-lumo-redis"
-  description          = "Lumo Redis cluster"
+# Memorystore for Redis
+resource "google_redis_instance" "lumo" {
+  name           = "${var.environment}-lumo-redis"
+  tier           = var.high_availability ? "STANDARD_HA" : "BASIC"
+  memory_size_gb = var.memory_size_gb
+  region         = var.region
+  project        = var.project_id
 
-  engine               = "redis"
-  engine_version       = var.redis_version
-  node_type            = var.node_type
-  port                 = 6379
+  redis_version = "REDIS_7_0"
 
-  # Cluster mode
-  num_cache_clusters = var.num_cache_clusters
-  automatic_failover_enabled = var.num_cache_clusters > 1
+  # Network configuration
+  authorized_network = var.network_id
+  connect_mode       = "PRIVATE_SERVICE_ACCESS"
 
-  # Security
-  at_rest_encryption_enabled = true
-  transit_encryption_enabled = true
-  auth_token                 = var.auth_token
+  # Auth
+  auth_enabled = true
 
-  subnet_group_name  = aws_elasticache_subnet_group.lumo.name
-  security_group_ids = [aws_security_group.redis.id]
+  # TLS
+  transit_encryption_mode = "SERVER_AUTHENTICATION"
 
-  # Maintenance
-  maintenance_window       = "sun:05:00-sun:06:00"
-  snapshot_window          = "00:00-01:00"
-  snapshot_retention_limit = var.snapshot_retention_days
+  # Maintenance window
+  maintenance_policy {
+    weekly_maintenance_window {
+      day = "SUNDAY"
+      start_time {
+        hours   = 4
+        minutes = 0
+      }
+    }
+  }
 
-  tags = var.tags
+  # Redis configuration
+  redis_configs = {
+    maxmemory-policy = "volatile-lru"
+    notify-keyspace-events = "Ex"
+  }
+
+  labels = var.labels
+
+  lifecycle {
+    prevent_destroy = var.environment == "production"
+  }
+}
+
+# Output the auth string
+output "auth_string" {
+  value     = google_redis_instance.lumo.auth_string
+  sensitive = true
+}
+
+output "host" {
+  value = google_redis_instance.lumo.host
+}
+
+output "port" {
+  value = google_redis_instance.lumo.port
 }
 ```
 
-#### 2.4 Environment Configuration
+#### 2.4 Networking Module
+
+**File:** `infrastructure/terraform/modules/networking/main.tf`
+
+```hcl
+# VPC Network
+resource "google_compute_network" "lumo" {
+  name                    = "${var.environment}-lumo-vpc"
+  auto_create_subnetworks = false
+  project                 = var.project_id
+}
+
+# Subnetwork for GKE
+resource "google_compute_subnetwork" "lumo" {
+  name          = "${var.environment}-lumo-subnet"
+  ip_cidr_range = var.subnet_cidr
+  region        = var.region
+  network       = google_compute_network.lumo.id
+  project       = var.project_id
+
+  # Secondary ranges for GKE pods and services
+  secondary_ip_range {
+    range_name    = "pods"
+    ip_cidr_range = var.pods_cidr
+  }
+
+  secondary_ip_range {
+    range_name    = "services"
+    ip_cidr_range = var.services_cidr
+  }
+
+  private_ip_google_access = true
+
+  log_config {
+    aggregation_interval = "INTERVAL_5_SEC"
+    flow_sampling        = 0.5
+    metadata             = "INCLUDE_ALL_METADATA"
+  }
+}
+
+# Cloud NAT for private nodes
+resource "google_compute_router" "lumo" {
+  name    = "${var.environment}-lumo-router"
+  region  = var.region
+  network = google_compute_network.lumo.id
+  project = var.project_id
+}
+
+resource "google_compute_router_nat" "lumo" {
+  name                               = "${var.environment}-lumo-nat"
+  router                             = google_compute_router.lumo.name
+  region                             = var.region
+  project                            = var.project_id
+  nat_ip_allocate_option             = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+
+  log_config {
+    enable = true
+    filter = "ERRORS_ONLY"
+  }
+}
+
+# Firewall rules
+resource "google_compute_firewall" "allow_internal" {
+  name    = "${var.environment}-lumo-allow-internal"
+  network = google_compute_network.lumo.name
+  project = var.project_id
+
+  allow {
+    protocol = "tcp"
+    ports    = ["0-65535"]
+  }
+
+  allow {
+    protocol = "udp"
+    ports    = ["0-65535"]
+  }
+
+  allow {
+    protocol = "icmp"
+  }
+
+  source_ranges = [var.subnet_cidr, var.pods_cidr, var.services_cidr]
+}
+
+resource "google_compute_firewall" "allow_health_checks" {
+  name    = "${var.environment}-lumo-allow-health-checks"
+  network = google_compute_network.lumo.name
+  project = var.project_id
+
+  allow {
+    protocol = "tcp"
+  }
+
+  # GCP health check ranges
+  source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
+  target_tags   = ["lumo-node"]
+}
+```
+
+#### 2.5 Environment Configuration
 
 **File:** `infrastructure/terraform/environments/production/main.tf`
 
@@ -476,8 +764,12 @@ terraform {
   required_version = ">= 1.5.0"
 
   required_providers {
-    aws = {
-      source  = "hashicorp/aws"
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+    google-beta = {
+      source  = "hashicorp/google-beta"
       version = "~> 5.0"
     }
     kubernetes = {
@@ -489,17 +781,29 @@ terraform {
       version = "~> 2.11"
     }
   }
+
+  backend "gcs" {
+    bucket = "lumo-terraform-state"
+    prefix = "production"
+  }
 }
 
-provider "aws" {
-  region = var.aws_region
+provider "google" {
+  project = var.project_id
+  region  = var.region
+}
 
-  default_tags {
-    tags = {
-      Project     = "lumo"
-      Environment = "production"
-      ManagedBy   = "terraform"
-    }
+provider "google-beta" {
+  project = var.project_id
+  region  = var.region
+}
+
+locals {
+  environment = "production"
+  labels = {
+    project     = "lumo"
+    environment = "production"
+    managed_by  = "terraform"
   }
 }
 
@@ -507,77 +811,125 @@ provider "aws" {
 module "networking" {
   source = "../../modules/networking"
 
-  environment     = "production"
-  vpc_cidr        = "10.0.0.0/16"
-  azs             = ["us-east-1a", "us-east-1b", "us-east-1c"]
-  private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
-  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+  project_id    = var.project_id
+  environment   = local.environment
+  region        = var.region
+  subnet_cidr   = "10.0.0.0/20"
+  pods_cidr     = "10.16.0.0/14"
+  services_cidr = "10.20.0.0/20"
 }
 
-# Kubernetes Cluster
-module "kubernetes" {
-  source = "../../modules/kubernetes-cluster"
+# GKE Cluster (Autopilot)
+module "gke" {
+  source = "../../modules/gke-cluster"
 
+  project_id         = var.project_id
   cluster_name       = "lumo-production"
-  kubernetes_version = "1.29"
-  vpc_id             = module.networking.vpc_id
-  subnet_ids         = module.networking.private_subnet_ids
+  region             = var.region
+  environment        = local.environment
+  autopilot_enabled  = true
+  network            = module.networking.network_name
+  subnetwork         = module.networking.subnetwork_name
+  pods_range_name    = "pods"
+  services_range_name = "services"
+  release_channel    = "STABLE"
+  labels             = local.labels
 
-  min_nodes     = 3
-  max_nodes     = 20
-  desired_nodes = 5
-
-  instance_types = ["t3.large"]
-  capacity_type  = "ON_DEMAND"
+  depends_on = [module.networking]
 }
 
-# PostgreSQL
-module "postgresql" {
-  source = "../../modules/postgresql"
+# Cloud SQL for PostgreSQL
+module "cloud_sql" {
+  source = "../../modules/cloud-sql"
 
-  environment           = "production"
-  vpc_id                = module.networking.vpc_id
-  subnet_ids            = module.networking.private_subnet_ids
-  postgres_version      = "15.4"
-  instance_class        = "db.r6g.large"
-  allocated_storage     = 100
-  max_allocated_storage = 500
-  multi_az              = true
+  project_id          = var.project_id
+  environment         = local.environment
+  region              = var.region
+  network_id          = module.networking.network_id
+  tier                = "db-custom-4-16384"  # 4 vCPU, 16GB RAM
+  disk_size_gb        = 100
+  high_availability   = true
   backup_retention_days = 30
-  db_password           = var.db_password
+  db_password         = var.db_password
+  labels              = local.labels
+
+  depends_on = [module.networking]
 }
 
-# Redis
-module "redis" {
-  source = "../../modules/redis"
+# Memorystore for Redis
+module "memorystore" {
+  source = "../../modules/memorystore"
 
-  environment            = "production"
-  vpc_id                 = module.networking.vpc_id
-  subnet_ids             = module.networking.private_subnet_ids
-  redis_version          = "7.0"
-  node_type              = "cache.r6g.large"
-  num_cache_clusters     = 3
-  snapshot_retention_days = 7
-  auth_token             = var.redis_auth_token
+  project_id       = var.project_id
+  environment      = local.environment
+  region           = var.region
+  network_id       = module.networking.network_id
+  memory_size_gb   = 5
+  high_availability = true
+  labels           = local.labels
+
+  depends_on = [module.networking]
 }
 
 # Outputs for Helm/ArgoCD
-output "cluster_endpoint" {
-  value = module.kubernetes.cluster_endpoint
+output "cluster_name" {
+  value = module.gke.cluster_name
 }
 
-output "cluster_ca_certificate" {
-  value     = module.kubernetes.cluster_ca_certificate
+output "cluster_endpoint" {
+  value     = module.gke.cluster_endpoint
   sensitive = true
 }
 
-output "database_endpoint" {
-  value = module.postgresql.endpoint
+output "cluster_ca_certificate" {
+  value     = module.gke.cluster_ca_certificate
+  sensitive = true
 }
 
-output "redis_endpoint" {
-  value = module.redis.endpoint
+output "database_connection_name" {
+  value = module.cloud_sql.connection_name
 }
+
+output "database_private_ip" {
+  value = module.cloud_sql.private_ip_address
+}
+
+output "redis_host" {
+  value = module.memorystore.host
+}
+
+output "redis_port" {
+  value = module.memorystore.port
+}
+```
+
+**File:** `infrastructure/terraform/environments/production/variables.tf`
+
+```hcl
+variable "project_id" {
+  description = "GCP project ID"
+  type        = string
+}
+
+variable "region" {
+  description = "GCP region"
+  type        = string
+  default     = "us-central1"
+}
+
+variable "db_password" {
+  description = "Database password"
+  type        = string
+  sensitive   = true
+}
+```
+
+**File:** `infrastructure/terraform/environments/production/terraform.tfvars`
+
+```hcl
+project_id = "lumo-production"
+region     = "us-central1"
+# db_password should be provided via TF_VAR_db_password environment variable
 ```
 
 ---
@@ -1446,45 +1798,44 @@ scripts/
   - [ ] Create `environments/` subdirectory
   - [ ] Add `.gitignore` for terraform state
 
-- [ ] **TF-2.2** Kubernetes cluster module
-  - [ ] Create `modules/kubernetes-cluster/main.tf`
-  - [ ] Create `modules/kubernetes-cluster/variables.tf`
-  - [ ] Create `modules/kubernetes-cluster/outputs.tf`
-  - [ ] Create `modules/kubernetes-cluster/versions.tf`
-  - [ ] Add EKS configuration
-  - [ ] Add GKE configuration (optional)
-  - [ ] Add node groups configuration
+- [ ] **TF-2.2** GKE cluster module
+  - [ ] Create `modules/gke-cluster/main.tf`
+  - [ ] Create `modules/gke-cluster/variables.tf`
+  - [ ] Create `modules/gke-cluster/outputs.tf`
+  - [ ] Create `modules/gke-cluster/versions.tf`
+  - [ ] Add Autopilot configuration
+  - [ ] Add Standard node pool configuration (optional)
+  - [ ] Add Workload Identity configuration
+  - [ ] Add private cluster configuration
 
-- [ ] **TF-2.3** PostgreSQL module
-  - [ ] Create `modules/postgresql/main.tf`
-  - [ ] Create `modules/postgresql/variables.tf`
-  - [ ] Create `modules/postgresql/outputs.tf`
-  - [ ] Add RDS configuration
-  - [ ] Add parameter group
-  - [ ] Add security group
-  - [ ] Add subnet group
+- [ ] **TF-2.3** Cloud SQL module
+  - [ ] Create `modules/cloud-sql/main.tf`
+  - [ ] Create `modules/cloud-sql/variables.tf`
+  - [ ] Create `modules/cloud-sql/outputs.tf`
+  - [ ] Add PostgreSQL 15 configuration
+  - [ ] Add private service connection
+  - [ ] Add backup configuration
+  - [ ] Add Query Insights
 
-- [ ] **TF-2.4** Redis module
-  - [ ] Create `modules/redis/main.tf`
-  - [ ] Create `modules/redis/variables.tf`
-  - [ ] Create `modules/redis/outputs.tf`
-  - [ ] Add ElastiCache configuration
-  - [ ] Add replication group
-  - [ ] Add security group
-  - [ ] Add subnet group
+- [ ] **TF-2.4** Memorystore module
+  - [ ] Create `modules/memorystore/main.tf`
+  - [ ] Create `modules/memorystore/variables.tf`
+  - [ ] Create `modules/memorystore/outputs.tf`
+  - [ ] Add Redis 7.0 configuration
+  - [ ] Add HA configuration
+  - [ ] Add TLS configuration
 
 - [ ] **TF-2.5** Networking module
   - [ ] Create `modules/networking/main.tf`
   - [ ] Add VPC configuration
-  - [ ] Add public subnets
-  - [ ] Add private subnets
-  - [ ] Add NAT gateway
-  - [ ] Add internet gateway
-  - [ ] Add route tables
+  - [ ] Add subnetwork with secondary ranges (pods, services)
+  - [ ] Add Cloud NAT for private nodes
+  - [ ] Add Cloud Router
+  - [ ] Add firewall rules
 
 - [ ] **TF-2.6** DNS module
   - [ ] Create `modules/dns/main.tf`
-  - [ ] Add Route53 zone
+  - [ ] Add Cloud DNS zone
   - [ ] Add A records
   - [ ] Add CNAME records
 
@@ -1495,7 +1846,7 @@ scripts/
   - [ ] Create `environments/staging/terraform.tfvars`
   - [ ] Create `environments/production/main.tf`
   - [ ] Create `environments/production/terraform.tfvars`
-  - [ ] Add backend configurations (S3)
+  - [ ] Add GCS backend configurations
 
 - [ ] **TF-2.8** Documentation
   - [ ] Create `infrastructure/terraform/README.md`
@@ -1636,16 +1987,18 @@ scripts/
 | kind | >= 0.20 | Local testing |
 | Docker | >= 24.0 | Container runtime |
 
-### External Services (Production)
+### External Services (Production - GCP)
 
-| Service | Provider Options |
-|---------|------------------|
-| Kubernetes | EKS, GKE, AKS |
-| PostgreSQL | RDS, Cloud SQL, Azure Database |
-| Redis | ElastiCache, Memorystore, Azure Cache |
-| DNS | Route53, Cloud DNS, Azure DNS |
-| Secrets | Vault, AWS Secrets Manager, Azure Key Vault |
-| Container Registry | ECR, GCR, ACR, GHCR |
+| Service | GCP Product | Notes |
+|---------|-------------|-------|
+| Kubernetes | GKE Autopilot | Recommended for simplicity, or Standard for more control |
+| PostgreSQL | Cloud SQL | Managed PostgreSQL 15 with HA |
+| Redis | Memorystore | Managed Redis 7.0 with HA |
+| DNS | Cloud DNS | Managed DNS zones |
+| Secrets | Secret Manager | Native GCP secrets management |
+| Container Registry | Artifact Registry | GCR replacement, recommended |
+| Monitoring | Cloud Monitoring | Native integration with GKE |
+| Logging | Cloud Logging | Native integration with GKE |
 
 ---
 
