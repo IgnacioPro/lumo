@@ -16,6 +16,7 @@ import (
 	"github.com/ignacio/lumo/internal/api/handlers"
 	apimiddleware "github.com/ignacio/lumo/internal/api/middleware"
 	"github.com/ignacio/lumo/internal/config"
+	"github.com/ignacio/lumo/internal/correlation"
 	"github.com/ignacio/lumo/internal/database"
 	"github.com/ignacio/lumo/internal/database/repository"
 	"github.com/ignacio/lumo/internal/notifications"
@@ -157,6 +158,45 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 		}
 	}
 
+	// Initialize correlation engine (Phase 19)
+	incidentRepo := correlation.NewInMemoryIncidentRepository(logger)
+	var correlationEngine *correlation.Engine
+	var incidentNotifier *correlation.IncidentNotifierImpl
+
+	// Only enable correlation if notifications are available
+	if notifEnabled && len(notifiers) > 0 {
+		// Build API base URL from config
+		apiBaseURL := cfg.API.BaseURL
+		if apiBaseURL == "" {
+			apiBaseURL = expandEnvVar("${LUMO_API_BASE_URL}")
+		}
+
+		incidentNotifier = correlation.NewIncidentNotifier(notifiers, apiBaseURL, logger)
+
+		// Initialize AI analyzer only if AI is enabled and provider is available
+		// We explicitly use the AIAnalyzer interface type to avoid passing a typed nil
+		var aiAnalyzer correlation.AIAnalyzer
+		if aiEnabled && aiProvider != nil {
+			aiAnalyzer = correlation.NewAIIncidentAnalyzer(aiProvider, logger)
+		}
+
+		// Create the correlation engine
+		correlationEngine = correlation.NewEngine(
+			nil, // Use default config
+			nil, // Context gatherer (not in API server - only in agent)
+			aiAnalyzer,
+			incidentNotifier,
+			incidentRepo,
+			logger,
+		)
+
+		if err := correlationEngine.Start(); err != nil {
+			logger.WithError(err).Error("Failed to start correlation engine")
+		} else {
+			logger.Info("Correlation engine started for incident management")
+		}
+	}
+
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler(db, logger)
 	authHandler := handlers.NewAuthHandler(apiKeyRepo, jwtManager, logger)
@@ -166,6 +206,14 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 	agentsHandler := handlers.NewAgentsHandler(agentRepo, logger)
 	approvalsHandler := handlers.NewApprovalsHandler(approvalRepo, logger)
 	eventsHandler := handlers.NewEventsHandler(eventRepo, agentRepo, aiProvider, notifiers, logger, aiEnabled, notifEnabled)
+
+	// Wire correlation engine to events handler
+	if correlationEngine != nil {
+		eventsHandler.SetCorrelationEngine(correlationEngine)
+	}
+
+	// Initialize incidents handler
+	incidentsHandler := handlers.NewIncidentsHandler(correlationEngine, incidentRepo, logger)
 
 	// Prometheus metrics endpoint (public, no auth required)
 	r.Handle("/metrics", promhttp.Handler())
@@ -179,6 +227,9 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 
 		// Public event analysis view (shareable HTML page)
 		r.Get("/events/{id}/analysis", eventsHandler.GetEventAnalysisHTML)
+
+		// Public incident analysis view (shareable HTML page)
+		r.Get("/incidents/{id}/analysis", incidentsHandler.GetIncidentAnalysis)
 
 		// Auth endpoints (public - used to obtain JWT tokens)
 		r.Post("/auth/token", authHandler.GenerateToken)
@@ -231,6 +282,12 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 			r.Post("/events", eventsHandler.SubmitEvents)
 			r.Get("/events", eventsHandler.ListEvents)
 			r.Get("/events/{id}", eventsHandler.GetEvent)
+
+			// Incident endpoints (Phase 19)
+			r.Get("/incidents", incidentsHandler.ListIncidents)
+			r.Get("/incidents/open", incidentsHandler.GetOpenIncidents)
+			r.Get("/incidents/stats", incidentsHandler.GetIncidentStats)
+			r.Get("/incidents/{id}", incidentsHandler.GetIncident)
 		})
 	})
 

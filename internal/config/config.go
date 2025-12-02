@@ -81,6 +81,7 @@ type APIConfig struct {
 	RateLimitRequestsPerHour int      `mapstructure:"rate_limit_requests_per_hour"` // Per-user rate limit (requests per hour)
 	RateLimitBurstSize       int      `mapstructure:"rate_limit_burst_size"`        // Burst size for rate limiter
 	AllowedOrigins           []string `mapstructure:"allowed_origins"`              // CORS allowed origins
+	BaseURL                  string   `mapstructure:"base_url"`                     // Base URL for public links (e.g., https://api.lumo.cloud)
 }
 
 // DiagnosticsConfig contains diagnostic settings

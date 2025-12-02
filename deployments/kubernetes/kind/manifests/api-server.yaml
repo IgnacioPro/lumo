@@ -37,18 +37,50 @@ spec:
           value: lumo
         - name: LUMO_DATABASE_SSLMODE
           value: disable
-        - name: LUMO_AI_ENABLED
-          value: "false"
         - name: LUMO_API_PORT
           value: "8080"
         - name: LUMO_API_HOST
           value: "0.0.0.0"
+        # Slack notifications
         - name: SLACK_WEBHOOK_URL
           valueFrom:
             secretKeyRef:
               name: lumo-secrets
               key: slack-webhook-url
-              optional: true  # Allow API to start even without Slack configured
+              optional: true
+        # AI configuration - will be overridden by secret values if present
+        - name: LUMO_AI_ENABLED
+          value: "true"
+        - name: LUMO_AI_PROVIDER
+          valueFrom:
+            secretKeyRef:
+              name: lumo-ai-secrets
+              key: ai-provider
+              optional: true
+        - name: LUMO_OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: lumo-ai-secrets
+              key: ai-api-key
+              optional: true
+        - name: LUMO_ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: lumo-ai-secrets
+              key: ai-api-key
+              optional: true
+        - name: LUMO_OPENROUTER_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: lumo-ai-secrets
+              key: ai-api-key
+              optional: true
+        - name: LUMO_GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: lumo-ai-secrets
+              key: ai-api-key
+              optional: true
         volumeMounts:
         - name: config
           mountPath: /etc/lumo
@@ -87,7 +119,11 @@ data:
   config.yaml: |
     environment: development
     ai:
-      enabled: false
+      enabled: true
+      model: gpt-4o-mini
+      timeout: 120s
+      max_tokens: 4000
+      temperature: 0.3
     database:
       host: postgres
       port: 5432
