@@ -18,7 +18,7 @@ data:
 
   # AI configuration
   ai.enabled: "true"
-  ai.provider: "anthropic"  # anthropic, openai, gemini, ollama, openrouter
+  ai.provider: "gemini"  # anthropic, openai, gemini, ollama, openrouter
 
   # API configuration
   config.yaml: |
@@ -48,8 +48,8 @@ data:
 
     ai:
       enabled: true
-      provider: anthropic
-      model: claude-sonnet-4-20250514
+      provider: gemini
+      model: gemini-2.5-pro
       timeout: 60s
       max_retries: 3
       temperature: 0.7

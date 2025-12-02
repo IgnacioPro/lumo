@@ -294,7 +294,11 @@ create_api_secrets() {
     local ai_provider=""
     local ai_api_key=""
     
-    if [ -n "${LUMO_ANTHROPIC_API_KEY:-}" ]; then
+    # Gemini is the default provider - check it first
+    if [ -n "${LUMO_GEMINI_API_KEY:-}" ]; then
+        ai_provider="gemini"
+        ai_api_key="${LUMO_GEMINI_API_KEY}"
+    elif [ -n "${LUMO_ANTHROPIC_API_KEY:-}" ]; then
         ai_provider="anthropic"
         ai_api_key="${LUMO_ANTHROPIC_API_KEY}"
     elif [ -n "${LUMO_OPENAI_API_KEY:-}" ]; then
@@ -307,9 +311,6 @@ create_api_secrets() {
     elif [ -n "${LUMO_OPENROUTER_API_KEY:-}" ]; then
         ai_provider="openrouter"
         ai_api_key="${LUMO_OPENROUTER_API_KEY}"
-    elif [ -n "${LUMO_GEMINI_API_KEY:-}" ]; then
-        ai_provider="gemini"
-        ai_api_key="${LUMO_GEMINI_API_KEY}"
     fi
     
     if [ -n "${ai_api_key}" ]; then
@@ -325,7 +326,7 @@ create_api_secrets() {
         export AI_PROVIDER="${ai_provider}"
     else
         log_warn "No AI API key found - AI analysis will be disabled"
-        log_warn "Set one of: LUMO_ANTHROPIC_API_KEY, LUMO_OPENAI_API_KEY, LUMO_AI_API_KEY, LUMO_OPENROUTER_API_KEY, LUMO_GEMINI_API_KEY"
+        log_warn "Set one of: LUMO_GEMINI_API_KEY, LUMO_ANTHROPIC_API_KEY, LUMO_OPENAI_API_KEY, LUMO_AI_API_KEY, LUMO_OPENROUTER_API_KEY"
         export AI_ENABLED="false"
         export AI_PROVIDER=""
     fi
