@@ -268,10 +268,76 @@ deploy_infrastructure() {
     log_success "✓ Infrastructure deployed"
 }
 
+# ==================== SECRETS ====================
+
+create_api_secrets() {
+    log_info "Creating API secrets..."
+    
+    # Create Slack secret from environment variable
+    if [ -n "${LUMO_SLACK_WEBHOOK_URL:-}" ]; then
+        kubectl create secret generic lumo-secrets \
+            --from-literal=slack-webhook-url="${LUMO_SLACK_WEBHOOK_URL}" \
+            -n "${NAMESPACE}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+        log_success "✓ Slack webhook secret created"
+    else
+        log_warn "LUMO_SLACK_WEBHOOK_URL not set - Slack notifications will be disabled"
+        # Create empty secret so deployment doesn't fail
+        kubectl create secret generic lumo-secrets \
+            --from-literal=slack-webhook-url="" \
+            -n "${NAMESPACE}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+    fi
+    
+    # Create AI provider secret from environment variables
+    # Support multiple providers - use first available
+    local ai_provider=""
+    local ai_api_key=""
+    
+    if [ -n "${LUMO_ANTHROPIC_API_KEY:-}" ]; then
+        ai_provider="anthropic"
+        ai_api_key="${LUMO_ANTHROPIC_API_KEY}"
+    elif [ -n "${LUMO_OPENAI_API_KEY:-}" ]; then
+        ai_provider="openai"
+        ai_api_key="${LUMO_OPENAI_API_KEY}"
+    elif [ -n "${LUMO_AI_API_KEY:-}" ]; then
+        # Generic OpenAI-compatible key
+        ai_provider="openai"
+        ai_api_key="${LUMO_AI_API_KEY}"
+    elif [ -n "${LUMO_OPENROUTER_API_KEY:-}" ]; then
+        ai_provider="openrouter"
+        ai_api_key="${LUMO_OPENROUTER_API_KEY}"
+    elif [ -n "${LUMO_GEMINI_API_KEY:-}" ]; then
+        ai_provider="gemini"
+        ai_api_key="${LUMO_GEMINI_API_KEY}"
+    fi
+    
+    if [ -n "${ai_api_key}" ]; then
+        kubectl create secret generic lumo-ai-secrets \
+            --from-literal=ai-api-key="${ai_api_key}" \
+            --from-literal=ai-provider="${ai_provider}" \
+            -n "${NAMESPACE}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+        log_success "✓ AI secrets created (provider: ${ai_provider})"
+        
+        # Set environment variable flag for later use
+        export AI_ENABLED="true"
+        export AI_PROVIDER="${ai_provider}"
+    else
+        log_warn "No AI API key found - AI analysis will be disabled"
+        log_warn "Set one of: LUMO_ANTHROPIC_API_KEY, LUMO_OPENAI_API_KEY, LUMO_AI_API_KEY, LUMO_OPENROUTER_API_KEY, LUMO_GEMINI_API_KEY"
+        export AI_ENABLED="false"
+        export AI_PROVIDER=""
+    fi
+}
+
 # ==================== API SERVER ====================
 
 deploy_api_server() {
     log_step "Step 4/8: Deploying Lumo API Server..."
+    
+    # Create secrets first
+    create_api_secrets
     
     # Apply API server manifest
     kubectl apply -f manifests/api-server.yaml
