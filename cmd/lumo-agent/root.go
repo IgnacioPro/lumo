@@ -156,13 +156,14 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	sig := <-sigCh
 	log.WithField("signal", sig).Info("Received shutdown signal")
 
-	// Cancel context to stop background routines
-	cancel()
-
-	// Stop agent
+	// Stop agent first - this properly shuts down informers before context is cancelled
+	// The agent's Stop() method handles closing stopCh which signals informers to stop gracefully
 	if err := a.Stop(); err != nil {
 		return fmt.Errorf("failed to stop agent: %w", err)
 	}
+
+	// Cancel context after agent has stopped to clean up any remaining background routines
+	cancel()
 
 	log.Info("Agent shutdown complete")
 	return nil

@@ -28,7 +28,7 @@ done
 
 echo "=== Lumo Monitoring Stack Deployment ==="
 
-# Create namespace
+# Create namespace (idempotent)
 echo "Creating namespace..."
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 
@@ -41,6 +41,19 @@ helm repo update
 # Deploy Prometheus if requested
 if [ "$WITH_PROMETHEUS" = true ]; then
     echo "Deploying Prometheus (chart version ${PROMETHEUS_CHART_VERSION})..."
+    
+    # Check if there's a failed/orphaned release and clean it up
+    if helm status prometheus -n "${NAMESPACE}" &>/dev/null; then
+        release_status=$(helm status prometheus -n "${NAMESPACE}" -o json 2>/dev/null | grep -o '"status":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+        if [ "$release_status" = "failed" ] || [ "$release_status" = "pending-install" ]; then
+            echo "Found failed/pending Prometheus release, cleaning up..."
+            helm uninstall prometheus -n "${NAMESPACE}" --no-hooks 2>/dev/null || true
+            # Wait for cleanup
+            sleep 2
+        fi
+    fi
+    
+    # Use upgrade --install for idempotency
     helm upgrade --install prometheus prometheus-community/prometheus \
         --namespace "${NAMESPACE}" \
         --version "${PROMETHEUS_CHART_VERSION}" \
@@ -56,6 +69,19 @@ kubectl apply -f "${SCRIPT_DIR}/grafana/dashboard-configmap.yaml"
 
 # Deploy Grafana
 echo "Deploying Grafana (chart version ${GRAFANA_CHART_VERSION})..."
+
+# Check if there's a failed/orphaned Grafana release and clean it up
+if helm status grafana -n "${NAMESPACE}" &>/dev/null; then
+    release_status=$(helm status grafana -n "${NAMESPACE}" -o json 2>/dev/null | grep -o '"status":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+    if [ "$release_status" = "failed" ] || [ "$release_status" = "pending-install" ]; then
+        echo "Found failed/pending Grafana release, cleaning up..."
+        helm uninstall grafana -n "${NAMESPACE}" --no-hooks 2>/dev/null || true
+        kubectl delete all -n "${NAMESPACE}" -l app.kubernetes.io/name=grafana 2>/dev/null || true
+        sleep 2
+    fi
+fi
+
+# Use --force-replace to handle conflicts from previous failed installations
 helm upgrade --install grafana grafana/grafana \
     --namespace "${NAMESPACE}" \
     --version "${GRAFANA_CHART_VERSION}" \

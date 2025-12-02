@@ -27,6 +27,7 @@ NAMESPACE="${LUMO_NAMESPACE:-lumo-system}"
 SKIP_CLUSTER_SETUP="${SKIP_CLUSTER_SETUP:-false}"
 SKIP_BUILD="${SKIP_BUILD:-false}"
 SKIP_INFRASTRUCTURE="${SKIP_INFRASTRUCTURE:-false}"
+SKIP_MONITORING="${SKIP_MONITORING:-false}"
 API_PORT=8080
 
 # Test tenants - using simple arrays for bash 3.x compatibility
@@ -64,6 +65,58 @@ log_step() {
     echo -e "${CYAN}[STEP]${NC} $1" >&2
 }
 
+# Slack notification function
+# Sends deployment status updates to Slack webhook if configured
+slack_notify() {
+    local message="$1"
+    local status="${2:-info}"  # info, success, warning, error
+    
+    # Skip if no webhook URL configured
+    if [ -z "${LUMO_SLACK_WEBHOOK_URL:-}" ]; then
+        return 0
+    fi
+    
+    # Set emoji based on status
+    local emoji
+    case "$status" in
+        success) emoji="✅" ;;
+        warning) emoji="⚠️" ;;
+        error)   emoji="❌" ;;
+        *)       emoji="ℹ️" ;;
+    esac
+    
+    # Build payload
+    local payload
+    payload=$(cat <<EOF
+{
+    "blocks": [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "${emoji} *Lumo SaaS Deployment*\n${message}"
+            }
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": "Cluster: \`${CLUSTER_NAME}\` | Namespace: \`${NAMESPACE}\` | $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+                }
+            ]
+        }
+    ]
+}
+EOF
+)
+    
+    # Send notification (async, don't block deployment)
+    curl -s -X POST -H 'Content-type: application/json' \
+        --data "${payload}" \
+        "${LUMO_SLACK_WEBHOOK_URL}" >/dev/null 2>&1 &
+}
+
 print_banner() {
     echo ""
     echo "╔═══════════════════════════════════════════════════════════╗"
@@ -98,6 +151,10 @@ parse_args() {
                 NAMESPACE="$2"
                 shift 2
                 ;;
+            --skip-monitoring)
+                SKIP_MONITORING=true
+                shift
+                ;;
             -h|--help)
                 show_usage
                 exit 0
@@ -129,6 +186,7 @@ Options:
   --skip-cluster         Skip cluster creation (use existing)
   --skip-build           Skip image build (use existing images)
   --skip-infrastructure  Skip infrastructure deployment
+  --skip-monitoring      Skip deploying Grafana/Prometheus monitoring stack
   --cluster-name NAME    Name of kind cluster (default: lumo-saas-test)
   --namespace NS         Kubernetes namespace (default: lumo-system)
   -h, --help             Show this help message
@@ -205,17 +263,44 @@ build_and_load() {
     local project_root
     project_root=$(cd "$(dirname "$0")/../../../" && pwd)
     
-    log_info "Building lumo:local..."
-    docker build -t lumo:local -f "${project_root}/Dockerfile" "${project_root}" --quiet
+    # Check if images already exist in the kind cluster
+    # Get list of images available in kind nodes
+    local images_in_cluster
+    images_in_cluster=$(docker exec "${CLUSTER_NAME}-control-plane" crictl images 2>/dev/null || echo "")
     
-    log_info "Building lumo-agent:local..."
-    docker build -t lumo-agent:local -f "${project_root}/Dockerfile.agent" "${project_root}" --quiet
+    local need_build_cli=true
+    local need_build_agent=true
     
-    log_info "Loading images into kind cluster..."
-    kind load docker-image lumo:local --name "${CLUSTER_NAME}"
-    kind load docker-image lumo-agent:local --name "${CLUSTER_NAME}"
+    if echo "$images_in_cluster" | grep -q "docker.io/library/lumo.*local"; then
+        log_info "lumo:local already present in cluster"
+        need_build_cli=false
+    fi
     
-    log_success "✓ Images built and loaded"
+    if echo "$images_in_cluster" | grep -q "docker.io/library/lumo-agent.*local"; then
+        log_info "lumo-agent:local already present in cluster"
+        need_build_agent=false
+    fi
+    
+    # Build and load only what's needed
+    if [ "$need_build_cli" = "true" ]; then
+        log_info "Building lumo:local..."
+        docker build -t lumo:local -f "${project_root}/Dockerfile" "${project_root}" --quiet
+        log_info "Loading lumo:local into kind cluster..."
+        kind load docker-image lumo:local --name "${CLUSTER_NAME}"
+    fi
+    
+    if [ "$need_build_agent" = "true" ]; then
+        log_info "Building lumo-agent:local..."
+        docker build -t lumo-agent:local -f "${project_root}/Dockerfile.agent" "${project_root}" --quiet
+        log_info "Loading lumo-agent:local into kind cluster..."
+        kind load docker-image lumo-agent:local --name "${CLUSTER_NAME}"
+    fi
+    
+    if [ "$need_build_cli" = "false" ] && [ "$need_build_agent" = "false" ]; then
+        log_info "All images already present - skipping build"
+    fi
+    
+    log_success "✓ Images ready"
 }
 
 # ==================== INFRASTRUCTURE ====================
@@ -267,6 +352,27 @@ deploy_infrastructure() {
     
     log_success "✓ Infrastructure deployed"
 }
+
+# ==================== MONITORING ====================
+
+deploy_monitoring() {
+    if [ "$SKIP_MONITORING" = "true" ]; then
+        log_info "Skipping monitoring deployment (SKIP_MONITORING=true)"
+        return 0
+    fi
+
+    log_step "Step 3.5/8: Deploying monitoring stack (Grafana + Prometheus)..."
+
+    # Call bundled deploy-monitoring.sh (enables Prometheus by default)
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../monitoring" && pwd)"
+    if [ -x "${SCRIPT_DIR}/deploy-monitoring.sh" ]; then
+        "${SCRIPT_DIR}/deploy-monitoring.sh" --with-prometheus
+        log_success "✓ Monitoring stack deployed"
+    else
+        log_warn "deploy-monitoring.sh not found or not executable - skipping monitoring"
+    fi
+}
+
 
 # ==================== SECRETS ====================
 
@@ -588,6 +694,8 @@ data:
       mode: event-driven
       tenant_id: "${tenant_id}"
       cache_path: /tmp/lumo-cache
+      metrics_port: 9090
+      health_port: 8080
       enabled_checks:
         - kubernetes
       event_driven:
@@ -661,6 +769,10 @@ spec:
       labels:
         app: lumo-agent
         tenant: ${tenant_slug}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: lumo-agent
       containers:
@@ -681,6 +793,10 @@ spec:
               value: "true"
             - name: LUMO_AGENT_EVENT_DRIVEN_ENABLED
               value: "true"
+            - name: LUMO_AGENT_METRICS_PORT
+              value: "9090"
+            - name: LUMO_AGENT_HEALTH_PORT
+              value: "8080"
             - name: LUMO_LOG_LEVEL
               value: "debug"
           ports:
@@ -1019,33 +1135,49 @@ main() {
     
     cd "$(dirname "$0")"
     
+    # Send initial deployment notification
+    slack_notify "🚀 Starting Multi-Tenant SaaS deployment..." "info"
+    
     setup_cluster
+    slack_notify "Step 1/8: Cluster setup complete" "success"
     echo ""
     
     build_and_load
+    slack_notify "Step 2/8: Docker images built and loaded" "success"
     echo ""
     
     deploy_infrastructure
+    slack_notify "Step 3/8: Infrastructure deployed (PostgreSQL + Redis)" "success"
+    echo ""
+
+    deploy_monitoring
+    slack_notify "Step 3.5/8: Monitoring stack deployed (Grafana + Prometheus)" "success"
     echo ""
     
     deploy_api_server
+    slack_notify "Step 4/8: Lumo API Server deployed and healthy" "success"
     echo ""
     
     create_tenants
+    slack_notify "Step 5/8: Test tenants created (Acme, Globex, Initech)" "success"
     echo ""
     
     provision_agents
+    slack_notify "Step 6/8: Agent tokens provisioned" "success"
     echo ""
     
     deploy_tenant_agents
+    slack_notify "Step 7/8: Tenant agents deployed" "success"
     echo ""
     
     if run_validation_tests; then
         echo ""
         print_summary
+        slack_notify "🎉 Multi-Tenant SaaS deployment completed successfully!\n\nAll validation tests passed." "success"
         log_success "🎉 Multi-Tenant SaaS deployment successful!"
     else
         echo ""
+        slack_notify "❌ Multi-Tenant SaaS deployment failed!\n\nSome validation tests did not pass. Check logs for details." "error"
         log_error "Some validation tests failed. Check logs above."
         print_summary
         exit 1

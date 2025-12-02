@@ -330,4 +330,8 @@ deploy-xl:
 deploy-quick:
 	@cd deployments/kubernetes/kind && ./deploy-lumo.sh --skip-cluster --skip-build
 
-.PHONY: deploy deploy-xs deploy-s deploy-m deploy-xl deploy-quick
+# Deploy SaaS profile using deploy-saas.sh script
+deploy-saas:
+	@cd deployments/kubernetes/kind && ./deploy-saas.sh
+
+.PHONY: deploy deploy-xs deploy-s deploy-m deploy-xl deploy-quick deploy-saas
