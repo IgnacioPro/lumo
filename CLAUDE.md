@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-11-30 (Phase 18 In Progress) | **Version:** 1.0.0 | **Status:** Phase 16b Complete ✅ | Phase 18 In Progress 🚧 | **Next: Phase 18 Completion → v2.0.0** 🚀 | [Roadmap TODO](ROADMAP_TODO.md)
+> **Last Updated:** 2025-12-02 (Phase 19 Complete) | **Version:** 1.1.0 | **Status:** Phase 19 Complete ✅ | Phase 18 In Progress 🚧 | **Next: Phase 18 Completion → v2.0.0** 🚀 | [Roadmap TODO](ROADMAP_TODO.md)
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -12,12 +12,13 @@ Always run `make ci` before committing (linters, security checks, tests, builds)
 
 ## Project Overview
 
-**Lumo** - Intelligent SRE/DevOps automation platform in Go with 12 diagnostic checkers, 5 AI providers, auto-remediation, multi-platform notifications, and agent architecture (K8s + VM).
+**Lumo** - Intelligent SRE/DevOps automation platform in Go with 12 diagnostic checkers, 5 AI providers, auto-remediation, multi-platform notifications, incident correlation, and agent architecture (K8s + VM).
 
 **Key Features:**
 - Natural language interface (`lumo ask`) - translate queries to commands with AI
 - System diagnostics (6 core + 4 security + 2 specialized checkers)
 - AI analysis: Anthropic, OpenAI, Ollama, Gemini, OpenRouter (adapter pattern)
+- **Incident Correlation Engine** (Phase 19) - correlates related events into single incidents
 - Auto-remediation with human approval
 - RAG system (87% MTTR reduction, 4,400% ROI)
 - Multi-platform notifications: Slack, Telegram, Discord, Teams, Email
@@ -48,6 +49,7 @@ lumo/
 │   ├── cache/                         # Redis client
 │   ├── agent/                         # Scheduling, reporting, caching, health
 │   │   └── eventdriven/               # Event-driven K8s monitoring (informers, watchers, debouncer)
+│   ├── correlation/                   # Incident correlation engine (Phase 19)
 │   ├── grpc/                          # gRPC server/client, handlers, interceptors, mTLS
 │   ├── intelligence/                  # RAG: vectorstore, embeddings, ingestion
 │   ├── doctor/                        # Health check system (6 checks)
@@ -673,7 +675,49 @@ See [EVENT_DRIVEN_IMPLEMENTATION.md](EVENT_DRIVEN_IMPLEMENTATION.md) for complet
 - Files: 1 new file (event_analysis.go, 340 lines), 3 files modified
 - Testing: OOMKilled detection, AI analysis generation, Slack notification formatting verified
 
-### Strategic Roadmap (Nov 29, 2025)
+### Completed (Phase 19)
+
+**Phase 19: Incident Correlation Engine** 🔗 - COMPLETE ✅ (Dec 2, 2025)
+
+The key differentiator that transforms Lumo from "alerting tool" to "incident intelligence platform."
+
+**Problem Solved:**
+- Before: 50+ individual alerts about pods crashing = alert fatigue
+- After: ONE incident report saying "Memory leak in service X caused cascading failures"
+
+**Components Created:**
+- `internal/correlation/types.go` (476 LOC) - Incident data structures, configuration
+- `internal/correlation/engine.go` (752 LOC) - Main correlation engine with rules
+- `internal/correlation/context.go` (530 LOC) - K8s context gathering (logs, metrics, events)
+- `internal/correlation/analyzer.go` (529 LOC) - AI-powered incident analysis
+- `internal/correlation/notifier.go` (228 LOC) - Incident notification
+- `internal/correlation/repository.go` (125 LOC) - In-memory incident storage
+- `internal/correlation/engine_test.go` (475 LOC) - Unit tests (9 test cases, all passing)
+- `internal/correlation/README.md` (~400 LOC) - Comprehensive documentation
+- `internal/api/handlers/incidents.go` (360 LOC) - Incident API endpoints
+
+**Key Features:**
+- 7 incident categories: memory, crash, image, storage, node, scheduling, deployment
+- Correlation rules with priority-based matching
+- 5-minute correlation window (configurable)
+- Context gathering: pod logs, K8s events, node conditions, metrics
+- AI analysis: root cause, impact assessment, remediation steps
+- Duplicate suppression (1 hour window)
+- Prometheus metrics: incidents created/resolved, events correlated
+- Events handler integration (auto-correlation of incoming events)
+- REST API: list/get incidents, beautiful HTML analysis view
+- Open incidents dashboard endpoint
+
+**API Endpoints:**
+- `GET /api/v1/incidents` - List all incidents with filters
+- `GET /api/v1/incidents/{id}` - Get incident by ID
+- `GET /api/v1/incidents/{id}/analysis` - Beautiful HTML analysis page
+- `GET /api/v1/incidents/open` - List currently open incidents
+- `GET /api/v1/incidents/stats` - Incident statistics
+
+**Total:** 3,475 LOC (8 source files + 1 test file + README)
+
+### Strategic Roadmap (Dec 2, 2025)
 
 **Current Maturity:** Enterprise-Ready v1.0.0 - Production deployment ready with comprehensive features
 

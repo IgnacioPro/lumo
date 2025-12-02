@@ -16,6 +16,7 @@ import (
 	"github.com/ignacio/lumo/internal/ai"
 	"github.com/ignacio/lumo/internal/api/middleware"
 	"github.com/ignacio/lumo/internal/api/response"
+	"github.com/ignacio/lumo/internal/correlation"
 	"github.com/ignacio/lumo/internal/database/models"
 	"github.com/ignacio/lumo/internal/database/repository"
 	"github.com/ignacio/lumo/internal/notifications"
@@ -35,13 +36,15 @@ const (
 
 // EventsHandler handles Kubernetes event-related requests
 type EventsHandler struct {
-	eventRepo    *repository.EventRepository
-	agentRepo    *repository.AgentRepository
-	aiProvider   ai.Provider
-	notifiers    []notifications.Notifier
-	logger       *logrus.Logger
-	aiEnabled    bool
-	notifEnabled bool
+	eventRepo          *repository.EventRepository
+	agentRepo          *repository.AgentRepository
+	aiProvider         ai.Provider
+	notifiers          []notifications.Notifier
+	correlationEngine  *correlation.Engine
+	logger             *logrus.Logger
+	aiEnabled          bool
+	notifEnabled       bool
+	correlationEnabled bool
 }
 
 // NewEventsHandler creates a new events handler
@@ -55,13 +58,24 @@ func NewEventsHandler(
 	notifEnabled bool,
 ) *EventsHandler {
 	return &EventsHandler{
-		eventRepo:    eventRepo,
-		agentRepo:    agentRepo,
-		aiProvider:   aiProvider,
-		notifiers:    notifiers,
-		logger:       logger,
-		aiEnabled:    aiEnabled,
-		notifEnabled: notifEnabled,
+		eventRepo:          eventRepo,
+		agentRepo:          agentRepo,
+		aiProvider:         aiProvider,
+		notifiers:          notifiers,
+		correlationEngine:  nil, // Set via SetCorrelationEngine
+		logger:             logger,
+		aiEnabled:          aiEnabled,
+		notifEnabled:       notifEnabled,
+		correlationEnabled: false,
+	}
+}
+
+// SetCorrelationEngine enables the correlation engine for incident correlation
+func (h *EventsHandler) SetCorrelationEngine(engine *correlation.Engine) {
+	h.correlationEngine = engine
+	h.correlationEnabled = engine != nil
+	if h.correlationEnabled {
+		h.logger.Info("Correlation engine enabled for event processing")
 	}
 }
 
@@ -157,9 +171,14 @@ func (h *EventsHandler) SubmitEvents(w http.ResponseWriter, r *http.Request) {
 		h.logger.WithField("stored_count", len(events)).Info("Events stored successfully")
 		eventsProcessedTotal.WithLabelValues("accepted").Add(float64(len(events)))
 
-		// Process events asynchronously (AI analysis + notifications)
-		// Pass request context to preserve trace information
-		go h.processEventsAsync(r.Context(), events)
+		// Process events through correlation engine if enabled
+		// Otherwise fall back to individual event processing
+		if h.correlationEnabled && h.correlationEngine != nil {
+			go h.processEventsWithCorrelation(r.Context(), events)
+		} else {
+			// Legacy: Process events asynchronously (AI analysis + notifications per event)
+			go h.processEventsAsync(r.Context(), events)
+		}
 	}
 
 	// Record rejected events
@@ -365,6 +384,34 @@ func (h *EventsHandler) getAgentIDFromContext(ctx context.Context) (uuid.UUID, e
 	}
 
 	return uuid.Nil, fmt.Errorf("agent_id not found in context")
+}
+
+// processEventsWithCorrelation sends events to the correlation engine for intelligent grouping.
+// The correlation engine will:
+// 1. Group related events into incidents
+// 2. Wait for correlation window to close (default 5 min)
+// 3. Gather context (logs, metrics, K8s events)
+// 4. Perform AI analysis on the incident (not individual events)
+// 5. Send ONE notification per incident (not per event)
+func (h *EventsHandler) processEventsWithCorrelation(parentCtx context.Context, events []*models.Event) {
+	// Create detached context for async processing
+	detachedCtx := context.WithoutCancel(parentCtx)
+	ctx, cancel := context.WithTimeout(detachedCtx, 10*time.Minute)
+	defer cancel()
+
+	h.logger.WithField("event_count", len(events)).Info("Processing events through correlation engine")
+
+	for _, event := range events {
+		if err := h.correlationEngine.ProcessEvent(ctx, event); err != nil {
+			h.logger.WithError(err).WithField("event_id", event.ID).Warn("Failed to correlate event")
+			// Fall back to individual processing for failed events
+			if event.IsHighPriority() {
+				h.processSingleEvent(ctx, event)
+			}
+		}
+	}
+
+	h.logger.WithField("event_count", len(events)).Debug("Events submitted to correlation engine")
 }
 
 // processEventsAsync performs AI analysis and sends notifications asynchronously.
