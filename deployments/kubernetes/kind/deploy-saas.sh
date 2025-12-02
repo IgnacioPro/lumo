@@ -27,6 +27,8 @@ NAMESPACE="${LUMO_NAMESPACE:-lumo-system}"
 SKIP_CLUSTER_SETUP="${SKIP_CLUSTER_SETUP:-false}"
 SKIP_BUILD="${SKIP_BUILD:-false}"
 SKIP_INFRASTRUCTURE="${SKIP_INFRASTRUCTURE:-false}"
+SKIP_MONITORING="${SKIP_MONITORING:-false}"
+WITH_MONITORING="${WITH_MONITORING:-true}"
 API_PORT=8080
 
 # Test tenants - using simple arrays for bash 3.x compatibility
@@ -90,6 +92,14 @@ parse_args() {
                 SKIP_INFRASTRUCTURE=true
                 shift
                 ;;
+            --skip-monitoring)
+                SKIP_MONITORING=true
+                shift
+                ;;
+            --with-monitoring)
+                WITH_MONITORING=true
+                shift
+                ;;
             --cluster-name)
                 CLUSTER_NAME="$2"
                 shift 2
@@ -129,9 +139,15 @@ Options:
   --skip-cluster         Skip cluster creation (use existing)
   --skip-build           Skip image build (use existing images)
   --skip-infrastructure  Skip infrastructure deployment
+  --skip-monitoring      Skip monitoring deployment (Prometheus + Grafana)
+  --with-monitoring      Deploy Prometheus + Grafana monitoring stack (default: enabled)
   --cluster-name NAME    Name of kind cluster (default: lumo-saas-test)
   --namespace NS         Kubernetes namespace (default: lumo-system)
   -h, --help             Show this help message
+
+Environment Variables:
+  LUMO_SLACK_WEBHOOK_URL   Slack webhook URL for notifications (optional)
+  LUMO_ANTHROPIC_API_KEY   Anthropic API key for AI analysis (optional)
 
 Test Tenants:
   - Acme Corporation (Pro plan: 100 agents, 100K events/day)
@@ -139,8 +155,15 @@ Test Tenants:
   - Initech Solutions (Trial plan: 5 agents, 1K events/day)
 
 Examples:
-  # Full deployment from scratch
+  # Full deployment from scratch (includes monitoring by default)
   $0
+
+  # Full deployment with Slack notifications
+  export LUMO_SLACK_WEBHOOK_URL='https://hooks.slack.com/services/...'
+  $0
+
+  # Full deployment without monitoring
+  $0 --skip-monitoring
 
   # Use existing cluster, rebuild images
   $0 --skip-cluster
@@ -150,6 +173,9 @@ Examples:
 
   # Use existing cluster and infrastructure
   $0 --skip-cluster --skip-build --skip-infrastructure
+
+  # Quick retest (skip everything except validation)
+  $0 --skip-cluster --skip-build --skip-infrastructure --skip-monitoring
 EOF
 }
 
@@ -161,7 +187,7 @@ setup_cluster() {
         return 0
     fi
 
-    log_step "Step 1/8: Setting up kind cluster..."
+    log_step "Step 1/9: Setting up kind cluster..."
     
     # Check if cluster already exists
     if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
@@ -199,7 +225,7 @@ build_and_load() {
         return 0
     fi
 
-    log_step "Step 2/8: Building and loading Docker images..."
+    log_step "Step 2/9: Building and loading Docker images..."
     
     # Build from project root
     local project_root
@@ -226,7 +252,7 @@ deploy_infrastructure() {
         return 0
     fi
 
-    log_step "Step 3/8: Deploying infrastructure..."
+    log_step "Step 3/9: Deploying infrastructure..."
     
     # Create namespace
     kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
@@ -271,7 +297,10 @@ deploy_infrastructure() {
 # ==================== API SERVER ====================
 
 deploy_api_server() {
-    log_step "Step 4/8: Deploying Lumo API Server..."
+    log_step "Step 4/9: Deploying Lumo API Server..."
+    
+    # Create secrets for API server (Slack webhook, etc.)
+    create_api_secrets
     
     # Apply API server manifest
     kubectl apply -f manifests/api-server.yaml
@@ -309,6 +338,28 @@ deploy_api_server() {
     fi
 }
 
+create_api_secrets() {
+    log_info "Creating API server secrets..."
+    
+    # Check if Slack webhook URL is provided
+    if [ -n "${LUMO_SLACK_WEBHOOK_URL:-}" ]; then
+        log_info "Creating Slack webhook secret..."
+        kubectl create secret generic lumo-secrets \
+            --from-literal=slack-webhook-url="${LUMO_SLACK_WEBHOOK_URL}" \
+            -n "${NAMESPACE}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+        log_success "✓ Slack webhook secret created"
+    else
+        log_warn "⚠ LUMO_SLACK_WEBHOOK_URL not set - Slack notifications will be disabled"
+        log_info "To enable Slack notifications, run:"
+        echo "  export LUMO_SLACK_WEBHOOK_URL='https://hooks.slack.com/services/...'"
+        echo "  Then re-run this script or create the secret manually:"
+        echo "  kubectl create secret generic lumo-secrets \\"
+        echo "    --from-literal=slack-webhook-url='\$LUMO_SLACK_WEBHOOK_URL' \\"
+        echo "    -n ${NAMESPACE}"
+    fi
+}
+
 # ==================== MULTI-TENANT SETUP ====================
 
 create_admin_token() {
@@ -333,7 +384,7 @@ create_admin_token() {
 }
 
 create_tenants() {
-    log_step "Step 5/8: Creating test tenants..."
+    log_step "Step 5/9: Creating test tenants..."
     
     local pg_pod
     pg_pod=$(kubectl get pods -n "${NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}')
@@ -419,7 +470,7 @@ EOF
 }
 
 provision_agents() {
-    log_step "Step 6/8: Creating agent API keys for each tenant..."
+    log_step "Step 6/9: Creating agent API keys for each tenant..."
     
     local pg_pod
     pg_pod=$(kubectl get pods -n "${NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}')
@@ -460,7 +511,7 @@ EOF
 }
 
 deploy_tenant_agents() {
-    log_step "Step 7/8: Deploying agents to cluster..."
+    log_step "Step 7/9: Deploying agents to cluster..."
     
     # Create shared ClusterRole for agent cluster-wide read access (created once)
     cat <<'EOF' | kubectl apply -f -
@@ -521,6 +572,8 @@ data:
       mode: event-driven
       tenant_id: "${tenant_id}"
       cache_path: /tmp/lumo-cache
+      health_check_port: 8080
+      metrics_port: 9090
       enabled_checks:
         - kubernetes
       event_driven:
@@ -594,6 +647,10 @@ spec:
       labels:
         app: lumo-agent
         tenant: ${tenant_slug}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: lumo-agent
       containers:
@@ -658,10 +715,62 @@ EOF
     log_success "✓ All agents deployed"
 }
 
+# ==================== MONITORING ====================
+
+deploy_monitoring() {
+    if [ "$WITH_MONITORING" != "true" ]; then
+        log_info "Skipping monitoring (use --with-monitoring to enable)"
+        return 0
+    fi
+
+    if [ "$SKIP_MONITORING" = "true" ]; then
+        log_info "Skipping monitoring deployment (SKIP_MONITORING=true)"
+        return 0
+    fi
+
+    log_step "Step 8/9: Deploying Monitoring Stack (Prometheus + Grafana)..."
+
+    local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local MONITORING_DIR="${SCRIPT_DIR}/../monitoring"
+
+    if [ ! -f "${MONITORING_DIR}/deploy-monitoring.sh" ]; then
+        log_error "Monitoring deploy script not found at ${MONITORING_DIR}/deploy-monitoring.sh"
+        return 1
+    fi
+
+    log_info "Deploying Prometheus and Grafana..."
+    bash "${MONITORING_DIR}/deploy-monitoring.sh" --with-prometheus
+
+    # Wait for Grafana to be ready
+    log_info "Waiting for Grafana to be ready..."
+    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=grafana -n monitoring --timeout=120s 2>/dev/null || {
+        log_warn "Grafana not ready yet, checking status..."
+        kubectl get pods -n monitoring
+    }
+
+    # Wait for Prometheus to be ready
+    log_info "Waiting for Prometheus to be ready..."
+    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=prometheus -n monitoring --timeout=120s 2>/dev/null || {
+        log_warn "Prometheus not ready yet, checking status..."
+        kubectl get pods -n monitoring
+    }
+
+    log_success "✓ Monitoring stack deployed successfully"
+    echo ""
+    log_info "Access Grafana:"
+    echo "  kubectl port-forward -n monitoring svc/grafana 3000:80"
+    echo "  Open: http://localhost:3000 (admin/admin)"
+    echo ""
+    log_info "Access Prometheus:"
+    echo "  kubectl port-forward -n monitoring svc/prometheus-server 9090:80"
+    echo "  Open: http://localhost:9090"
+    echo ""
+}
+
 # ==================== VALIDATION ====================
 
 run_validation_tests() {
-    log_step "Step 8/8: Running validation tests..."
+    log_step "Step 9/9: Running validation tests..."
     echo ""
     
     local pg_pod api_pod
@@ -900,6 +1009,14 @@ print_summary() {
     echo "  ✓ PostgreSQL (with multi-tenant schema)"
     echo "  ✓ Redis"
     echo "  ✓ Lumo API Server"
+    if [ -n "${LUMO_SLACK_WEBHOOK_URL:-}" ]; then
+        echo "  ✓ Slack Notifications (enabled)"
+    else
+        echo "  ⚠ Slack Notifications (disabled - set LUMO_SLACK_WEBHOOK_URL to enable)"
+    fi
+    if [ "$WITH_MONITORING" = "true" ] && [ "$SKIP_MONITORING" != "true" ]; then
+        echo "  ✓ Prometheus + Grafana"
+    fi
     echo ""
     echo "Test Tenants:"
     local i=0
@@ -938,6 +1055,29 @@ print_summary() {
     echo "  kubectl port-forward -n ${NAMESPACE} svc/lumo-api 8080:8080"
     echo "  curl http://localhost:8080/api/v1/health"
     echo ""
+    if [ "$WITH_MONITORING" = "true" ] && [ "$SKIP_MONITORING" != "true" ]; then
+        log_info "Access Monitoring:"
+        echo "  Grafana:     kubectl port-forward -n monitoring svc/grafana 3000:80"
+        echo "               Open: http://localhost:3000 (admin/admin)"
+        echo "  Prometheus:  kubectl port-forward -n monitoring svc/prometheus-server 9090:80"
+        echo "               Open: http://localhost:9090"
+        echo ""
+        log_info "Lumo Dashboard: Grafana > Dashboards > Lumo > Lumo Overview"
+        echo ""
+    fi
+    if [ -z "${LUMO_SLACK_WEBHOOK_URL:-}" ]; then
+        log_info "Enable Slack Notifications:"
+        echo "  1. Create a Slack webhook: https://api.slack.com/messaging/webhooks"
+        echo "  2. Create the secret:"
+        echo "     kubectl create secret generic lumo-secrets \\"
+        echo "       --from-literal=slack-webhook-url='https://hooks.slack.com/services/...' \\"
+        echo "       -n ${NAMESPACE}"
+        echo "  3. Restart API: kubectl rollout restart deployment/lumo-api -n ${NAMESPACE}"
+        echo ""
+    fi
+    log_info "Next Steps:"
+    echo "  Run failure scenarios test: ./test-failure-scenarios.sh"
+    echo ""
     log_info "Cleanup:"
     echo "  kind delete cluster --name ${CLUSTER_NAME}"
     echo ""
@@ -971,6 +1111,9 @@ main() {
     echo ""
     
     deploy_tenant_agents
+    echo ""
+    
+    deploy_monitoring
     echo ""
     
     if run_validation_tests; then

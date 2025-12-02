@@ -5,6 +5,9 @@
 # This script triggers various Kubernetes failure scenarios and verifies
 # that the event-driven agents detect and report them to the API server.
 #
+# It supports both single-tenant (all in lumo-system) and multi-tenant
+# (agents in tenant-*) deployments.
+#
 # Usage:
 #   ./test-failure-scenarios.sh              # Run all tests
 #   ./test-failure-scenarios.sh --scenario pod-failure  # Run specific test
@@ -23,7 +26,8 @@ MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
 # Configuration
-NAMESPACE="${LUMO_NAMESPACE:-lumo-system}"
+SYSTEM_NAMESPACE="${LUMO_NAMESPACE:-lumo-system}"
+AGENT_NAMESPACE="${AGENT_NAMESPACE:-}" # Will be auto-detected if empty
 TEST_NAMESPACE="lumo-test-scenarios"
 DEBOUNCE_WINDOW=45
 WAIT_TIME=180  # 3min: pod startup + image pull retries + debounce (45s) + processing
@@ -80,6 +84,42 @@ print_banner() {
     echo "  Testing 8 watchers across 10+ failure scenarios"
     echo "======================================================="
     echo ""
+}
+
+detect_namespaces() {
+    # Agent Namespace detection
+    if [ -n "${AGENT_NAMESPACE:-}" ]; then
+        log_info "Using specified agent namespace: ${AGENT_NAMESPACE}"
+    else
+        log_info "Auto-detecting agent namespace..."
+        # Try system namespace first (Single Tenant mode)
+        if kubectl get pods -n "${SYSTEM_NAMESPACE}" -l mode=event-driven --no-headers 2>/dev/null | grep -q "."; then
+            AGENT_NAMESPACE="${SYSTEM_NAMESPACE}"
+            log_info "Found agents in system namespace: ${AGENT_NAMESPACE}"
+        else
+            # Try to find a tenant namespace (SaaS mode)
+            # Look for namespaces starting with tenant- and checking for lumo-agent pods
+            local tenant_ns=""
+            for ns in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | grep "^tenant-"); do
+                if kubectl get pods -n "${ns}" -l app=lumo-agent --no-headers 2>/dev/null | grep -q "Running"; then
+                    tenant_ns="${ns}"
+                    break
+                fi
+            done
+            
+            if [ -n "${tenant_ns}" ]; then
+                AGENT_NAMESPACE="${tenant_ns}"
+                log_info "Found tenant namespace with running agents: ${AGENT_NAMESPACE}"
+            else
+                # Fallback
+                AGENT_NAMESPACE="${SYSTEM_NAMESPACE}"
+                log_warning "No specific agent namespace found, defaulting to system: ${AGENT_NAMESPACE}"
+            fi
+        fi
+    fi
+    
+    log_info "System Namespace (DB/API): ${SYSTEM_NAMESPACE}"
+    log_info "Agent Namespace (Logs):    ${AGENT_NAMESPACE}"
 }
 
 list_scenarios() {
@@ -139,9 +179,10 @@ wait_for_event() {
     local found=false
     
     while [ $(($(date +%s) - start)) -lt $timeout ]; do
-        # Check agent logs for event submission
-        if kubectl logs -n "${NAMESPACE}" -l mode=event-driven --tail=100 --since=60s 2>/dev/null | \
-           grep -q "\"event_type\":\"${event_type}\".*\"resource_name\":\"${resource_name}\""; then
+        # Check agent logs for event submission in AGENT_NAMESPACE
+        # We look for 'app=lumo-agent' label which is common in both deployment types
+        if kubectl logs -n "${AGENT_NAMESPACE}" -l app=lumo-agent --tail=100 --since=60s 2>/dev/null | \
+           grep -q "\"event_type\":\"${event_type}\".*\"resource_name\":\"${resource_name}\"" ; then
             found=true
             break
         fi
@@ -150,10 +191,10 @@ wait_for_event() {
     done
     
     if [ "$found" = true ]; then
-        log_success "Event detected: ${event_type}"
+        log_success "Event detected in agent logs: ${event_type}"
         return 0
     else
-        log_error "Event NOT detected after ${timeout}s: ${event_type}"
+        log_error "Event NOT detected in agent logs after ${timeout}s: ${event_type}"
         return 1
     fi
 }
@@ -166,10 +207,10 @@ verify_event_in_database() {
 
     log_info "Verifying event in database: ${event_type} (max ${max_retries} attempts)"
 
-    local pg_pod=$(kubectl get pods -n "${NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+    local pg_pod=$(kubectl get pods -n "${SYSTEM_NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}')
 
     if [ -z "$pg_pod" ]; then
-        log_error "PostgreSQL pod not found"
+        log_error "PostgreSQL pod not found in ${SYSTEM_NAMESPACE}"
         return 1
     fi
 
@@ -181,7 +222,7 @@ verify_event_in_database() {
             sleep $retry_interval
         fi
 
-        local count=$(kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+        local count=$(kubectl exec -n "${SYSTEM_NAMESPACE}" "${pg_pod}" -- \
             psql -U lumo -d lumo -t -c \
             "SELECT COUNT(*) FROM events WHERE event_type = '${event_type}' AND resource_name LIKE '%${resource_name}%';" \
             2>/dev/null | tr -d ' \n')
@@ -194,7 +235,7 @@ verify_event_in_database() {
 
             # Show the actual event details
             log_info "Event details:"
-            kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+            kubectl exec -n "${SYSTEM_NAMESPACE}" "${pg_pod}" -- \
                 psql -U lumo -d lumo -c \
                 "SELECT event_type, severity, resource_kind, resource_name, namespace, created_at FROM events WHERE event_type = '${event_type}' AND resource_name LIKE '%${resource_name}%' ORDER BY created_at DESC LIMIT 1;" \
                 2>/dev/null | head -4 || true
@@ -210,7 +251,7 @@ verify_event_in_database() {
 
     # Diagnostic: Check if ANY events exist
     log_info "Checking total events in database..."
-    local total_events=$(kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+    local total_events=$(kubectl exec -n "${SYSTEM_NAMESPACE}" "${pg_pod}" -- \
         psql -U lumo -d lumo -t -c "SELECT COUNT(*) FROM events;" 2>/dev/null | tr -d ' \n')
     total_events=${total_events:-0}
 
@@ -221,23 +262,23 @@ verify_event_in_database() {
 
         # Check API key
         log_info "Checking API key configuration..."
-        local api_key_count=$(kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+        local api_key_count=$(kubectl exec -n "${SYSTEM_NAMESPACE}" "${pg_pod}" -- \
             psql -U lumo -d lumo -t -c "SELECT COUNT(*) FROM api_keys WHERE revoked = false;" 2>/dev/null | tr -d ' \n')
         api_key_count=${api_key_count:-0}
 
         if [ "$api_key_count" -eq 0 ]; then
             log_error "No active API keys found - agents cannot authenticate!"
-            log_info "Run: kubectl logs -n ${NAMESPACE} -l mode=event-driven --tail=50"
+            log_info "Run: kubectl logs -n ${AGENT_NAMESPACE} -l app=lumo-agent --tail=50"
         else
             log_info "Found ${api_key_count} active API key(s)"
         fi
 
-        # Check recent agent logs for errors (|| true prevents script exit if grep finds nothing)
-        log_info "Recent agent errors:"
-        kubectl logs -n "${NAMESPACE}" -l mode=event-driven --tail=20 2>/dev/null | grep -i "error\|401\|unauthorized" | tail -5 || true
+        # Check recent agent logs for errors
+        log_info "Recent agent errors (from ${AGENT_NAMESPACE}):"
+        kubectl logs -n "${AGENT_NAMESPACE}" -l app=lumo-agent --tail=20 2>/dev/null | grep -i "error\|401\|unauthorized" | tail -5 || true
     else
         log_info "Other events exist - showing recent events:"
-        kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+        kubectl exec -n "${SYSTEM_NAMESPACE}" "${pg_pod}" -- \
             psql -U lumo -d lumo -c \
             "SELECT event_type, severity, resource_name, created_at FROM events ORDER BY created_at DESC LIMIT 5;" \
             2>/dev/null | head -7 || true
@@ -263,10 +304,10 @@ poll_for_event() {
 
     log_info "Fast mode: polling for event after ${min_wait}s minimum wait"
 
-    local pg_pod=$(kubectl get pods -n "${NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+    local pg_pod=$(kubectl get pods -n "${SYSTEM_NAMESPACE}" -l app=postgres -o jsonpath='{.items[0].metadata.name}')
 
     if [ -z "$pg_pod" ]; then
-        log_error "PostgreSQL pod not found"
+        log_error "PostgreSQL pod not found in ${SYSTEM_NAMESPACE}"
         return 1
     fi
 
@@ -278,7 +319,7 @@ poll_for_event() {
 
     local attempt=1
     while [ $attempt -le $POLL_MAX_ATTEMPTS ]; do
-        local count=$(kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+        local count=$(kubectl exec -n "${SYSTEM_NAMESPACE}" "${pg_pod}" -- \
             psql -U lumo -d lumo -t -c \
             "SELECT COUNT(*) FROM events WHERE event_type = '${event_type}' AND resource_name LIKE '%${resource_name}%';" \
             2>/dev/null | tr -d ' \n')
@@ -291,7 +332,7 @@ poll_for_event() {
 
             # Show event details
             log_info "Event details:"
-            kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+            kubectl exec -n "${SYSTEM_NAMESPACE}" "${pg_pod}" -- \
                 psql -U lumo -d lumo -c \
                 "SELECT event_type, severity, resource_kind, resource_name, namespace, created_at FROM events WHERE event_type = '${event_type}' AND resource_name LIKE '%${resource_name}%' ORDER BY created_at DESC LIMIT 1;" \
                 2>/dev/null | head -4 || true
@@ -309,14 +350,14 @@ poll_for_event() {
 
     # Run diagnostics
     log_info "Checking total events in database..."
-    local total_events=$(kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+    local total_events=$(kubectl exec -n "${SYSTEM_NAMESPACE}" "${pg_pod}" -- \
         psql -U lumo -d lumo -t -c "SELECT COUNT(*) FROM events;" 2>/dev/null | tr -d ' \n')
     total_events=${total_events:-0}
     log_info "Total events in database: ${total_events}"
 
     if [ "$total_events" -gt 0 ]; then
         log_info "Recent events in database:"
-        kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
+        kubectl exec -n "${SYSTEM_NAMESPACE}" "${pg_pod}" -- \
             psql -U lumo -d lumo -c \
             "SELECT event_type, severity, resource_name, created_at FROM events ORDER BY created_at DESC LIMIT 5;" \
             2>/dev/null | head -7 || true
@@ -687,18 +728,37 @@ EOF
 run_all_tests() {
     print_banner
     
+    detect_namespaces
+    
     log_info "Checking prerequisites..."
     
-    # Check if agents are running
-    local agent_count=$(kubectl get pods -n "${NAMESPACE}" -l mode=event-driven --no-headers 2>/dev/null | wc -l | tr -d ' ')
+    # Check if agents are running in AGENT_NAMESPACE
+    # We use label app=lumo-agent for better compatibility across deployment types
+    local agent_count=$(kubectl get pods -n "${AGENT_NAMESPACE}" -l app=lumo-agent --no-headers 2>/dev/null | wc -l | tr -d ' ')
+    
+    # Fallback check for mode=event-driven if app=lumo-agent fails (legacy support)
+    if [ "${agent_count:-0}" -eq 0 ]; then
+         agent_count=$(kubectl get pods -n "${AGENT_NAMESPACE}" -l mode=event-driven --no-headers 2>/dev/null | wc -l | tr -d ' ')
+    fi
     
     if [ "${agent_count:-0}" -lt 1 ]; then
-        log_error "No event-driven agents found in namespace: ${NAMESPACE}"
-        log_error "Please run ./test-agent.sh first to deploy the full stack"
+        log_error "No agents found in namespace: ${AGENT_NAMESPACE}"
+        log_error "Please run ./deploy-lumo.sh or ./deploy-saas.sh first"
         exit 1
     fi
     
-    log_success "Found ${agent_count} event-driven agent(s)"
+    log_success "Found ${agent_count} agent(s) in ${AGENT_NAMESPACE}"
+
+    # Check if API server is running in SYSTEM_NAMESPACE
+    local api_count=$(kubectl get pods -n "${SYSTEM_NAMESPACE}" -l app=lumo-api --no-headers 2>/dev/null | wc -l | tr -d ' ')
+
+    if [ "${api_count:-0}" -lt 1 ]; then
+        log_error "No API server found in namespace: ${SYSTEM_NAMESPACE}"
+        log_error "Please run ./deploy-lumo.sh or ./deploy-saas.sh first"
+        exit 1
+    fi
+
+    log_success "Found ${api_count} API server(s) in ${SYSTEM_NAMESPACE}"
     
     setup_test_namespace
     
@@ -754,18 +814,17 @@ print_summary() {
     if [ ${TESTS_FAILED} -eq 0 ]; then
         echo -e "${GREEN}✓ All tests passed!${NC}"
         echo ""
-        log_info "Event-driven agents successfully detected all failure scenarios"
+        log_info "Agents successfully detected all failure scenarios"
     else
         echo -e "${RED}✗ Some tests failed${NC}"
         echo ""
         log_warning "Review logs above for failure details"
-        log_info "Check agent logs: kubectl logs -n ${NAMESPACE} -l mode=event-driven --tail=100"
+        log_info "Check agent logs: kubectl logs -n ${AGENT_NAMESPACE} -l app=lumo-agent --tail=100"
     fi
     
     echo ""
     echo "View stored events:"
-    echo "  kubectl exec -n ${NAMESPACE} \$(kubectl get pods -n ${NAMESPACE} -l app=postgres -o jsonpath='{.items[0].metadata.name}') -- \\"
-    echo "    psql -U lumo -d lumo -c 'SELECT event_type, severity, resource_name, created_at FROM events ORDER BY created_at DESC LIMIT 10;'"
+    echo "  kubectl exec -n ${SYSTEM_NAMESPACE} \$(kubectl get pods -n ${SYSTEM_NAMESPACE} -l app=postgres -o jsonpath='{.items[0].metadata.name}') -- psql -U lumo -d lumo -c 'SELECT event_type, severity, resource_name, created_at FROM events ORDER BY created_at DESC LIMIT 10;'"
     echo ""
 }
 
@@ -777,7 +836,7 @@ main() {
     case "${1:-all}" in
         --list)
             list_scenarios
-            ;;
+            ;; 
         --scenario)
             if [ -z "${2:-}" ]; then
                 log_error "Scenario name required"
@@ -785,43 +844,44 @@ main() {
                 exit 1
             fi
             
+            detect_namespaces
             setup_test_namespace
             
             case "$2" in
                 image-pull-backoff)
                     test_image_pull_backoff
-                    ;;
+                    ;; 
                 crash-loop-backoff)
                     test_crash_loop_backoff
-                    ;;
+                    ;; 
                 oom-killed)
                     test_oom_killed
-                    ;;
+                    ;; 
                 deployment-failed)
                     test_deployment_failed
-                    ;;
+                    ;; 
                 job-failed)
                     test_job_failed
-                    ;;
+                    ;; 
                 pvc-provision-failed)
                     test_pvc_provision_failed
-                    ;;
+                    ;; 
                 scheduling-failed)
                     test_scheduling_failed
-                    ;;
+                    ;; 
                 *)
                     log_error "Unknown scenario: $2"
                     list_scenarios
                     exit 1
-                    ;;
+                    ;; 
             esac
             
             cleanup_test_namespace
             print_summary
-            ;;
+            ;; 
         all|--all)
             run_all_tests
-            ;;
+            ;; 
         --help|-h)
             echo "Usage: $0 [options]"
             echo ""
@@ -833,22 +893,24 @@ main() {
             echo "  --help                 Show this help"
             echo ""
             echo "Environment Variables:"
+            echo "  AGENT_NAMESPACE=ns     Explicitly set agent namespace (e.g., tenant-acme-corp)"
+            echo "  LUMO_NAMESPACE=ns      Explicitly set system namespace (default: lumo-system)"
             echo "  FAST_MODE=true|false   Enable/disable polling mode (default: true)"
             echo "  POLL_INTERVAL=N        Seconds between polls (default: 5)"
             echo "  POLL_MAX_ATTEMPTS=N    Max poll attempts (default: 60)"
             echo ""
             list_scenarios
-            ;;
+            ;; 
         --slow)
             FAST_MODE=false
             shift
             main "${@:-all}"
-            ;;
+            ;; 
         *)
             log_error "Unknown option: $1"
             echo "Use --help for usage information"
             exit 1
-            ;;
+            ;; 
     esac
 }
 

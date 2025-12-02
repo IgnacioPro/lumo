@@ -402,7 +402,7 @@ groups:
           summary: "Redis is down"
 
       - alert: RedisHighMemory
-        expr: 100 * (redis_memory_used_bytes / redis_memory_max_bytes) > 90
+        expr: 100 * (redis_memory_used_bytes / (redis_memory_max_bytes > 0)) > 90
         for: 5m
         labels:
           severity: warning

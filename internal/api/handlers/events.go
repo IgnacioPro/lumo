@@ -383,11 +383,9 @@ func (h *EventsHandler) processEventsAsync(parentCtx context.Context, events []*
 	var wg sync.WaitGroup
 
 	for _, event := range events {
-		// Skip low priority events for async processing
-		if !event.IsHighPriority() {
-			continue
-		}
-
+		// Process all events for notifications - severity filtering should be done
+		// at the notification provider level, not here. All events stored in the
+		// database should be eligible for AI analysis and notifications.
 		wg.Add(1)
 		semaphore <- struct{}{} // Acquire semaphore
 
