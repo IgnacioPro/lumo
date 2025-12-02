@@ -726,6 +726,12 @@ func TestProxmoxChecker_SelectiveChecks(t *testing.T) {
 func TestProxmoxChecker_ParseCertificate(t *testing.T) {
 	checker := NewProxmoxChecker(false, false, false, false, false, false, false)
 
+	// Generate dynamic dates for time-sensitive tests
+	now := time.Now()
+	expiringSoonDate := now.AddDate(0, 0, 15).Format("Jan 2 15:04:05 2006 GMT")  // 15 days from now
+	farFutureDate := now.AddDate(5, 0, 0).Format("Jan 2 15:04:05 2006 GMT")      // 5 years from now
+	pastDate := now.AddDate(-1, 0, 0).Format("Jan 2 15:04:05 2006 GMT")          // 1 year ago
+
 	tests := []struct {
 		name             string
 		input            string
@@ -736,10 +742,10 @@ func TestProxmoxChecker_ParseCertificate(t *testing.T) {
 	}{
 		{
 			name: "valid certificate expiring soon",
-			input: `subject=CN=pve01
-issuer=CN=Proxmox Virtual Environment
-notBefore=Jan 1 00:00:00 2025 GMT
-notAfter=Dec 1 00:00:00 2025 GMT`,
+			input: "subject=CN=pve01\n" +
+				"issuer=CN=Proxmox Virtual Environment\n" +
+				"notBefore=Jan 1 00:00:00 2025 GMT\n" +
+				"notAfter=" + expiringSoonDate,
 			expectedSubject:  "CN=pve01",
 			expectedIssuer:   "CN=Proxmox Virtual Environment",
 			expectedExpiring: true,
@@ -747,10 +753,10 @@ notAfter=Dec 1 00:00:00 2025 GMT`,
 		},
 		{
 			name: "expired certificate",
-			input: `subject=CN=pve01
-issuer=CN=Proxmox Virtual Environment
-notBefore=Jan 1 00:00:00 2020 GMT
-notAfter=Jan 15 00:00:00 2021 GMT`,
+			input: "subject=CN=pve01\n" +
+				"issuer=CN=Proxmox Virtual Environment\n" +
+				"notBefore=Jan 1 00:00:00 2020 GMT\n" +
+				"notAfter=" + pastDate,
 			expectedSubject:  "CN=pve01",
 			expectedIssuer:   "CN=Proxmox Virtual Environment",
 			expectedExpiring: false,
@@ -758,10 +764,10 @@ notAfter=Jan 15 00:00:00 2021 GMT`,
 		},
 		{
 			name: "valid certificate far future",
-			input: `subject=CN=pve01
-issuer=CN=Proxmox Virtual Environment
-notBefore=Jan 1 00:00:00 2024 GMT
-notAfter=Jan 15 00:00:00 2030 GMT`,
+			input: "subject=CN=pve01\n" +
+				"issuer=CN=Proxmox Virtual Environment\n" +
+				"notBefore=Jan 1 00:00:00 2024 GMT\n" +
+				"notAfter=" + farFutureDate,
 			expectedSubject:  "CN=pve01",
 			expectedIssuer:   "CN=Proxmox Virtual Environment",
 			expectedExpiring: false,
