@@ -188,14 +188,27 @@ func (m *Manager) Start() error {
 func (m *Manager) Stop() error {
 	m.logger.Info("Stopping event-driven manager")
 
-	// Signal all informers to stop
+	// Signal all informers to stop first - this allows them to gracefully shutdown
+	// before we cancel the context. Informers check stopCh for shutdown signals.
 	close(m.stopCh)
 
-	// Cancel context
-	m.cancel()
+	// Wait for all goroutines to finish with a timeout
+	// This prevents hanging if informers don't shutdown cleanly
+	done := make(chan struct{})
+	go func() {
+		m.wg.Wait()
+		close(done)
+	}()
 
-	// Wait for all goroutines to finish
-	m.wg.Wait()
+	select {
+	case <-done:
+		m.logger.Debug("All informer goroutines completed")
+	case <-time.After(10 * time.Second):
+		m.logger.Warn("Timeout waiting for informer goroutines to complete")
+	}
+
+	// Cancel context after informers have stopped to clean up any remaining operations
+	m.cancel()
 
 	m.logger.Info("Event-driven manager stopped")
 	return nil
