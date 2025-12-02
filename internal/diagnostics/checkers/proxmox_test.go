@@ -728,9 +728,9 @@ func TestProxmoxChecker_ParseCertificate(t *testing.T) {
 
 	// Generate dynamic dates for time-sensitive tests
 	now := time.Now()
-	expiringSoonDate := now.AddDate(0, 0, 15).Format("Jan 2 15:04:05 2006 GMT")  // 15 days from now
-	farFutureDate := now.AddDate(5, 0, 0).Format("Jan 2 15:04:05 2006 GMT")      // 5 years from now
-	pastDate := now.AddDate(-1, 0, 0).Format("Jan 2 15:04:05 2006 GMT")          // 1 year ago
+	expiringSoonDate := now.AddDate(0, 0, 15).Format("Jan 2 15:04:05 2006 GMT") // 15 days from now
+	farFutureDate := now.AddDate(5, 0, 0).Format("Jan 2 15:04:05 2006 GMT")     // 5 years from now
+	pastDate := now.AddDate(-1, 0, 0).Format("Jan 2 15:04:05 2006 GMT")         // 1 year ago
 
 	tests := []struct {
 		name             string
