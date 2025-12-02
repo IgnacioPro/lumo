@@ -242,7 +242,7 @@ make ci-build  # Build CLI + Agent binaries
 - govulncheck (vulnerability scanning)
 - Race detection tests
 - Build verification
-- Cross-platform builds (main branch only: linux/darwin × amd64/arm64)
+- Cross-platform builds (main branch only: linux/darwin × amd64)
 - Path-based filtering: only runs on Go/Makefile/CI changes
 
 **Integration Tests:**

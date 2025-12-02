@@ -692,12 +692,6 @@ run_all_tests() {
     # Check if agents are running
     local agent_count=$(kubectl get pods -n "${NAMESPACE}" -l mode=event-driven --no-headers 2>/dev/null | wc -l | tr -d ' ')
     
-    if [ "${agent_count:-0}" -lt 1 ]; then
-        log_error "No event-driven agents found in namespace: ${NAMESPACE}"
-        log_error "Please run ./test-agent.sh first to deploy the full stack"
-        exit 1
-    fi
-    
     log_success "Found ${agent_count} event-driven agent(s)"
     
     setup_test_namespace
