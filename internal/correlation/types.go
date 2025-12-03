@@ -60,6 +60,10 @@ type Incident struct {
 	Severity models.EventSeverity `json:"severity"`
 	State    IncidentState        `json:"state"`
 
+	// IsCritical indicates if this incident affects critical services
+	// Critical incidents bypass debouncing and get immediate notification
+	IsCritical bool `json:"is_critical"`
+
 	// Human-readable title (generated after correlation)
 	Title string `json:"title"`
 
@@ -68,6 +72,9 @@ type Incident struct {
 
 	// Summary of what happened (populated by AI)
 	Summary string `json:"summary,omitempty"`
+
+	// Postmortem generated when incident closes
+	Postmortem string `json:"postmortem,omitempty"`
 
 	// Timeline of events
 	Timeline []TimelineEntry `json:"timeline"`
@@ -94,16 +101,22 @@ type Incident struct {
 	// AI Analysis result
 	AIAnalysis *AIAnalysisResult `json:"ai_analysis,omitempty"`
 
+	// Analysis log for incremental updates
+	AnalysisLog []AnalysisLogEntry `json:"analysis_log,omitempty"`
+
 	// Timestamps
-	FirstEventAt time.Time  `json:"first_event_at"`
-	LastEventAt  time.Time  `json:"last_event_at"`
-	OpenedAt     time.Time  `json:"opened_at"`
-	ClosedAt     *time.Time `json:"closed_at,omitempty"`
-	AnalyzedAt   *time.Time `json:"analyzed_at,omitempty"`
-	NotifiedAt   *time.Time `json:"notified_at,omitempty"`
+	FirstEventAt      time.Time  `json:"first_event_at"`
+	LastEventAt       time.Time  `json:"last_event_at"`
+	OpenedAt          time.Time  `json:"opened_at"`
+	ClosedAt          *time.Time `json:"closed_at,omitempty"`
+	AnalyzedAt        *time.Time `json:"analyzed_at,omitempty"`
+	NotifiedAt        *time.Time `json:"notified_at,omitempty"`
+	LastHealthCheckAt *time.Time `json:"last_health_check_at,omitempty"`
 
 	// Notification tracking
-	NotificationChannels []string `json:"notification_channels,omitempty"`
+	NotificationChannels []string   `json:"notification_channels,omitempty"`
+	NotificationCount    int        `json:"notification_count"`
+	LastNotificationAt   *time.Time `json:"last_notification_at,omitempty"`
 
 	// Correlation metadata
 	CorrelationKey    string                 `json:"correlation_key"`
@@ -301,6 +314,25 @@ type RecommendedAction struct {
 	Automated   bool   `json:"automated"`         // Can be auto-remediated
 }
 
+// AnalysisLogEntry represents an incremental AI analysis update
+type AnalysisLogEntry struct {
+	ID           uuid.UUID `json:"id"`
+	IncidentID   uuid.UUID `json:"incident_id"`
+	AnalysisType string    `json:"analysis_type"` // initial, update, insight, root_cause, postmortem
+	Content      string    `json:"content"`
+	Notified     bool      `json:"notified"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// AnalysisType constants for incremental analysis
+const (
+	AnalysisTypeInitial    = "initial"    // First "Lumo is on it" notification
+	AnalysisTypeUpdate     = "update"     // Progress update (every 45s if no insights)
+	AnalysisTypeInsight    = "insight"    // AI found something useful
+	AnalysisTypeRootCause  = "root_cause" // Root cause identified
+	AnalysisTypePostmortem = "postmortem" // Final postmortem
+)
+
 // CorrelationRule defines a rule for correlating events
 type CorrelationRule struct {
 	Name        string
@@ -316,8 +348,9 @@ type CorrelationRule struct {
 
 // EngineConfig holds configuration for the correlation engine
 type EngineConfig struct {
-	// CorrelationWindow is how long to wait for related events
+	// CorrelationWindow is how long to wait for related events (non-critical)
 	// before closing an incident for analysis (default: 5 minutes)
+	// NOTE: Critical incidents bypass this entirely
 	CorrelationWindow time.Duration
 
 	// MinEventsForIncident is the minimum events needed to form an incident
@@ -355,21 +388,38 @@ type EngineConfig struct {
 	// SuppressDuplicateWindow is how long to suppress similar incidents
 	// (default: 1 hour)
 	SuppressDuplicateWindow time.Duration
+
+	// HealthCheckInterval is how often to check if incident resources are healthy
+	// (default: 30 seconds)
+	HealthCheckInterval time.Duration
+
+	// ProgressNotificationInterval is how often to send "still working on it" updates
+	// when no insights have been found (default: 45 seconds)
+	ProgressNotificationInterval time.Duration
+
+	// CriticalLabels are the labels that mark a resource as critical
+	// (default: ["critical=true"])
+	CriticalLabels map[string]string
 }
 
 // DefaultEngineConfig returns sensible defaults
 func DefaultEngineConfig() *EngineConfig {
 	return &EngineConfig{
-		CorrelationWindow:       5 * time.Minute,
-		MinEventsForIncident:    1,
-		MaxEventsPerIncident:    100,
-		ContextGatherTimeout:    30 * time.Second,
-		AIAnalysisTimeout:       60 * time.Second,
-		LogLinesPerPod:          100,
-		MetricsLookback:         15 * time.Minute,
-		EnableContextGathering:  true,
-		EnableAIAnalysis:        true,
-		SuppressDuplicateWindow: 1 * time.Hour,
+		CorrelationWindow:            5 * time.Minute,
+		MinEventsForIncident:         1,
+		MaxEventsPerIncident:         100,
+		ContextGatherTimeout:         30 * time.Second,
+		AIAnalysisTimeout:            60 * time.Second,
+		LogLinesPerPod:               100,
+		MetricsLookback:              15 * time.Minute,
+		EnableContextGathering:       true,
+		EnableAIAnalysis:             true,
+		SuppressDuplicateWindow:      1 * time.Hour,
+		HealthCheckInterval:          30 * time.Second,
+		ProgressNotificationInterval: 45 * time.Second,
+		CriticalLabels: map[string]string{
+			"critical": "true",
+		},
 	}
 }
 

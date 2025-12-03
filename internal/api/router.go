@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -158,10 +159,16 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 		}
 	}
 
-	// Initialize correlation engine (Phase 19)
+	// Initialize correlation engine (Phase 19) with Realtime Manager (Phase 20)
 	incidentRepo := correlation.NewInMemoryIncidentRepository(logger)
 	var correlationEngine *correlation.Engine
+	var realtimeManager *correlation.RealtimeIncidentManager
 	var incidentNotifier *correlation.IncidentNotifierImpl
+
+	logger.WithFields(logrus.Fields{
+		"notif_enabled":  notifEnabled,
+		"notifier_count": len(notifiers),
+	}).Info("Checking correlation engine conditions")
 
 	// Only enable correlation if notifications are available
 	if notifEnabled && len(notifiers) > 0 {
@@ -180,7 +187,7 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 			aiAnalyzer = correlation.NewAIIncidentAnalyzer(aiProvider, logger)
 		}
 
-		// Create the correlation engine
+		// Create the correlation engine (Phase 19 - still used for rules/categories)
 		correlationEngine = correlation.NewEngine(
 			nil, // Use default config
 			nil, // Context gatherer (not in API server - only in agent)
@@ -190,10 +197,37 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 			logger,
 		)
 
+		// Create the realtime incident manager (Phase 20)
+		engineConfig := correlation.DefaultEngineConfig()
+		// Configure critical labels for immediate notification
+		engineConfig.CriticalLabels = map[string]string{
+			"critical": "true",
+		}
+		// Configure intervals
+		engineConfig.HealthCheckInterval = 30 * time.Second
+		engineConfig.ProgressNotificationInterval = 45 * time.Second
+
+		realtimeManager = correlation.NewRealtimeIncidentManager(
+			engineConfig,
+			incidentRepo,
+			nil, // Context gatherer (not in API server - only in agent)
+			aiAnalyzer,
+			incidentNotifier,
+			&correlation.NoOpHealthChecker{}, // API server doesn't have K8s client
+			logger,
+		)
+
+		// Start both engines
 		if err := correlationEngine.Start(); err != nil {
 			logger.WithError(err).Error("Failed to start correlation engine")
 		} else {
 			logger.Info("Correlation engine started for incident management")
+		}
+
+		if err := realtimeManager.Start(); err != nil {
+			logger.WithError(err).Error("Failed to start realtime incident manager")
+		} else {
+			logger.Info("Realtime incident manager started (Phase 20)")
 		}
 	}
 
@@ -210,6 +244,11 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 	// Wire correlation engine to events handler
 	if correlationEngine != nil {
 		eventsHandler.SetCorrelationEngine(correlationEngine)
+	}
+
+	// Wire realtime incident manager to events handler (Phase 20)
+	if realtimeManager != nil {
+		eventsHandler.SetRealtimeManager(realtimeManager)
 	}
 
 	// Initialize incidents handler

@@ -21,6 +21,10 @@ type Notification struct {
 
 	// Tags can be used for filtering/routing
 	Tags []string
+
+	// Postmortem contains a detailed postmortem report (optional)
+	// When set, it will be sent as follow-up messages (e.g., threaded replies in Slack)
+	Postmortem string
 }
 
 // NotificationLevel represents the severity of a notification.

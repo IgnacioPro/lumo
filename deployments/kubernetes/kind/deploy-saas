@@ -86,7 +86,52 @@ notify() {
     local full_message="${emoji} *Lumo SaaS Deployment*\n${message}\n\n_Cluster: \`${CLUSTER_NAME}\` | Namespace: \`${NAMESPACE}\` | $(date -u '+%Y-%m-%d %H:%M:%S UTC')_"
     local notification_sent=false
 
-    # Slack Webhook (preferred for deployment notifications - uses single channel)
+    # Slack Bot Token API (preferred)
+    if [ -n "${LUMO_SLACK_BOT_TOKEN:-}" ] && [ -n "${LUMO_SLACK_CHANNEL_ID:-}" ]; then
+        local blocks
+        blocks=$(cat <<EOF
+[
+    {
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": "${emoji} *Lumo SaaS Deployment*\n${message}"
+        }
+    },
+    {
+        "type": "context",
+        "elements": [
+            {
+                "type": "mrkdwn",
+                "text": "Cluster: \`${CLUSTER_NAME}\` | Namespace: \`${NAMESPACE}\` | $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            }
+        ]
+    }
+]
+EOF
+)
+        local payload
+        payload=$(cat <<EOF
+{
+    "channel": "${LUMO_SLACK_CHANNEL_ID}",
+    "blocks": ${blocks}
+}
+EOF
+)
+        # Run in background but capture errors
+        (
+            response=$(curl -s -X POST -H "Authorization: Bearer ${LUMO_SLACK_BOT_TOKEN}" \
+                -H "Content-type: application/json" \
+                --data "${payload}" \
+                "https://slack.com/api/chat.postMessage" 2>&1)
+            if ! echo "$response" | grep -q '"ok":true' && [ "${NOTIFY_DEBUG:-}" = "true" ]; then
+                echo "[DEBUG] Slack Bot API response: $response" >&2
+            fi
+        ) &
+        notification_sent=true
+    fi
+
+    # Slack Webhook (fallback/additional)
     if [ -n "${LUMO_SLACK_WEBHOOK_URL:-}" ]; then
         local blocks
         blocks=$(cat <<EOF

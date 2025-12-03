@@ -132,6 +132,16 @@ type IncidentRepository interface {
 	GetByCorrelationKey(ctx context.Context, key string) (*Incident, error)
 	// ListOpen retrieves all open incidents
 	ListOpen(ctx context.Context) ([]*Incident, error)
+	// AddEvent links an event to an incident (optional - not all implementations need this)
+	AddEvent(ctx context.Context, incidentID, eventID uuid.UUID) error
+	// AddAnalysisLog adds an incremental analysis entry
+	AddAnalysisLog(ctx context.Context, entry *AnalysisLogEntry) error
+	// MarkAnalysisLogNotified marks an analysis log entry as notified
+	MarkAnalysisLogNotified(ctx context.Context, entryID uuid.UUID) error
+	// UpdateLastHealthCheck updates the last health check timestamp
+	UpdateLastHealthCheck(ctx context.Context, id uuid.UUID) error
+	// IncrementNotificationCount increments the notification count
+	IncrementNotificationCount(ctx context.Context, id uuid.UUID) error
 }
 
 // NewEngine creates a new correlation engine
