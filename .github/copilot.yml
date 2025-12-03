@@ -1,0 +1,5 @@
+# GitHub Copilot configuration
+# Guidance for working with LLM-powered components in Lumo
+version: 1
+instructions:
+  - "When changing any LLM model that is used in this project, always check the latest available models by searching the internet before making the update."

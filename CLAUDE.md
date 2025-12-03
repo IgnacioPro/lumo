@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Lumo
 
-> **Last Updated:** 2025-12-02 (Phase 19 Complete) | **Version:** 1.1.0 | **Status:** Phase 19 Complete ✅ | Phase 18 In Progress 🚧 | **Next: Phase 18 Completion → v2.0.0** 🚀 | [Roadmap TODO](ROADMAP_TODO.md)
+> **Last Updated:** 2025-12-03 (Phase 20 Complete) | **Version:** 1.1.0 | **Status:** Phase 20 Complete ✅ | Phase 18 In Progress 🚧 | **Next: Phase 18 Completion → v2.0.0** 🚀 | [Roadmap TODO](ROADMAP_TODO.md)
 
 **Quick Links:** [Getting Started](docs/getting-started.md) | [Examples](examples/) | [Deployments](deployments/) | [API Docs](api/README.md)
 
@@ -18,7 +18,7 @@ Always run `make ci` before committing (linters, security checks, tests, builds)
 - Natural language interface (`lumo ask`) - translate queries to commands with AI
 - System diagnostics (6 core + 4 security + 2 specialized checkers)
 - AI analysis: Anthropic, OpenAI, Ollama, Gemini, OpenRouter (adapter pattern)
-- **Incident Correlation Engine** (Phase 19) - correlates related events into single incidents
+- **Real-Time Incident Correlation** (Phase 20) - critical incidents get immediate notification, incremental AI analysis, auto-close on health
 - Auto-remediation with human approval
 - RAG system (87% MTTR reduction, 4,400% ROI)
 - Multi-platform notifications: Slack, Telegram, Discord, Teams, Email
@@ -717,7 +717,89 @@ The key differentiator that transforms Lumo from "alerting tool" to "incident in
 
 **Total:** 3,475 LOC (8 source files + 1 test file + README)
 
-### Strategic Roadmap (Dec 2, 2025)
+### Completed (Phase 20)
+
+**Phase 20: Real-Time Incident Processing** ⚡ - COMPLETE ✅ (Dec 3, 2025)
+
+Transforms incident handling from "wait 5 minutes for postmortem" to "immediate response with incremental intelligence."
+
+**Problem Solved:**
+- Before: Wait 5 minutes for events to stop → then generate postmortem → then notify
+- After: Critical event → immediate "Lumo is on it" notification → incremental AI analysis as events come → auto-close when healthy → postmortem
+
+**Two Processing Paths:**
+
+**Critical Path (No Debounce):**
+```
+Critical Event (label: critical=true) → Immediate notification
+    → Create incident in DB (status=open, is_critical=true)
+    → Stream events to incident → Incremental AI analysis
+    → Notify on insights (root cause, new developments)
+    → Every 45s: "still working on it" if no insights
+    → Health check every 30s → All resources healthy → Close
+    → Generate postmortem → Final notification
+```
+
+**Non-Critical Path (Debounced):**
+```
+Event → Debouncer (45s-3m) → Create incident (status=open)
+    → Collect events silently → Debounce window expires OR all healthy
+    → Generate postmortem → Notify once with full analysis
+```
+
+**Components Created/Modified:**
+- `internal/database/migrations/007_incidents.sql` (130 LOC) - Incidents table, analysis log, indexes
+- `internal/database/repository/incident.go` (680 LOC) - PostgreSQL incident repository
+- `internal/correlation/realtime_manager.go` (950 LOC) - Real-time incident manager
+- `internal/correlation/health_checker.go` (280 LOC) - K8s resource health checker
+- `internal/correlation/notifier.go` (expanded to 450 LOC) - Multi-notification types
+- `internal/correlation/types.go` (expanded) - Added IsCritical, Postmortem, AnalysisLog fields
+- `internal/correlation/repository.go` (expanded) - Added new interface methods
+
+**Key Features:**
+- **Critical detection via labels**: Resources with `critical: true` label bypass debouncing
+- **Immediate notification**: "🚨 Lumo has detected a critical incident and is actively analyzing it"
+- **Incremental AI analysis**: Analyzes each new event, notifies when insights found
+- **Progress notifications**: Every 45s sends "still working on it" if no insights
+- **Root cause notification**: Special notification when AI identifies root cause
+- **Auto-close on health**: Health checker monitors K8s resources every 30s
+- **Postmortem generation**: Generated when incident closes (both paths)
+- **Database persistence**: Incidents stored in PostgreSQL with full history
+- **Analysis log**: Tracks all AI analysis updates per incident
+
+**Database Schema:**
+```sql
+incidents (
+    id, tenant_id, category, severity, status, is_critical,
+    title, correlation_key, root_cause, summary, postmortem,
+    ai_analysis (JSONB), affected_resources (JSONB),
+    first_event_at, last_event_at, opened_at, closed_at,
+    notification_count, last_notification_at, last_health_check_at
+)
+incident_events (incident_id, event_id, added_at)
+incident_analysis_log (id, incident_id, analysis_type, content, notified, created_at)
+```
+
+**Configuration:**
+```go
+EngineConfig{
+    HealthCheckInterval:          30 * time.Second,
+    ProgressNotificationInterval: 45 * time.Second,
+    CriticalLabels: map[string]string{
+        "critical": "true",
+    },
+}
+```
+
+**Notification Types:**
+1. `NotifyIncidentCreated` - "Lumo is on it" (critical only)
+2. `NotifyAnalysisUpdate` - Insight or root cause found
+3. `NotifyProgress` - "Still working on it" (every 45s)
+4. `NotifyIncidentResolved` - Final postmortem
+
+**Total:** ~2,500 LOC new code (6 files)
+
+### Strategic Roadmap (Dec 3, 2025)
 
 **Current Maturity:** Enterprise-Ready v1.0.0 - Production deployment ready with comprehensive features
 

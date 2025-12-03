@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 
@@ -20,6 +21,12 @@ type SlackNotifier struct {
 	client         *http.Client
 	circuitBreaker *reliability.CircuitBreaker
 	apiBaseURL     string // Base URL for viewing full analysis
+	slackAPIURL    string // Slack API URL (default: https://slack.com/api)
+
+	// messageThreads stores the timestamp of the last message sent for a given entity ID
+	// This allows us to update existing messages instead of sending new ones
+	messageThreads map[string]string
+	mu             sync.RWMutex
 }
 
 // slackMessage represents a Slack message payload using Block Kit.
@@ -77,6 +84,8 @@ func NewSlackNotifier(config *NotifierConfig, log *logrus.Logger) (*SlackNotifie
 		client:         NewHTTPClientFromSeconds(config.Timeout),
 		circuitBreaker: reliability.NewCircuitBreaker(fmt.Sprintf("slack-%s", config.Name)),
 		apiBaseURL:     apiBaseURL,
+		slackAPIURL:    "https://slack.com/api",
+		messageThreads: make(map[string]string),
 	}, nil
 }
 
@@ -143,9 +152,41 @@ func (s *SlackNotifier) sendWithBotToken(ctx context.Context, notification *Noti
 	msg := s.buildMessage(notification)
 	msg.Channel = s.config.SlackChannel
 
-	ts, err := s.postMessage(ctx, msg)
-	if err != nil {
-		return fmt.Errorf("failed to post initial message: %w", err)
+	var ts string
+	var err error
+	var updated bool
+
+	// Check if we should update an existing message
+	if eventID, ok := notification.Fields["event_id"]; ok && eventID != "" {
+		s.mu.RLock()
+		existingTS, exists := s.messageThreads[eventID]
+		s.mu.RUnlock()
+
+		if exists {
+			// Try to update the existing message
+			ts, err = s.updateMessage(ctx, existingTS, msg)
+			if err == nil {
+				updated = true
+			} else {
+				// If update fails (e.g. message deleted), log it and fall back to new message
+				s.log.WithError(err).WithField("event_id", eventID).Warn("failed to update slack message, sending new one")
+			}
+		}
+	}
+
+	// If not updated (or update failed), send a new message
+	if !updated {
+		ts, err = s.postMessage(ctx, msg)
+		if err != nil {
+			return fmt.Errorf("failed to post initial message: %w", err)
+		}
+
+		// Store the timestamp if we have an event ID
+		if eventID, ok := notification.Fields["event_id"]; ok && eventID != "" {
+			s.mu.Lock()
+			s.messageThreads[eventID] = ts
+			s.mu.Unlock()
+		}
 	}
 
 	s.log.WithFields(logrus.Fields{
@@ -153,9 +194,10 @@ func (s *SlackNotifier) sendWithBotToken(ctx context.Context, notification *Noti
 		"level":    notification.Level,
 		"title":    notification.Title,
 		"ts":       ts,
+		"updated":  updated,
 	}).Debug("initial notification sent successfully (bot token)")
 
-	// If there's AI analysis, send it as a threaded reply
+	// If there's AI analysis in the message, send it as a threaded reply
 	sections := s.parseMessageSections(notification.Message)
 	if sections["ai_analysis"] != "" {
 		if err := s.sendAIAnalysisThread(ctx, ts, sections["ai_analysis"]); err != nil {
@@ -164,17 +206,183 @@ func (s *SlackNotifier) sendWithBotToken(ctx context.Context, notification *Noti
 		}
 	}
 
+	// If there's a postmortem, send it as threaded replies (splitting if needed)
+	if notification.Postmortem != "" {
+		if err := s.sendPostmortemThread(ctx, ts, notification.Postmortem); err != nil {
+			s.log.WithError(err).Warn("Failed to send postmortem thread")
+			// Don't fail the whole notification if thread fails
+		}
+	}
+
 	return nil
 }
 
-// postMessage posts a message to Slack Web API and returns the message timestamp
+// sendPostmortemThread sends the postmortem as threaded replies, splitting into multiple messages if needed
+func (s *SlackNotifier) sendPostmortemThread(ctx context.Context, threadTS string, postmortem string) error {
+	// Slack has a 3000 character limit per block text, but we use a safer limit
+	const maxChunkSize = 2800
+
+	// Split postmortem into chunks by sections (prefer splitting at ## headers)
+	chunks := s.splitPostmortemIntoChunks(postmortem, maxChunkSize)
+
+	s.log.WithFields(logrus.Fields{
+		"thread_ts":   threadTS,
+		"total_chars": len(postmortem),
+		"num_chunks":  len(chunks),
+	}).Debug("Sending postmortem as threaded replies")
+
+	for i, chunk := range chunks {
+		var headerText string
+		if i == 0 {
+			headerText = "📋 Incident Postmortem"
+		} else {
+			headerText = fmt.Sprintf("📋 Postmortem (continued %d/%d)", i+1, len(chunks))
+		}
+
+		threadMsg := &slackMessage{
+			Channel:  s.config.SlackChannel,
+			ThreadTS: threadTS,
+			Text:     headerText,
+			Blocks: []map[string]interface{}{
+				{
+					"type": "header",
+					"text": map[string]interface{}{
+						"type":  "plain_text",
+						"text":  headerText,
+						"emoji": true,
+					},
+				},
+				{
+					"type": "section",
+					"text": map[string]interface{}{
+						"type": "mrkdwn",
+						"text": chunk,
+					},
+				},
+			},
+		}
+
+		if _, err := s.postMessage(ctx, threadMsg); err != nil {
+			return fmt.Errorf("failed to send postmortem chunk %d: %w", i+1, err)
+		}
+	}
+
+	return nil
+}
+
+// splitPostmortemIntoChunks splits the postmortem into chunks, preferring to split at section boundaries
+func (s *SlackNotifier) splitPostmortemIntoChunks(postmortem string, maxSize int) []string {
+	if len(postmortem) <= maxSize {
+		return []string{postmortem}
+	}
+
+	var chunks []string
+	lines := strings.Split(postmortem, "\n")
+	var currentChunk strings.Builder
+
+	for _, line := range lines {
+		// Check if adding this line would exceed the limit
+		if currentChunk.Len()+len(line)+1 > maxSize {
+			// Save current chunk if it has content
+			if currentChunk.Len() > 0 {
+				chunks = append(chunks, strings.TrimSpace(currentChunk.String()))
+				currentChunk.Reset()
+			}
+
+			// If a single line is longer than maxSize, split it
+			if len(line) > maxSize {
+				for len(line) > maxSize {
+					chunks = append(chunks, line[:maxSize])
+					line = line[maxSize:]
+				}
+				if len(line) > 0 {
+					currentChunk.WriteString(line)
+					currentChunk.WriteString("\n")
+				}
+				continue
+			}
+		}
+
+		currentChunk.WriteString(line)
+		currentChunk.WriteString("\n")
+
+		// Prefer to split at section headers (## )
+		if strings.HasPrefix(line, "## ") && currentChunk.Len() > maxSize/2 {
+			// Save current chunk before the header and start new chunk with header
+			content := currentChunk.String()
+			headerIdx := strings.LastIndex(content, line)
+			if headerIdx > 0 {
+				chunks = append(chunks, strings.TrimSpace(content[:headerIdx]))
+				currentChunk.Reset()
+				currentChunk.WriteString(line)
+				currentChunk.WriteString("\n")
+			}
+		}
+	}
+
+	// Don't forget the last chunk
+	if currentChunk.Len() > 0 {
+		chunks = append(chunks, strings.TrimSpace(currentChunk.String()))
+	}
+
+	return chunks
+}
 func (s *SlackNotifier) postMessage(ctx context.Context, msg *slackMessage) (string, error) {
 	payload, err := json.Marshal(msg)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://slack.com/api/chat.postMessage", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/chat.postMessage", s.slackAPIURL), bytes.NewReader(payload))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.config.SlackBotToken))
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var slackResp slackResponse
+	if err := json.NewDecoder(resp.Body).Decode(&slackResp); err != nil {
+		return "", fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if !slackResp.OK {
+		return "", fmt.Errorf("slack API error: %s", slackResp.Error)
+	}
+
+	return slackResp.TS, nil
+}
+
+// updateMessage updates an existing Slack message
+func (s *SlackNotifier) updateMessage(ctx context.Context, ts string, msg *slackMessage) (string, error) {
+	msg.ThreadTS = ts // Keep the timestamp for update
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal message: %w", err)
+	}
+
+	// Add ts to the payload for update
+	// Note: slackMessage struct doesn't have TS field at top level for update, so we might need a wrapper or map
+	// but let's check the API. chat.update requires "channel", "ts", "text"/"blocks".
+	// Our slackMessage has Channel. We need to inject TS.
+	var updatePayload map[string]interface{}
+	if err := json.Unmarshal(payload, &updatePayload); err != nil {
+		return "", err
+	}
+	updatePayload["ts"] = ts
+
+	finalPayload, err := json.Marshal(updatePayload)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/chat.update", s.slackAPIURL), bytes.NewReader(finalPayload))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}

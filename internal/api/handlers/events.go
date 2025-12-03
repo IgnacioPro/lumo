@@ -41,6 +41,7 @@ type EventsHandler struct {
 	aiProvider         ai.Provider
 	notifiers          []notifications.Notifier
 	correlationEngine  *correlation.Engine
+	realtimeManager    *correlation.RealtimeIncidentManager
 	logger             *logrus.Logger
 	aiEnabled          bool
 	notifEnabled       bool
@@ -63,6 +64,7 @@ func NewEventsHandler(
 		aiProvider:         aiProvider,
 		notifiers:          notifiers,
 		correlationEngine:  nil, // Set via SetCorrelationEngine
+		realtimeManager:    nil, // Set via SetRealtimeManager
 		logger:             logger,
 		aiEnabled:          aiEnabled,
 		notifEnabled:       notifEnabled,
@@ -76,6 +78,14 @@ func (h *EventsHandler) SetCorrelationEngine(engine *correlation.Engine) {
 	h.correlationEnabled = engine != nil
 	if h.correlationEnabled {
 		h.logger.Info("Correlation engine enabled for event processing")
+	}
+}
+
+// SetRealtimeManager enables the realtime incident manager (Phase 20)
+func (h *EventsHandler) SetRealtimeManager(manager *correlation.RealtimeIncidentManager) {
+	h.realtimeManager = manager
+	if manager != nil {
+		h.logger.Info("Realtime incident manager enabled for event processing (Phase 20)")
 	}
 }
 
@@ -386,13 +396,14 @@ func (h *EventsHandler) getAgentIDFromContext(ctx context.Context) (uuid.UUID, e
 	return uuid.Nil, fmt.Errorf("agent_id not found in context")
 }
 
-// processEventsWithCorrelation sends events to the correlation engine for intelligent grouping.
-// The correlation engine will:
-// 1. Group related events into incidents
-// 2. Wait for correlation window to close (default 5 min)
-// 3. Gather context (logs, metrics, K8s events)
-// 4. Perform AI analysis on the incident (not individual events)
-// 5. Send ONE notification per incident (not per event)
+// processEventsWithCorrelation sends events to the realtime incident manager (Phase 20)
+// or falls back to the correlation engine (Phase 19).
+// The realtime manager will:
+// 1. Check if event affects critical resources (immediate notification path)
+// 2. For critical: Send "Lumo is on it" notification immediately, analyze incrementally
+// 3. For non-critical: Debounce and process after window closes
+// 4. Auto-close incidents when resources return to healthy
+// 5. Generate postmortem when incident is resolved
 func (h *EventsHandler) processEventsWithCorrelation(parentCtx context.Context, events []*models.Event) {
 	// Create detached context for async processing
 	detachedCtx := context.WithoutCancel(parentCtx)
@@ -402,11 +413,28 @@ func (h *EventsHandler) processEventsWithCorrelation(parentCtx context.Context, 
 	h.logger.WithField("event_count", len(events)).Info("Processing events through correlation engine")
 
 	for _, event := range events {
-		if err := h.correlationEngine.ProcessEvent(ctx, event); err != nil {
-			h.logger.WithError(err).WithField("event_id", event.ID).Warn("Failed to correlate event")
-			// Fall back to individual processing for failed events
-			if event.IsHighPriority() {
-				h.processSingleEvent(ctx, event)
+		// Try realtime manager first (Phase 20)
+		if h.realtimeManager != nil {
+			if err := h.realtimeManager.ProcessEvent(ctx, event); err != nil {
+				h.logger.WithError(err).WithField("event_id", event.ID).Warn("Failed to process event in realtime manager")
+				// Fall back to legacy correlation engine
+				if h.correlationEngine != nil {
+					if err := h.correlationEngine.ProcessEvent(ctx, event); err != nil {
+						h.logger.WithError(err).WithField("event_id", event.ID).Warn("Failed to correlate event")
+						if event.IsHighPriority() {
+							h.processSingleEvent(ctx, event)
+						}
+					}
+				}
+			}
+		} else if h.correlationEngine != nil {
+			// Fall back to legacy correlation engine (Phase 19)
+			if err := h.correlationEngine.ProcessEvent(ctx, event); err != nil {
+				h.logger.WithError(err).WithField("event_id", event.ID).Warn("Failed to correlate event")
+				// Fall back to individual processing for failed events
+				if event.IsHighPriority() {
+					h.processSingleEvent(ctx, event)
+				}
 			}
 		}
 	}

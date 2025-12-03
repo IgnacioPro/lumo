@@ -17,7 +17,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o lumo ./cmd/lumo
 
 # Compress binary with UPX (reduces size ~50-70%)
-RUN apk add --no-cache upx && upx --best --lzma lumo
+# Note: Using -9 instead of --best --lzma to avoid OOM in constrained environments
+RUN apk add --no-cache upx && upx -9 lumo
 
 # Final stage - scratch for minimal size (~5-10MB total)
 FROM scratch

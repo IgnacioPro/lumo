@@ -17,7 +17,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o lumo-agent ./cmd/lumo-agent
 
 # Compress binary with UPX (reduces size ~50-70%)
-RUN apk add --no-cache upx && upx --best --lzma lumo-agent
+# Note: Using -9 instead of --best --lzma to avoid OOM in constrained environments
+RUN apk add --no-cache upx && upx -9 lumo-agent
 
 # Final stage - distroless for security + minimal size
 # Using static-debian12 as it includes timezone data and runs as nonroot by default
