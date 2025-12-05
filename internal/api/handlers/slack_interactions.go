@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -16,6 +17,14 @@ import (
 
 	"github.com/ignacio/lumo/internal/api/response"
 	"github.com/ignacio/lumo/internal/correlation"
+)
+
+// Snooze duration constants (in minutes)
+const (
+	defaultSnoozeDurationMinutes = 15
+	snooze15Minutes              = 15
+	snooze30Minutes              = 30
+	snooze60Minutes              = 60
 )
 
 // SlackInteractionHandler handles Slack interactive component callbacks
@@ -235,13 +244,13 @@ func (h *SlackInteractionHandler) handleSnooze(w http.ResponseWriter, r *http.Re
 	var durationMinutes int
 	switch snoozeDuration {
 	case "snooze_15":
-		durationMinutes = 15
+		durationMinutes = snooze15Minutes
 	case "snooze_30":
-		durationMinutes = 30
+		durationMinutes = snooze30Minutes
 	case "snooze_60":
-		durationMinutes = 60
+		durationMinutes = snooze60Minutes
 	default:
-		durationMinutes = 15
+		durationMinutes = defaultSnoozeDurationMinutes
 	}
 
 	snoozeUntil := time.Now().Add(time.Duration(durationMinutes) * time.Minute)
@@ -290,7 +299,7 @@ func (h *SlackInteractionHandler) sendSlackResponse(responseURL, text string, re
 		return
 	}
 
-	resp, err := h.httpClient.Post(responseURL, "application/json", strings.NewReader(string(payloadBytes)))
+	resp, err := h.httpClient.Post(responseURL, "application/json", bytes.NewReader(payloadBytes))
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to send Slack response")
 		return
@@ -377,9 +386,18 @@ func (h *SlackInteractionHandler) VerifySlackSignature(next http.Handler) http.H
 
 		// Compare signatures using constant-time comparison
 		if !hmac.Equal([]byte(expectedSig), []byte(slackSignature)) {
+			// Safely truncate signatures for logging
+			expectedDisplay := expectedSig
+			if len(expectedDisplay) > 20 {
+				expectedDisplay = expectedDisplay[:20] + "..."
+			}
+			receivedDisplay := slackSignature
+			if len(receivedDisplay) > 20 {
+				receivedDisplay = receivedDisplay[:20] + "..."
+			}
 			h.logger.WithFields(logrus.Fields{
-				"expected": expectedSig[:20] + "...",
-				"received": slackSignature[:20] + "...",
+				"expected": expectedDisplay,
+				"received": receivedDisplay,
 			}).Warn("Invalid Slack signature")
 			response.Unauthorized(w, "Invalid signature")
 			return
