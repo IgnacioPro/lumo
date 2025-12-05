@@ -129,7 +129,7 @@ func TestExtractAISnippet(t *testing.T) {
 			result := extractAISnippet(tt.input)
 
 			// Check continuation indicator
-			hasContinue := strings.Contains(result, "…more in thread/analysis page")
+			hasContinue := strings.Contains(result, aiContinuationMessage)
 			if tt.wantContinue && !hasContinue {
 				t.Errorf("expected continuation indicator in result: '%s'", result)
 			}
@@ -141,7 +141,7 @@ func TestExtractAISnippet(t *testing.T) {
 			lines := strings.Split(result, "\n")
 			nonEmptyLines := 0
 			for _, line := range lines {
-				if strings.TrimSpace(line) != "" && !strings.Contains(line, "…more") {
+				if strings.TrimSpace(line) != "" && !strings.Contains(line, aiContinuationMessage) {
 					nonEmptyLines++
 				}
 			}
