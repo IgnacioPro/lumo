@@ -802,15 +802,6 @@ func slackBlockSectionWithFields(fields []map[string]interface{}) map[string]int
 	}
 }
 
-// slackBlockSectionWithAccessory creates a section with text and accessory
-func slackBlockSectionWithAccessory(text string, accessory map[string]interface{}) map[string]interface{} {
-	return map[string]interface{}{
-		"type":      "section",
-		"text":      slackBlockMrkdwn(text),
-		"accessory": accessory,
-	}
-}
-
 // slackBlockContext creates a context block with elements
 func slackBlockContext(elements []map[string]interface{}) map[string]interface{} {
 	return map[string]interface{}{
