@@ -254,6 +254,11 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 	// Initialize incidents handler
 	incidentsHandler := handlers.NewIncidentsHandler(correlationEngine, incidentRepo, logger)
 
+	// Initialize Slack interaction handler
+	// The signing secret should be configured via environment variable for security
+	slackSigningSecret := expandEnvVar("${SLACK_SIGNING_SECRET}")
+	slackInteractionHandler := handlers.NewSlackInteractionHandler(incidentRepo, correlationEngine, slackSigningSecret, logger)
+
 	// Prometheus metrics endpoint (public, no auth required)
 	r.Handle("/metrics", promhttp.Handler())
 
@@ -269,6 +274,10 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 
 		// Public incident analysis view (shareable HTML page)
 		r.Get("/incidents/{id}/analysis", incidentsHandler.GetIncidentAnalysis)
+
+		// Slack interactions endpoint (must be public for Slack to call it)
+		// Slack verifies requests using signature, not API keys
+		r.Post("/slack/interactions", slackInteractionHandler.HandleInteraction)
 
 		// Auth endpoints (public - used to obtain JWT tokens)
 		r.Post("/auth/token", authHandler.GenerateToken)
