@@ -35,16 +35,48 @@ func (w *DeploymentWatcher) Setup(factory informers.SharedInformerFactory, handl
 
 	_, err := w.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			deployment := obj.(*appsv1.Deployment)
+			deployment, ok := obj.(*appsv1.Deployment)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", obj)).Error("Unexpected object type in AddFunc")
+					return
+				}
+				deployment, ok = tombstone.Obj.(*appsv1.Deployment)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", tombstone.Obj)).Error("Unexpected object type in tombstone")
+					return
+				}
+			}
 			w.checkDeployment(deployment, nil, handler)
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
-			oldDeployment := oldObj.(*appsv1.Deployment)
-			newDeployment := newObj.(*appsv1.Deployment)
+			oldDeployment, ok := oldObj.(*appsv1.Deployment)
+			if !ok {
+				w.logger.WithField("object", fmt.Sprintf("%T", oldObj)).Error("Unexpected old object type in UpdateFunc")
+				return
+			}
+			newDeployment, ok := newObj.(*appsv1.Deployment)
+			if !ok {
+				w.logger.WithField("object", fmt.Sprintf("%T", newObj)).Error("Unexpected new object type in UpdateFunc")
+				return
+			}
 			w.checkDeployment(newDeployment, oldDeployment, handler)
 		},
 		DeleteFunc: func(obj interface{}) {
-			deployment := obj.(*appsv1.Deployment)
+			deployment, ok := obj.(*appsv1.Deployment)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", obj)).Error("Unexpected object type in DeleteFunc")
+					return
+				}
+				deployment, ok = tombstone.Obj.(*appsv1.Deployment)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", tombstone.Obj)).Error("Unexpected object type in tombstone")
+					return
+				}
+			}
 			w.logger.WithFields(logrus.Fields{
 				"deployment": deployment.Name,
 				"namespace":  deployment.Namespace,
@@ -146,16 +178,48 @@ func (w *StatefulSetWatcher) Setup(factory informers.SharedInformerFactory, hand
 
 	_, err := w.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			sts := obj.(*appsv1.StatefulSet)
+			sts, ok := obj.(*appsv1.StatefulSet)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", obj)).Error("Unexpected object type in AddFunc")
+					return
+				}
+				sts, ok = tombstone.Obj.(*appsv1.StatefulSet)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", tombstone.Obj)).Error("Unexpected object type in tombstone")
+					return
+				}
+			}
 			w.checkStatefulSet(sts, nil, handler)
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
-			oldSts := oldObj.(*appsv1.StatefulSet)
-			newSts := newObj.(*appsv1.StatefulSet)
+			oldSts, ok := oldObj.(*appsv1.StatefulSet)
+			if !ok {
+				w.logger.WithField("object", fmt.Sprintf("%T", oldObj)).Error("Unexpected old object type in UpdateFunc")
+				return
+			}
+			newSts, ok := newObj.(*appsv1.StatefulSet)
+			if !ok {
+				w.logger.WithField("object", fmt.Sprintf("%T", newObj)).Error("Unexpected new object type in UpdateFunc")
+				return
+			}
 			w.checkStatefulSet(newSts, oldSts, handler)
 		},
 		DeleteFunc: func(obj interface{}) {
-			sts := obj.(*appsv1.StatefulSet)
+			sts, ok := obj.(*appsv1.StatefulSet)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", obj)).Error("Unexpected object type in DeleteFunc")
+					return
+				}
+				sts, ok = tombstone.Obj.(*appsv1.StatefulSet)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", tombstone.Obj)).Error("Unexpected object type in tombstone")
+					return
+				}
+			}
 			w.logger.WithFields(logrus.Fields{
 				"statefulset": sts.Name,
 				"namespace":   sts.Namespace,
@@ -259,16 +323,48 @@ func (w *DaemonSetWatcher) Setup(factory informers.SharedInformerFactory, handle
 
 	_, err := w.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			ds := obj.(*appsv1.DaemonSet)
+			ds, ok := obj.(*appsv1.DaemonSet)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", obj)).Error("Unexpected object type in AddFunc")
+					return
+				}
+				ds, ok = tombstone.Obj.(*appsv1.DaemonSet)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", tombstone.Obj)).Error("Unexpected object type in tombstone")
+					return
+				}
+			}
 			w.checkDaemonSet(ds, nil, handler)
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
-			oldDs := oldObj.(*appsv1.DaemonSet)
-			newDs := newObj.(*appsv1.DaemonSet)
+			oldDs, ok := oldObj.(*appsv1.DaemonSet)
+			if !ok {
+				w.logger.WithField("object", fmt.Sprintf("%T", oldObj)).Error("Unexpected old object type in UpdateFunc")
+				return
+			}
+			newDs, ok := newObj.(*appsv1.DaemonSet)
+			if !ok {
+				w.logger.WithField("object", fmt.Sprintf("%T", newObj)).Error("Unexpected new object type in UpdateFunc")
+				return
+			}
 			w.checkDaemonSet(newDs, oldDs, handler)
 		},
 		DeleteFunc: func(obj interface{}) {
-			ds := obj.(*appsv1.DaemonSet)
+			ds, ok := obj.(*appsv1.DaemonSet)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", obj)).Error("Unexpected object type in DeleteFunc")
+					return
+				}
+				ds, ok = tombstone.Obj.(*appsv1.DaemonSet)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", tombstone.Obj)).Error("Unexpected object type in tombstone")
+					return
+				}
+			}
 			w.logger.WithFields(logrus.Fields{
 				"daemonset": ds.Name,
 				"namespace": ds.Namespace,
@@ -375,16 +471,48 @@ func (w *JobWatcher) Setup(factory informers.SharedInformerFactory, handler even
 
 	_, err := w.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			job := obj.(*batchv1.Job)
+			job, ok := obj.(*batchv1.Job)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", obj)).Error("Unexpected object type in AddFunc")
+					return
+				}
+				job, ok = tombstone.Obj.(*batchv1.Job)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", tombstone.Obj)).Error("Unexpected object type in tombstone")
+					return
+				}
+			}
 			w.checkJob(job, nil, handler)
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
-			oldJob := oldObj.(*batchv1.Job)
-			newJob := newObj.(*batchv1.Job)
+			oldJob, ok := oldObj.(*batchv1.Job)
+			if !ok {
+				w.logger.WithField("object", fmt.Sprintf("%T", oldObj)).Error("Unexpected old object type in UpdateFunc")
+				return
+			}
+			newJob, ok := newObj.(*batchv1.Job)
+			if !ok {
+				w.logger.WithField("object", fmt.Sprintf("%T", newObj)).Error("Unexpected new object type in UpdateFunc")
+				return
+			}
 			w.checkJob(newJob, oldJob, handler)
 		},
 		DeleteFunc: func(obj interface{}) {
-			job := obj.(*batchv1.Job)
+			job, ok := obj.(*batchv1.Job)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", obj)).Error("Unexpected object type in DeleteFunc")
+					return
+				}
+				job, ok = tombstone.Obj.(*batchv1.Job)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", tombstone.Obj)).Error("Unexpected object type in tombstone")
+					return
+				}
+			}
 			w.logger.WithFields(logrus.Fields{
 				"job":       job.Name,
 				"namespace": job.Namespace,
