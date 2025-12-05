@@ -1,9 +1,14 @@
 package handlers
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +24,7 @@ type SlackInteractionHandler struct {
 	correlationEngine *correlation.Engine
 	signingSecret     string // Slack signing secret for request verification
 	logger            *logrus.Logger
+	httpClient        *http.Client // Shared HTTP client for responses
 }
 
 // SlackInteractionPayload represents the payload sent by Slack for interactive components
@@ -84,6 +90,9 @@ func NewSlackInteractionHandler(
 		correlationEngine: correlationEngine,
 		signingSecret:     signingSecret,
 		logger:            logger,
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
 	}
 }
 
@@ -209,9 +218,10 @@ func (h *SlackInteractionHandler) handleSnooze(w http.ResponseWriter, r *http.Re
 		snoozeValue = action.Value
 	}
 
-	// Parse the snooze value (format: "snooze_15|incident_id|fix_hash" or "snooze_30|incident_id|fix_hash")
+	// Parse the snooze value (format: "snooze_15|incident_id|fix_hash")
+	// The value is constructed as: snoozeDuration + "|" + incidentID + "|" + fixHash
 	parts := strings.Split(snoozeValue, "|")
-	if len(parts) < 2 {
+	if len(parts) < 3 {
 		h.logger.WithField("value", snoozeValue).Warn("Invalid snooze value format")
 		response.BadRequest(w, "Invalid snooze value")
 		return
@@ -219,6 +229,7 @@ func (h *SlackInteractionHandler) handleSnooze(w http.ResponseWriter, r *http.Re
 
 	snoozeDuration := parts[0]
 	incidentID := parts[1]
+	// fixHash := parts[2] // Available if needed
 
 	// Determine snooze duration in minutes
 	var durationMinutes int
@@ -279,7 +290,7 @@ func (h *SlackInteractionHandler) sendSlackResponse(responseURL, text string, re
 		return
 	}
 
-	resp, err := http.Post(responseURL, "application/json", strings.NewReader(string(payloadBytes)))
+	resp, err := h.httpClient.Post(responseURL, "application/json", strings.NewReader(string(payloadBytes)))
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to send Slack response")
 		return
@@ -312,17 +323,69 @@ func truncateID(id string) string {
 }
 
 // VerifySlackSignature is a middleware to verify Slack request signatures
-// This should be used in production to ensure requests are actually from Slack
+// This ensures requests are actually from Slack using HMAC-SHA256 verification
+// See: https://api.slack.com/authentication/verifying-requests-from-slack
 func (h *SlackInteractionHandler) VerifySlackSignature(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// In production, implement HMAC-SHA256 signature verification
-		// using X-Slack-Signature and X-Slack-Request-Timestamp headers
-		// For now, pass through (but log a warning)
 		if h.signingSecret == "" {
 			h.logger.Warn("Slack signing secret not configured - skipping signature verification")
+			next.ServeHTTP(w, r)
+			return
 		}
-		// TODO: Implement actual signature verification
-		// See: https://api.slack.com/authentication/verifying-requests-from-slack
+
+		// Get signature and timestamp from headers
+		slackSignature := r.Header.Get("X-Slack-Signature")
+		timestamp := r.Header.Get("X-Slack-Request-Timestamp")
+
+		if slackSignature == "" || timestamp == "" {
+			h.logger.Warn("Missing Slack signature headers")
+			response.Unauthorized(w, "Missing signature headers")
+			return
+		}
+
+		// Verify timestamp is not too old (prevent replay attacks)
+		ts, err := strconv.ParseInt(timestamp, 10, 64)
+		if err != nil {
+			h.logger.WithError(err).Warn("Invalid timestamp format")
+			response.BadRequest(w, "Invalid timestamp")
+			return
+		}
+
+		// Reject requests older than 5 minutes
+		if time.Now().Unix()-ts > 300 {
+			h.logger.Warn("Request timestamp too old")
+			response.Unauthorized(w, "Request too old")
+			return
+		}
+
+		// Read the request body
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			h.logger.WithError(err).Error("Failed to read request body")
+			response.InternalServerError(w, "Failed to read request")
+			return
+		}
+		// Restore body for the next handler
+		r.Body = io.NopCloser(strings.NewReader(string(body)))
+
+		// Compute expected signature
+		// sig_basestring = "v0:" + timestamp + ":" + request_body
+		baseString := fmt.Sprintf("v0:%s:%s", timestamp, string(body))
+		mac := hmac.New(sha256.New, []byte(h.signingSecret))
+		mac.Write([]byte(baseString))
+		expectedSig := "v0=" + hex.EncodeToString(mac.Sum(nil))
+
+		// Compare signatures using constant-time comparison
+		if !hmac.Equal([]byte(expectedSig), []byte(slackSignature)) {
+			h.logger.WithFields(logrus.Fields{
+				"expected": expectedSig[:20] + "...",
+				"received": slackSignature[:20] + "...",
+			}).Warn("Invalid Slack signature")
+			response.Unauthorized(w, "Invalid signature")
+			return
+		}
+
+		h.logger.Debug("Slack signature verified successfully")
 		next.ServeHTTP(w, r)
 	})
 }

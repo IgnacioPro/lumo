@@ -276,8 +276,8 @@ func NewRouter(db *database.DB, cfg *config.Config, jwtManager *auth.JWTManager,
 		r.Get("/incidents/{id}/analysis", incidentsHandler.GetIncidentAnalysis)
 
 		// Slack interactions endpoint (must be public for Slack to call it)
-		// Slack verifies requests using signature, not API keys
-		r.Post("/slack/interactions", slackInteractionHandler.HandleInteraction)
+		// Uses Slack signature verification instead of API keys
+		r.With(slackInteractionHandler.VerifySlackSignature).Post("/slack/interactions", slackInteractionHandler.HandleInteraction)
 
 		// Auth endpoints (public - used to obtain JWT tokens)
 		r.Post("/auth/token", authHandler.GenerateToken)
