@@ -141,38 +141,37 @@ func (n *IncidentNotifierImpl) sendToAll(ctx context.Context, notification *noti
 	return nil
 }
 
-// buildCreatedNotification builds the "Lumo is on it" notification
+// buildCreatedNotification builds a friendly, concise "Lumo is on it" notification
 func (n *IncidentNotifierImpl) buildCreatedNotification(incident *Incident) notifications.Notification {
 	emoji := "🚨"
+	severityText := "critical"
 	if !incident.IsCritical {
 		emoji = "⚠️"
+		severityText = string(incident.Severity)
 	}
 
-	title := fmt.Sprintf("%s ALERT: %s", emoji, incident.Title)
-
-	var body strings.Builder
-	body.WriteString("🤖 *Lumo has detected a critical incident and is actively analyzing it.*\n\n")
-
-	body.WriteString(fmt.Sprintf("*Incident ID:* `%s`\n", incident.ID.String()[:8]))
-	body.WriteString(fmt.Sprintf("*Category:* %s\n", formatCategory(incident.Category)))
-	body.WriteString(fmt.Sprintf("*Severity:* %s\n", strings.ToUpper(string(incident.Severity))))
-
+	// Determine namespace for display
+	namespace := "your cluster"
 	if incident.Namespace != nil && *incident.Namespace != "" {
-		body.WriteString(fmt.Sprintf("*Namespace:* `%s`\n", *incident.Namespace))
+		namespace = fmt.Sprintf("`%s`", *incident.Namespace)
 	}
 
-	body.WriteString("\n")
+	// Friendly, concise title
+	title := fmt.Sprintf("%s Lumo detected a %s event", emoji, severityText)
 
-	// Show first event
+	// Build a concise, personable message
+	var body strings.Builder
+	body.WriteString(fmt.Sprintf("🤖 *Hey! I detected a %s event in %s and I'm looking into it.*\n\n", severityText, namespace))
+
+	// Just the essential info
 	if len(incident.Events) > 0 {
 		event := incident.Events[0]
-		body.WriteString("*Initial Event:*\n")
-		body.WriteString(fmt.Sprintf("• Type: `%s`\n", event.EventType))
-		body.WriteString(fmt.Sprintf("• Resource: `%s/%s`\n", event.ResourceKind, event.ResourceName))
-		body.WriteString(fmt.Sprintf("• Message: %s\n", truncateStr(event.Message, 200)))
+		body.WriteString(fmt.Sprintf("*What:* %s on `%s`\n", formatCategory(incident.Category), event.ResourceName))
+	} else {
+		body.WriteString(fmt.Sprintf("*What:* %s\n", formatCategory(incident.Category)))
 	}
 
-	body.WriteString("\n_Lumo is gathering logs, metrics, and context. Updates will follow._")
+	body.WriteString("\n_I'm gathering context and will update you shortly with findings and recommended actions._")
 
 	// Build fields
 	fields := make(map[string]string)
@@ -189,48 +188,40 @@ func (n *IncidentNotifierImpl) buildCreatedNotification(incident *Incident) noti
 		Message:   body.String(),
 		Level:     notifications.LevelCritical,
 		Timestamp: incident.OpenedAt,
-		Tags:      []string{"kubernetes", "incident", "critical", string(incident.Category)},
+		Tags:      []string{"kubernetes", "incident", string(incident.Category)},
 		Fields:    fields,
 	}
 }
 
-// buildUpdateNotification builds an incremental analysis update notification
+// buildUpdateNotification builds a friendly incremental analysis update notification
 func (n *IncidentNotifierImpl) buildUpdateNotification(incident *Incident, entry *AnalysisLogEntry) notifications.Notification {
-	var emoji, typeLabel string
+	var emoji, intro string
 	level := notifications.LevelInfo
 
 	switch entry.AnalysisType {
 	case AnalysisTypeInsight:
 		emoji = "💡"
-		typeLabel = "New Insight"
+		intro = "I found something interesting:"
 		level = notifications.LevelWarning
 	case AnalysisTypeRootCause:
 		emoji = "🎯"
-		typeLabel = "Root Cause Identified"
+		intro = "I think I found the root cause:"
 		level = notifications.LevelError
 	default:
 		emoji = "📊"
-		typeLabel = "Update"
+		intro = "Here's an update:"
 	}
 
-	title := fmt.Sprintf("%s Incident Update: %s", emoji, typeLabel)
+	title := fmt.Sprintf("%s Update on %s", emoji, incident.Title)
 
 	var body strings.Builder
-	body.WriteString(fmt.Sprintf("*Incident:* %s\n", incident.Title))
-	body.WriteString(fmt.Sprintf("*Incident ID:* `%s`\n\n", incident.ID.String()[:8]))
-
-	body.WriteString(fmt.Sprintf("*%s:*\n", typeLabel))
+	body.WriteString(fmt.Sprintf("🤖 *%s*\n\n", intro))
 	body.WriteString(entry.Content)
-	body.WriteString("\n\n")
-
-	body.WriteString(fmt.Sprintf("_Events collected: %d | Duration: %s_",
-		len(incident.Events), formatDuration(incident.Duration())))
 
 	fields := make(map[string]string)
 	fields["Incident ID"] = incident.ID.String()
 	fields["incident_id"] = incident.ID.String() // Key for Slack incident notification detection
 	fields["event_id"] = incident.ID.String()
-	fields["Update Type"] = typeLabel
 	if n.apiBaseURL != "" {
 		fields["_incident_url"] = fmt.Sprintf("%s/api/v1/incidents/%s", n.apiBaseURL, incident.ID.String())
 	}
@@ -240,53 +231,38 @@ func (n *IncidentNotifierImpl) buildUpdateNotification(incident *Incident, entry
 		Message:   body.String(),
 		Level:     level,
 		Timestamp: entry.CreatedAt,
-		Tags:      []string{"kubernetes", "incident", "update", entry.AnalysisType},
+		Tags:      []string{"kubernetes", "incident", "update"},
 		Fields:    fields,
 	}
 }
 
-// buildResolvedNotification builds the incident resolved notification with postmortem
+// buildResolvedNotification builds a friendly incident resolved notification with postmortem
 func (n *IncidentNotifierImpl) buildResolvedNotification(incident *Incident) notifications.Notification {
-	title := fmt.Sprintf("✅ Incident Resolved: %s", incident.Title)
+	title := fmt.Sprintf("✅ Good news! %s is resolved", incident.Title)
 
 	var body strings.Builder
-	body.WriteString("*Incident has been resolved.*\n\n")
+	body.WriteString("🤖 *The issue has been resolved!*\n\n")
 
-	body.WriteString(fmt.Sprintf("*Incident ID:* `%s`\n", incident.ID.String()[:8]))
-	body.WriteString(fmt.Sprintf("*Category:* %s\n", formatCategory(incident.Category)))
+	// Keep it brief - just duration and root cause
 	body.WriteString(fmt.Sprintf("*Duration:* %s\n", formatDuration(incident.Duration())))
-	body.WriteString(fmt.Sprintf("*Total Events:* %d\n", len(incident.Events)))
-	body.WriteString(fmt.Sprintf("*Affected Resources:* %d\n\n", len(incident.AffectedResources)))
 
-	// Root cause summary
+	// Root cause summary - concise
 	if incident.RootCause != "" {
-		body.WriteString("*🔍 Root Cause:*\n")
-		body.WriteString(truncateStr(incident.RootCause, 500))
-		body.WriteString("\n\n")
+		body.WriteString(fmt.Sprintf("*Root Cause:* %s\n", truncateStr(incident.RootCause, 200)))
 	}
 
-	// Key actions from AI analysis
+	// Show the fix if available
 	if incident.AIAnalysis != nil && len(incident.AIAnalysis.ImmediateActions) > 0 {
-		body.WriteString("*🛠 Key Actions Taken/Recommended:*\n")
-		maxActions := 3
-		if len(incident.AIAnalysis.ImmediateActions) < maxActions {
-			maxActions = len(incident.AIAnalysis.ImmediateActions)
-		}
-		for i := 0; i < maxActions; i++ {
-			action := incident.AIAnalysis.ImmediateActions[i]
-			body.WriteString(fmt.Sprintf("• %s\n", action.Title))
-		}
-		body.WriteString("\n")
+		body.WriteString(fmt.Sprintf("\n*Fix:* %s\n", incident.AIAnalysis.ImmediateActions[0].Title))
 	}
 
-	body.WriteString("_Full postmortem follows in thread._")
+	body.WriteString("\n_See thread for full postmortem._")
 
 	fields := make(map[string]string)
 	fields["Incident ID"] = incident.ID.String()
 	fields["incident_id"] = incident.ID.String() // Key for Slack incident notification detection
 	fields["event_id"] = incident.ID.String()
 	fields["Status"] = "✅ Resolved"
-	fields["Duration"] = formatDuration(incident.Duration())
 	if n.apiBaseURL != "" {
 		fields["_incident_url"] = fmt.Sprintf("%s/api/v1/incidents/%s/analysis", n.apiBaseURL, incident.ID.String())
 	}
@@ -296,48 +272,24 @@ func (n *IncidentNotifierImpl) buildResolvedNotification(incident *Incident) not
 		Message:    body.String(),
 		Level:      notifications.LevelInfo,
 		Timestamp:  time.Now(),
-		Tags:       []string{"kubernetes", "incident", "resolved", string(incident.Category)},
+		Tags:       []string{"kubernetes", "incident", "resolved"},
 		Fields:     fields,
 		Postmortem: incident.Postmortem, // Include full postmortem for threaded delivery
 	}
 }
 
-// buildProgressNotification builds a "still working on it" notification
+// buildProgressNotification builds a friendly "still working on it" notification
 func (n *IncidentNotifierImpl) buildProgressNotification(incident *Incident) notifications.Notification {
-	title := fmt.Sprintf("⏳ Incident Update: %s", incident.Title)
+	title := fmt.Sprintf("⏳ Still on it: %s", incident.Title)
 
 	var body strings.Builder
-	body.WriteString("🤖 *Lumo is still analyzing this incident.*\n\n")
+	body.WriteString(fmt.Sprintf("🤖 *I'm still looking into this (update %d).*\n\n", incident.NotificationCount+1))
 
-	body.WriteString(fmt.Sprintf("*Incident ID:* `%s`\n", incident.ID.String()[:8]))
-	body.WriteString(fmt.Sprintf("*Duration so far:* %s\n", formatDuration(time.Since(incident.OpenedAt))))
-	body.WriteString(fmt.Sprintf("*Events collected:* %d\n", len(incident.Events)))
-	body.WriteString(fmt.Sprintf("*Update #:* %d\n\n", incident.NotificationCount+1))
-
-	// Show current status
+	// Show current hypothesis if we have one
 	if incident.RootCause != "" {
-		body.WriteString("*Current hypothesis:*\n")
-		body.WriteString(truncateStr(incident.RootCause, 200))
-		body.WriteString("\n\n")
+		body.WriteString(fmt.Sprintf("*Current thinking:* %s\n", truncateStr(incident.RootCause, 150)))
 	} else {
-		body.WriteString("_Still gathering information to determine root cause..._\n\n")
-	}
-
-	// Show recent events
-	if len(incident.Events) > 0 {
-		body.WriteString("*Recent activity:*\n")
-		recentCount := 3
-		if len(incident.Events) < recentCount {
-			recentCount = len(incident.Events)
-		}
-		for i := len(incident.Events) - recentCount; i < len(incident.Events); i++ {
-			event := incident.Events[i]
-			body.WriteString(fmt.Sprintf("• `%s` %s on %s/%s\n",
-				event.EventTimestamp.Format("15:04:05"),
-				event.EventType,
-				event.ResourceKind,
-				event.ResourceName))
-		}
+		body.WriteString("_Still gathering information..._\n")
 	}
 
 	fields := make(map[string]string)
