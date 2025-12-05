@@ -606,10 +606,12 @@ func (s *SlackNotifier) buildBlocks(notification *Notification) []map[string]int
 
 // Truncation constants for concise Slack messages
 const (
-	maxDetailsLength    = 450 // Main details truncation limit
-	maxFieldValueLength = 140 // Field value truncation limit
-	maxAISnippetLength  = 300 // AI analysis snippet for main card
-	maxAISnippetLines   = 3   // Max bullet lines in AI snippet
+	maxDetailsLength        = 450 // Main details truncation limit
+	maxFieldValueLength     = 140 // Field value truncation limit
+	maxAISnippetLength      = 300 // AI analysis snippet for main card
+	maxAISnippetLines       = 3   // Max bullet lines in AI snippet
+	maxWordBoundaryLookback = 50  // How far back to look for word boundary when truncating
+	aiContinuationMessage   = "_…more in thread/analysis page_"
 )
 
 // truncateText truncates text to maxLength, appending ellipsis if truncated.
@@ -620,7 +622,7 @@ func truncateText(text string, maxLength int) string {
 	}
 	// Find a good break point (space or newline) near maxLength
 	breakPoint := maxLength
-	for i := maxLength - 1; i > maxLength-50 && i > 0; i-- {
+	for i := maxLength - 1; i > maxLength-maxWordBoundaryLookback && i > 0; i-- {
 		if text[i] == ' ' || text[i] == '\n' {
 			breakPoint = i
 			break
@@ -641,12 +643,17 @@ func extractAISnippet(aiAnalysis string) string {
 		if trimmed == "" {
 			continue
 		}
+		// Calculate actual length after joining (newlines between lines, not after)
+		newlineLen := 0
+		if len(snippetLines) > 0 {
+			newlineLen = 1 // Only add newline cost if there are previous lines
+		}
 		// Check if adding this line would exceed our limits
-		if len(snippetLines) >= maxAISnippetLines || snippetLen+len(trimmed) > maxAISnippetLength {
+		if len(snippetLines) >= maxAISnippetLines || snippetLen+newlineLen+len(trimmed) > maxAISnippetLength {
 			break
 		}
 		snippetLines = append(snippetLines, trimmed)
-		snippetLen += len(trimmed) + 1 // +1 for newline
+		snippetLen += newlineLen + len(trimmed)
 	}
 
 	if len(snippetLines) == 0 {
@@ -656,7 +663,7 @@ func extractAISnippet(aiAnalysis string) string {
 	snippet := strings.Join(snippetLines, "\n")
 	// Add continuation indicator if there's more content
 	if len(snippet) < len(strings.TrimSpace(aiAnalysis)) {
-		snippet += "\n_…more in thread/analysis page_"
+		snippet += "\n" + aiContinuationMessage
 	}
 	return snippet
 }
