@@ -51,12 +51,12 @@ func (t *TelegramNotifier) Name() string {
 }
 
 // Send sends a notification to Telegram.
-func (t *TelegramNotifier) Send(ctx context.Context, notification *Notification) error {
+func (t *TelegramNotifier) Send(ctx context.Context, notification *Notification) (string, error) {
 	// Wrap execution in circuit breaker
 	_, err := t.circuitBreaker.Execute(func() (interface{}, error) {
 		return nil, t.sendInternal(ctx, notification)
 	})
-	return err
+	return "", err
 }
 
 func (t *TelegramNotifier) sendInternal(ctx context.Context, notification *Notification) error {

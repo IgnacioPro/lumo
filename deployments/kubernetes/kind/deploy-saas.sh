@@ -44,6 +44,9 @@ TENANT_MAX_EVENTS=(100000 10000 1000)
 TENANT_IDS=("" "" "")
 AGENT_TOKENS=("" "" "")
 
+# Global project root
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+
 # Functions
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1" >&2
@@ -334,8 +337,7 @@ build_and_load() {
     log_step "Step 2/8: Building and loading Docker images..."
     
     # Build from project root
-    local project_root
-    project_root=$(cd "$(dirname "$0")/../../../" && pwd)
+    local project_root="${PROJECT_ROOT}"
     
     # Check if images already exist in the kind cluster
     # Get list of images available in kind nodes
@@ -351,8 +353,8 @@ build_and_load() {
     fi
     
     if echo "$images_in_cluster" | grep -q "docker.io/library/lumo-agent.*local"; then
-        log_info "lumo-agent:local already present in cluster"
-        need_build_agent=false
+        log_info "lumo-agent:local already present in cluster (forcing rebuild)"
+        need_build_agent=true
     fi
     
     # Build and load only what's needed
@@ -438,7 +440,7 @@ deploy_monitoring() {
     log_step "Step 3.5/8: Deploying monitoring stack (Grafana + Prometheus)..."
 
     # Call bundled deploy-monitoring.sh (enables Prometheus by default)
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../monitoring" && pwd)"
+    SCRIPT_DIR="${PROJECT_ROOT}/deployments/kubernetes/monitoring"
     if [ -x "${SCRIPT_DIR}/deploy-monitoring.sh" ]; then
         "${SCRIPT_DIR}/deploy-monitoring.sh" --with-prometheus
         log_success "✓ Monitoring stack deployed"

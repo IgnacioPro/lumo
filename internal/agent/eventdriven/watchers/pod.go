@@ -250,7 +250,7 @@ func (w *PodWatcher) createCrashLoopEvent(pod *corev1.Pod, containerName string,
 	return &eventdriven.KubernetesEvent{
 		ID:                fmt.Sprintf("%s-%s-crashloop", string(pod.UID), containerName),
 		Type:              eventdriven.EventTypeCrashLoopBackOff,
-		Severity:          eventdriven.SeverityHigh,
+		Severity:          eventdriven.SeverityCritical,
 		Timestamp:         time.Now(),
 		ResourceKind:      "Pod",
 		ResourceName:      pod.Name,

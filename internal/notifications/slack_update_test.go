@@ -78,7 +78,7 @@ func TestSlackNotifier_DynamicUpdate(t *testing.T) {
 	n1 := NewNotification("Incident Started", "Something is wrong", LevelError).
 		WithField("event_id", "evt-001")
 
-	if err := notifier.Send(ctx, n1); err != nil {
+	if _, err = notifier.Send(ctx, n1); err != nil {
 		t.Fatalf("failed to send first notification: %v", err)
 	}
 
@@ -94,7 +94,7 @@ func TestSlackNotifier_DynamicUpdate(t *testing.T) {
 	n2 := NewNotification("Incident Resolved", "It is fixed now", LevelSuccess).
 		WithField("event_id", "evt-001")
 
-	if err := notifier.Send(ctx, n2); err != nil {
+	if _, err := notifier.Send(ctx, n2); err != nil {
 		t.Fatalf("failed to send update notification: %v", err)
 	}
 
@@ -172,8 +172,8 @@ func TestSlackNotifier_NoEventID_NoUpdate(t *testing.T) {
 	n1 := NewNotification("Alert 1", "Msg 1", LevelError)
 	n2 := NewNotification("Alert 2", "Msg 2", LevelInfo)
 
-	_ = notifier.Send(ctx, n1)
-	_ = notifier.Send(ctx, n2)
+	_, _ = notifier.Send(ctx, n1)
+	_, _ = notifier.Send(ctx, n2)
 
 	// Should be 2 POST calls, 0 updates
 	if len(postCalls) != 2 {

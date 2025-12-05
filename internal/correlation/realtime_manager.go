@@ -88,10 +88,6 @@ type RealtimeIncidentManager struct {
 // RealtimeIncidentNotifier extends IncidentNotifier with progress notifications
 type RealtimeIncidentNotifier interface {
 	IncidentNotifier
-	// NotifyIncidentCreated sends "Lumo is on it" notification for critical incidents
-	NotifyIncidentCreated(ctx context.Context, incident *Incident) error
-	// NotifyAnalysisUpdate sends incremental analysis update
-	NotifyAnalysisUpdate(ctx context.Context, incident *Incident, entry *AnalysisLogEntry) error
 	// NotifyIncidentResolved sends final notification with postmortem
 	NotifyIncidentResolved(ctx context.Context, incident *Incident) error
 	// NotifyProgress sends "still working on it" notification
@@ -255,6 +251,15 @@ func (m *RealtimeIncidentManager) ProcessEvent(ctx context.Context, event *model
 
 // isEventCritical checks if an event affects critical resources
 func (m *RealtimeIncidentManager) isEventCritical(event *models.Event) bool {
+	// Check event severity - Critical severity events are always critical
+	if event.Severity == models.EventSeverityCritical {
+		m.logger.WithFields(logrus.Fields{
+			"event_id": event.ID,
+			"severity": event.Severity,
+		}).Info("Event marked as critical based on severity")
+		return true
+	}
+
 	// Check metadata labels (stored as label_<key> by the agent)
 	if event.Metadata != nil {
 		for labelKey, labelValue := range m.config.CriticalLabels {
@@ -386,9 +391,23 @@ func (m *RealtimeIncidentManager) handleCriticalIncident(incident *Incident) {
 
 	// Send immediate "Lumo is on it" notification
 	if m.notifier != nil {
-		if err := m.notifier.NotifyIncidentCreated(ctx, incident); err != nil {
+		if ts, err := m.notifier.NotifyIncidentCreated(ctx, incident); err != nil {
 			m.logger.WithError(err).Error("Failed to send incident created notification")
 		} else {
+			// Save ThreadTS for future updates
+			if ts != "" {
+				incident.mu.Lock()
+				incident.ThreadTS = ts
+				incident.mu.Unlock()
+
+				// Persist ThreadTS to database
+				if m.repo != nil {
+					if err := m.repo.Update(ctx, incident); err != nil {
+						m.logger.WithError(err).Warn("Failed to update incident with thread TS")
+					}
+				}
+			}
+
 			// Log the initial notification
 			entry := &AnalysisLogEntry{
 				ID:           uuid.New(),
@@ -679,29 +698,33 @@ func (m *RealtimeIncidentManager) generatePostmortem(incident *Incident) string 
 	// Title and Summary
 	pm.WriteString(fmt.Sprintf("# Postmortem: %s\n\n", incident.Title))
 	pm.WriteString(fmt.Sprintf("**Incident ID:** %s\n", incident.ID.String()))
-	pm.WriteString(fmt.Sprintf("**Category:** %s\n", incident.Category))
-	pm.WriteString(fmt.Sprintf("**Severity:** %s\n", incident.Severity))
+	pm.WriteString(fmt.Sprintf("**Category:** %s\n", formatCategoryForReport(incident.Category)))
+	pm.WriteString(fmt.Sprintf("**Severity:** %s\n", strings.ToUpper(string(incident.Severity))))
 	if incident.IsCritical {
 		pm.WriteString("**Priority:** 🚨 Critical\n")
 	}
 	pm.WriteString("\n")
 
-	// Timeline Overview
+	// Timeline Overview - Human readable dates
 	pm.WriteString("## Timeline\n\n")
-	pm.WriteString(fmt.Sprintf("- **First Event:** %s\n", incident.FirstEventAt.Format(time.RFC3339)))
-	pm.WriteString(fmt.Sprintf("- **Last Event:** %s\n", incident.LastEventAt.Format(time.RFC3339)))
+	pm.WriteString(fmt.Sprintf("- **First Event:** %s\n", formatHumanTime(incident.FirstEventAt)))
+	pm.WriteString(fmt.Sprintf("- **Last Event:** %s\n", formatHumanTime(incident.LastEventAt)))
 	pm.WriteString(fmt.Sprintf("- **Duration:** %s\n", formatDurationVerbose(incident.Duration())))
 	if incident.ClosedAt != nil {
-		pm.WriteString(fmt.Sprintf("- **Resolved At:** %s\n", incident.ClosedAt.Format(time.RFC3339)))
+		pm.WriteString(fmt.Sprintf("- **Resolved At:** %s\n", formatHumanTime(*incident.ClosedAt)))
 	}
 	pm.WriteString("\n")
 
-	// Root Cause
+	// Root Cause - Try to infer from events if AI didn't provide one
 	pm.WriteString("## Root Cause Analysis\n\n")
-	if incident.RootCause != "" {
-		pm.WriteString(incident.RootCause)
+	rootCause := incident.RootCause
+	if rootCause == "" {
+		rootCause = m.inferRootCauseFromEvents(incident)
+	}
+	if rootCause != "" {
+		pm.WriteString(rootCause)
 	} else {
-		pm.WriteString("_Root cause could not be automatically determined._")
+		pm.WriteString("Root cause requires manual investigation. See event details below for clues.")
 	}
 	pm.WriteString("\n\n")
 
@@ -834,6 +857,213 @@ func formatDurationVerbose(d time.Duration) string {
 		return fmt.Sprintf("%d hours %d minutes", hours, mins)
 	}
 	return fmt.Sprintf("%d hours", hours)
+}
+
+// formatHumanTime formats a time in a human-readable way
+func formatHumanTime(t time.Time) string {
+	now := time.Now()
+	diff := now.Sub(t)
+
+	// If within the last hour, show relative time
+	if diff < time.Hour && diff > 0 {
+		mins := int(diff.Minutes())
+		if mins < 1 {
+			return "just now"
+		}
+		return fmt.Sprintf("%d minutes ago (%s)", mins, t.Format("15:04:05"))
+	}
+
+	// If today, show time with "today"
+	if t.Day() == now.Day() && t.Month() == now.Month() && t.Year() == now.Year() {
+		return fmt.Sprintf("Today at %s", t.Format("3:04:05 PM"))
+	}
+
+	// If yesterday
+	yesterday := now.AddDate(0, 0, -1)
+	if t.Day() == yesterday.Day() && t.Month() == yesterday.Month() && t.Year() == yesterday.Year() {
+		return fmt.Sprintf("Yesterday at %s", t.Format("3:04:05 PM"))
+	}
+
+	// Otherwise show full date
+	return t.Format("Jan 2, 2006 at 3:04:05 PM")
+}
+
+// formatCategoryForReport formats the category for human-readable reports
+func formatCategoryForReport(category IncidentCategory) string {
+	categoryNames := map[IncidentCategory]string{
+		CategoryMemory:     "Memory Issue",
+		CategoryCrash:      "Container Crash",
+		CategoryImage:      "Image Pull Failure",
+		CategoryStorage:    "Storage Issue",
+		CategoryNode:       "Node Problem",
+		CategoryScheduling: "Scheduling Failure",
+		CategoryDeployment: "Deployment Failure",
+		CategoryNetwork:    "Network Issue",
+		CategoryUnknown:    "Unknown",
+	}
+
+	if name, ok := categoryNames[category]; ok {
+		return name
+	}
+	return string(category)
+}
+
+// inferRootCauseFromEvents attempts to determine root cause from event data
+// This is a fallback when AI analysis isn't available or fails
+func (m *RealtimeIncidentManager) inferRootCauseFromEvents(incident *Incident) string {
+	if len(incident.Events) == 0 {
+		return ""
+	}
+
+	// Analyze events to find patterns and likely root causes
+	var causes []string
+	eventTypes := make(map[string]int)
+	messages := make(map[string]int)
+
+	for _, event := range incident.Events {
+		eventTypes[event.EventType]++
+
+		// Extract key information from messages
+		msg := event.Message
+		messages[msg]++
+
+		// Check for common patterns
+		switch event.EventType {
+		case "scheduling-failed":
+			// Parse scheduling failure messages
+			if strings.Contains(msg, "nodes are available") {
+				if strings.Contains(msg, "untolerated taint") {
+					causes = append(causes, fmt.Sprintf("**Scheduling blocked by taints**: The pod cannot be scheduled because node(s) have taints that the pod doesn't tolerate. Check if the pod needs `tolerations` in its spec, or if the node taint should be removed. Message: `%s`", truncateForReport(msg, 200)))
+				} else if strings.Contains(msg, "Insufficient") {
+					causes = append(causes, fmt.Sprintf("**Insufficient cluster resources**: The cluster doesn't have enough resources (CPU/memory) to schedule this pod. Consider scaling the cluster or reducing resource requests. Message: `%s`", truncateForReport(msg, 200)))
+				} else if strings.Contains(msg, "PodToleratesNodeTaints") {
+					causes = append(causes, fmt.Sprintf("**Pod cannot tolerate node taints**: Add appropriate tolerations to the pod spec or remove taints from nodes. Message: `%s`", truncateForReport(msg, 200)))
+				}
+			}
+
+		case "image-pull-backoff":
+			if strings.Contains(msg, "repository does not exist") || strings.Contains(msg, "not found") {
+				// Try to extract image name
+				image := extractImageFromMetadata(event.Metadata)
+				if image != "" {
+					causes = append(causes, fmt.Sprintf("**Image not found**: The image `%s` does not exist or is inaccessible. Check for typos in the image name, verify the registry URL, and ensure proper authentication.", image))
+				} else {
+					causes = append(causes, "**Image not found**: The specified container image could not be pulled. Check for typos in the image name and verify registry access.")
+				}
+			} else if strings.Contains(msg, "unauthorized") || strings.Contains(msg, "authentication") {
+				causes = append(causes, "**Registry authentication failed**: Unable to authenticate with the container registry. Check imagePullSecrets configuration and registry credentials.")
+			} else if strings.Contains(msg, "timeout") {
+				causes = append(causes, "**Image pull timeout**: The image pull timed out. This could indicate network issues or a very large image. Check network connectivity to the registry.")
+			}
+
+		case "crash-loop-backoff":
+			restarts := extractRestartCount(event.Metadata)
+			if restarts > 0 {
+				causes = append(causes, fmt.Sprintf("**Container repeatedly crashing**: The container has restarted %d times. This typically indicates an application error, misconfiguration, or missing dependencies. Check container logs with `kubectl logs %s -n %s --previous`.", restarts, event.ResourceName, getNamespace(event)))
+			} else {
+				causes = append(causes, "**Container repeatedly crashing**: The container keeps crashing after starting. Check application logs and verify startup configuration.")
+			}
+
+		case "oom-killed":
+			limits := extractMemoryLimits(event.Metadata)
+			if limits != "" {
+				causes = append(causes, fmt.Sprintf("**Out of Memory**: The container exceeded its memory limit of `%s` and was killed. Consider increasing the memory limit or optimizing the application's memory usage.", limits))
+			} else {
+				causes = append(causes, "**Out of Memory**: The container was killed due to exceeding its memory limit. Increase the memory limit in the pod spec or investigate memory leaks in the application.")
+			}
+
+		case "pvc-provision-failed":
+			if strings.Contains(msg, "no persistent volumes available") {
+				causes = append(causes, "**No PVs available**: No persistent volumes match the PVC request. Check that the StorageClass provisioner is working and that storage quotas aren't exceeded.")
+			} else if strings.Contains(msg, "storageclass") {
+				causes = append(causes, "**StorageClass issue**: The requested StorageClass may not exist or the provisioner is not working. Verify StorageClass configuration.")
+			}
+
+		case "node-not-ready":
+			causes = append(causes, fmt.Sprintf("**Node unhealthy**: Node `%s` is not ready. This could be due to kubelet issues, network problems, or resource exhaustion. Check node status with `kubectl describe node %s`.", event.ResourceName, event.ResourceName))
+		}
+	}
+
+	// If we found specific causes, format them
+	if len(causes) > 0 {
+		// Deduplicate and limit causes
+		seen := make(map[string]bool)
+		unique := make([]string, 0)
+		for _, cause := range causes {
+			if !seen[cause] {
+				seen[cause] = true
+				unique = append(unique, cause)
+			}
+		}
+		if len(unique) > 3 {
+			unique = unique[:3]
+		}
+		return strings.Join(unique, "\n\n")
+	}
+
+	// Generic fallback based on category
+	switch incident.Category {
+	case CategoryScheduling:
+		return "**Scheduling issue detected**: Pods are unable to be scheduled. Common causes include insufficient resources, node taints, or node selector mismatches. Review the event messages above for specific details."
+	case CategoryImage:
+		return "**Image pull issue detected**: Unable to pull container images. Common causes include incorrect image names, missing registry credentials, or network issues."
+	case CategoryCrash:
+		return "**Application crash detected**: Containers are failing to run. Check application logs for errors. Use `kubectl logs <pod-name> --previous` to see logs from crashed containers."
+	case CategoryMemory:
+		return "**Memory issue detected**: Containers are being killed due to memory problems. Review memory limits and application memory usage."
+	case CategoryStorage:
+		return "**Storage issue detected**: Problems with persistent volumes or storage provisioning. Check StorageClass configuration and available storage."
+	}
+
+	return ""
+}
+
+// Helper functions for inferRootCauseFromEvents
+
+func extractImageFromMetadata(metadata models.JSONB) string {
+	if metadata == nil {
+		return ""
+	}
+	if image, ok := metadata["image"].(string); ok {
+		return image
+	}
+	return ""
+}
+
+func extractRestartCount(metadata models.JSONB) int {
+	if metadata == nil {
+		return 0
+	}
+	if restarts, ok := metadata["restart_count"].(float64); ok {
+		return int(restarts)
+	}
+	return 0
+}
+
+func extractMemoryLimits(metadata models.JSONB) string {
+	if metadata == nil {
+		return ""
+	}
+	if limits, ok := metadata["container_limits"].(map[string]interface{}); ok {
+		if memory, ok := limits["memory"].(string); ok {
+			return memory
+		}
+	}
+	return ""
+}
+
+func getNamespace(event *models.Event) string {
+	if event.Namespace != nil {
+		return *event.Namespace
+	}
+	return "default"
+}
+
+func truncateForReport(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
 
 // healthCheckLoop periodically checks if incident resources are healthy

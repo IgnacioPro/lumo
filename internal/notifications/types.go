@@ -25,6 +25,32 @@ type Notification struct {
 	// Postmortem contains a detailed postmortem report (optional)
 	// When set, it will be sent as follow-up messages (e.g., threaded replies in Slack)
 	Postmortem string
+
+	// Actions contains recommended remediation actions with commands
+	// These can be displayed as interactive buttons in Slack
+	Actions []RecommendedAction
+
+	// ThreadTS is the timestamp of the parent message for threading (Slack specific)
+	ThreadTS string
+
+	// IsReply indicates if this notification should be a threaded reply instead of updating the main message
+	IsReply bool
+}
+
+// RecommendedAction represents a suggested remediation action
+type RecommendedAction struct {
+	// Title is a short description of the action
+	Title string
+	// Description provides more detail about what the action does
+	Description string
+	// Command is the kubectl/shell command to execute (optional)
+	Command string
+	// URL is a link to execute this action via API (optional)
+	URL string
+	// Priority indicates urgency (1 = highest)
+	Priority int
+	// Destructive indicates if this action could cause data loss
+	Destructive bool
 }
 
 // NotificationLevel represents the severity of a notification.

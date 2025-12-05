@@ -29,7 +29,8 @@ type Notifier interface {
 
 	// Send sends a notification.
 	// The context can be used for cancellation and timeout control.
-	Send(ctx context.Context, notification *Notification) error
+	// Returns a message ID (if applicable/supported by provider) and error.
+	Send(ctx context.Context, notification *Notification) (string, error)
 
 	// Health checks if the notifier is available and configured correctly.
 	Health(ctx context.Context) error

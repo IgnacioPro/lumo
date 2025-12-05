@@ -95,22 +95,28 @@ func (s *SlackNotifier) Name() string {
 }
 
 // Send sends a notification to Slack.
-func (s *SlackNotifier) Send(ctx context.Context, notification *Notification) error {
+func (s *SlackNotifier) Send(ctx context.Context, notification *Notification) (string, error) {
 	// Wrap execution in circuit breaker
-	_, err := s.circuitBreaker.Execute(func() (interface{}, error) {
-		return nil, s.sendInternal(ctx, notification)
+	result, err := s.circuitBreaker.Execute(func() (interface{}, error) {
+		return s.sendInternal(ctx, notification)
 	})
-	return err
+	if err != nil {
+		return "", err
+	}
+	if id, ok := result.(string); ok {
+		return id, nil
+	}
+	return "", nil
 }
 
-func (s *SlackNotifier) sendInternal(ctx context.Context, notification *Notification) error {
+func (s *SlackNotifier) sendInternal(ctx context.Context, notification *Notification) (string, error) {
 	// Check if we're using Bot Token (supports threading) or Webhook (legacy)
 	useBotToken := s.config.SlackBotToken != "" && s.config.SlackChannel != ""
 
 	if useBotToken {
 		return s.sendWithBotToken(ctx, notification)
 	}
-	return s.sendWithWebhook(ctx, notification)
+	return "", s.sendWithWebhook(ctx, notification)
 }
 
 // sendWithWebhook sends via incoming webhook (legacy, no threading support)
@@ -147,7 +153,7 @@ func (s *SlackNotifier) sendWithWebhook(ctx context.Context, notification *Notif
 }
 
 // sendWithBotToken sends via Slack Web API (supports threading)
-func (s *SlackNotifier) sendWithBotToken(ctx context.Context, notification *Notification) error {
+func (s *SlackNotifier) sendWithBotToken(ctx context.Context, notification *Notification) (string, error) {
 	// Send initial summary message
 	msg := s.buildMessage(notification)
 	msg.Channel = s.config.SlackChannel
@@ -156,21 +162,43 @@ func (s *SlackNotifier) sendWithBotToken(ctx context.Context, notification *Noti
 	var err error
 	var updated bool
 
-	// Check if we should update an existing message
-	if eventID, ok := notification.Fields["event_id"]; ok && eventID != "" {
-		s.mu.RLock()
-		existingTS, exists := s.messageThreads[eventID]
-		s.mu.RUnlock()
+	// Check if we should update an existing message or reply to a thread
+	var existingTS string
+	var exists bool
 
-		if exists {
-			// Try to update the existing message
-			ts, err = s.updateMessage(ctx, existingTS, msg)
-			if err == nil {
-				updated = true
-			} else {
-				// If update fails (e.g. message deleted), log it and fall back to new message
-				s.log.WithError(err).WithField("event_id", eventID).Warn("failed to update slack message, sending new one")
-			}
+	// 1. Check explicit ThreadTS from notification (highest priority)
+	if notification.ThreadTS != "" {
+		existingTS = notification.ThreadTS
+		exists = true
+	} else if eventID, ok := notification.Fields["event_id"]; ok && eventID != "" {
+		// 2. Check internal map for event_id
+		s.mu.RLock()
+		existingTS, exists = s.messageThreads[eventID]
+		s.mu.RUnlock()
+	}
+
+	// Handle Threaded Reply
+	if notification.IsReply && exists {
+		msg.ThreadTS = existingTS
+		// For replies, we usually want to broadcast to channel if critical, but for now just thread
+		ts, err = s.postMessage(ctx, msg)
+		if err != nil {
+			return "", fmt.Errorf("failed to post reply: %w", err)
+		}
+		// Return the thread parent TS, not the reply TS, to keep context?
+		// Or return the reply TS? The interface returns "string" which is usually the ID of the sent message.
+		return ts, nil
+	}
+
+	// Handle Update or New Message
+	if exists {
+		// Try to update the existing message
+		ts, err = s.updateMessage(ctx, existingTS, msg)
+		if err == nil {
+			updated = true
+		} else {
+			// If update fails (e.g. message deleted), log it and fall back to new message
+			s.log.WithError(err).WithField("ts", existingTS).Warn("failed to update slack message, sending new one")
 		}
 	}
 
@@ -178,7 +206,7 @@ func (s *SlackNotifier) sendWithBotToken(ctx context.Context, notification *Noti
 	if !updated {
 		ts, err = s.postMessage(ctx, msg)
 		if err != nil {
-			return fmt.Errorf("failed to post initial message: %w", err)
+			return "", fmt.Errorf("failed to post initial message: %w", err)
 		}
 
 		// Store the timestamp if we have an event ID
@@ -195,7 +223,8 @@ func (s *SlackNotifier) sendWithBotToken(ctx context.Context, notification *Noti
 		"title":    notification.Title,
 		"ts":       ts,
 		"updated":  updated,
-	}).Debug("initial notification sent successfully (bot token)")
+		"is_reply": notification.IsReply,
+	}).Debug("notification sent successfully (bot token)")
 
 	// If there's AI analysis in the message, send it as a threaded reply
 	sections := s.parseMessageSections(notification.Message)
@@ -214,7 +243,7 @@ func (s *SlackNotifier) sendWithBotToken(ctx context.Context, notification *Noti
 		}
 	}
 
-	return nil
+	return ts, nil
 }
 
 // sendPostmortemThread sends the postmortem as threaded replies, splitting into multiple messages if needed
@@ -584,6 +613,108 @@ func (s *SlackNotifier) buildBlocks(notification *Notification) []map[string]int
 		}
 	}
 
+	// Add recommended action buttons if available
+	if len(notification.Actions) > 0 {
+		blocks = append(blocks, map[string]interface{}{
+			"type": "divider",
+		})
+
+		blocks = append(blocks, map[string]interface{}{
+			"type": "section",
+			"text": map[string]interface{}{
+				"type": "mrkdwn",
+				"text": "*🛠 Recommended Actions*",
+			},
+		})
+
+		// Build action buttons (max 5 per Slack limit)
+		actionElements := []map[string]interface{}{}
+		maxActions := len(notification.Actions)
+		if maxActions > 5 {
+			maxActions = 5
+		}
+
+		for i := 0; i < maxActions; i++ {
+			action := notification.Actions[i]
+			buttonStyle := "primary"
+			if action.Destructive {
+				buttonStyle = "danger"
+			}
+
+			button := map[string]interface{}{
+				"type": "button",
+				"text": map[string]interface{}{
+					"type":  "plain_text",
+					"text":  fmt.Sprintf("%d. %s", i+1, truncateString(action.Title, 30)),
+					"emoji": true,
+				},
+				"style": buttonStyle,
+			}
+
+			// If URL is provided, use it. Otherwise, show command as tooltip
+			if action.URL != "" {
+				button["url"] = action.URL
+			} else if action.Command != "" {
+				// Use action_id to identify this for potential future interaction handling
+				button["action_id"] = fmt.Sprintf("action_%d", i)
+				// Add confirm dialog for destructive actions
+				if action.Destructive {
+					button["confirm"] = map[string]interface{}{
+						"title": map[string]interface{}{
+							"type": "plain_text",
+							"text": "⚠️ Confirm Action",
+						},
+						"text": map[string]interface{}{
+							"type": "mrkdwn",
+							"text": fmt.Sprintf("This action may be destructive:\n```%s```\nProceed?", action.Command),
+						},
+						"confirm": map[string]interface{}{
+							"type": "plain_text",
+							"text": "Execute",
+						},
+						"deny": map[string]interface{}{
+							"type": "plain_text",
+							"text": "Cancel",
+						},
+					}
+				}
+			}
+
+			actionElements = append(actionElements, button)
+		}
+
+		if len(actionElements) > 0 {
+			blocks = append(blocks, map[string]interface{}{
+				"type":     "actions",
+				"elements": actionElements,
+			})
+		}
+
+		// Show commands as text for copy-paste
+		if len(notification.Actions) > 0 && notification.Actions[0].Command != "" {
+			var cmdText strings.Builder
+			cmdText.WriteString("*Commands (copy & paste):*\n```\n")
+			for i, action := range notification.Actions {
+				if i >= 3 {
+					cmdText.WriteString("# ... more commands in full analysis\n")
+					break
+				}
+				if action.Command != "" {
+					cmdText.WriteString(fmt.Sprintf("# %s\n%s\n\n", action.Title, action.Command))
+				}
+			}
+			cmdText.WriteString("```")
+
+			blocks = append(blocks, map[string]interface{}{
+				"type": "section",
+				"text": map[string]interface{}{
+					"type": "mrkdwn",
+					"text": cmdText.String(),
+				},
+			})
+		}
+	}
+
 	// Footer with branding
 	blocks = append(blocks, map[string]interface{}{
 		"type": "context",
@@ -597,6 +728,14 @@ func (s *SlackNotifier) buildBlocks(notification *Notification) []map[string]int
 	})
 
 	return blocks
+}
+
+// truncateString truncates a string to max length
+func truncateString(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max-3] + "..."
 }
 
 // parseMessageSections splits the notification message into structured sections.

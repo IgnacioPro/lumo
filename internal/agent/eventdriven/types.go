@@ -131,13 +131,13 @@ func ClassifyEventSeverity(eventType EventType) Severity {
 	case EventTypeOOMKilled,
 		EventTypePodEvicted,
 		EventTypeNodeNotReady,
-		EventTypeJobFailed:
+		EventTypeJobFailed,
+		EventTypeCrashLoopBackOff,
+		EventTypeImagePullBackOff:
 		return SeverityCritical
 
 	// High severity - should be addressed soon
-	case EventTypeImagePullBackOff,
-		EventTypeCrashLoopBackOff,
-		EventTypeDeploymentFailed,
+	case EventTypeDeploymentFailed,
 		EventTypeStatefulSetFailed,
 		EventTypeDaemonSetFailed,
 		EventTypeVolumeFailedMount,

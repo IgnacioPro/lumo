@@ -117,6 +117,7 @@ type Incident struct {
 	NotificationChannels []string   `json:"notification_channels,omitempty"`
 	NotificationCount    int        `json:"notification_count"`
 	LastNotificationAt   *time.Time `json:"last_notification_at,omitempty"`
+	ThreadTS             string     `json:"thread_ts,omitempty"` // Slack thread timestamp
 
 	// Correlation metadata
 	CorrelationKey    string                 `json:"correlation_key"`

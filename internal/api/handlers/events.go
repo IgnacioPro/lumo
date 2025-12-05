@@ -660,7 +660,7 @@ func (h *EventsHandler) sendEventNotifications(ctx context.Context, event *model
 
 	// Send to all configured notifiers
 	for _, notifier := range h.notifiers {
-		if err := notifier.Send(ctx, &message); err != nil {
+		if _, err := notifier.Send(ctx, &message); err != nil {
 			h.logger.WithError(err).WithField("provider", notifier.Name()).Error("Failed to send notification")
 			notificationsSentTotal.WithLabelValues(notifier.Name(), "failure").Inc()
 			failedChannels = append(failedChannels, notifier.Name())

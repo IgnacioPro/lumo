@@ -90,12 +90,12 @@ func (w *WebhookNotifier) Name() string {
 }
 
 // Send sends a notification to the webhook.
-func (w *WebhookNotifier) Send(ctx context.Context, notification *Notification) error {
+func (w *WebhookNotifier) Send(ctx context.Context, notification *Notification) (string, error) {
 	// Wrap execution in circuit breaker
 	_, err := w.circuitBreaker.Execute(func() (interface{}, error) {
 		return nil, w.sendInternal(ctx, notification)
 	})
-	return err
+	return "", err
 }
 
 func (w *WebhookNotifier) sendInternal(ctx context.Context, notification *Notification) error {

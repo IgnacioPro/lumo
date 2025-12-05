@@ -120,6 +120,10 @@ type AIAnalyzer interface {
 type IncidentNotifier interface {
 	// NotifyIncident sends notifications about an incident
 	NotifyIncident(ctx context.Context, incident *Incident) error
+	// NotifyIncidentCreated sends an immediate notification when a critical incident is created
+	NotifyIncidentCreated(ctx context.Context, incident *Incident) (string, error)
+	// NotifyAnalysisUpdate sends incremental analysis update
+	NotifyAnalysisUpdate(ctx context.Context, incident *Incident, entry *AnalysisLogEntry) error
 }
 
 // IncidentRepository persists incidents
@@ -253,6 +257,24 @@ func (e *Engine) ProcessEvent(ctx context.Context, event *models.Event) error {
 			"correlation_key": correlationKey,
 			"category":        incident.Category,
 		}).Info("New incident created")
+
+		// Immediate notification for critical incidents
+		if incident.IsCritical && e.notifier != nil {
+			go func(inc *Incident) {
+				// Send "I'm on it" notification immediately
+				ts, err := e.notifier.NotifyIncidentCreated(ctx, inc)
+				if err != nil {
+					e.logger.WithError(err).Error("Failed to send immediate notification")
+				} else {
+					inc.mu.Lock()
+					inc.ThreadTS = ts
+					inc.mu.Unlock()
+				}
+
+				// Trigger early investigation
+				e.triggerEarlyInvestigation(inc)
+			}(incident)
+		}
 	} else {
 		// Update existing incident
 		if e.repo != nil {
@@ -297,6 +319,7 @@ func (e *Engine) getOrCreateIncident(correlationKey string, rule *CorrelationRul
 		TenantID:          event.TenantID,
 		Category:          rule.Category,
 		Severity:          event.Severity,
+		IsCritical:        event.Severity == "critical",
 		State:             IncidentStateOpen,
 		Timeline:          make([]TimelineEntry, 0),
 		Events:            make([]*models.Event, 0),
@@ -442,6 +465,53 @@ func (e *Engine) processIncident(incident *Incident) {
 		"title":       incident.Title,
 		"root_cause":  incident.RootCause,
 	}).Info("Incident processed and notified")
+}
+
+// triggerEarlyInvestigation performs an early analysis for critical incidents
+func (e *Engine) triggerEarlyInvestigation(incident *Incident) {
+	// Wait a short buffer to allow immediate related events to arrive (e.g. logs following an error)
+	time.Sleep(5 * time.Second)
+
+	e.logger.WithField("incident_id", incident.ID).Info("Starting early investigation")
+
+	ctx, cancel := context.WithTimeout(e.ctx, 2*time.Minute)
+	defer cancel()
+
+	// Step 1: Gather context
+	if e.config.EnableContextGathering && e.contextGatherer != nil {
+		incidentCtx, err := e.contextGatherer.GatherContext(ctx, incident)
+		if err != nil {
+			e.logger.WithError(err).Warn("Failed to gather early context")
+		} else {
+			incident.Context = incidentCtx
+		}
+	}
+
+	// Step 2: AI Analysis (Initial)
+	if e.config.EnableAIAnalysis && e.aiAnalyzer != nil {
+		analysis, err := e.aiAnalyzer.Analyze(ctx, incident)
+		if err != nil {
+			e.logger.WithError(err).Warn("Failed to perform early AI analysis")
+		} else {
+			incident.AIAnalysis = analysis
+			incident.RootCause = analysis.RootCause.Summary
+
+			// Notify with analysis results
+			if e.notifier != nil {
+				// Create an analysis entry for the update
+				entry := &AnalysisLogEntry{
+					ID:           uuid.New(),
+					IncidentID:   incident.ID,
+					AnalysisType: AnalysisTypeInsight,
+					Content:      analysis.FullAnalysis,
+					CreatedAt:    time.Now(),
+				}
+				if err := e.notifier.NotifyAnalysisUpdate(ctx, incident, entry); err != nil {
+					e.logger.WithError(err).Error("Failed to send early analysis update")
+				}
+			}
+		}
+	}
 }
 
 // generateTitle creates a human-readable title for the incident

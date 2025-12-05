@@ -2,6 +2,7 @@ package correlation
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -472,4 +473,101 @@ func containsIgnoreCase(s, substr string) bool {
 				(s[0] == substr[0] || s[0]+32 == substr[0] || s[0]-32 == substr[0]) &&
 				containsIgnoreCase(s[1:], substr[1:]) ||
 			len(s) > 0 && containsIgnoreCase(s[1:], substr))
+}
+
+func TestInferRootCauseFromEvents(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.DebugLevel)
+
+	manager := &RealtimeIncidentManager{
+		logger: logger.WithField("test", true),
+	}
+
+	tests := []struct {
+		name            string
+		incident        *Incident
+		wantContains    []string
+		wantNotContains []string
+	}{
+		{
+			name: "scheduling failed with taint",
+			incident: &Incident{
+				Category: CategoryScheduling,
+				Events: []*models.Event{
+					{
+						EventType:    "scheduling-failed",
+						Message:      "0/1 nodes are available: 1 node(s) had untolerated taint {node-role.kubernetes.io/control-plane: }",
+						ResourceName: "test-pod",
+					},
+				},
+			},
+			wantContains: []string{"taint", "toleration"},
+		},
+		{
+			name: "image pull with typo",
+			incident: &Incident{
+				Category: CategoryImage,
+				Events: []*models.Event{
+					{
+						EventType: "image-pull-backoff",
+						Message:   "repository does not exist",
+						Metadata:  models.JSONB{"image": "nginxx:latest"},
+					},
+				},
+			},
+			wantContains: []string{"nginxx:latest", "not found"},
+		},
+		{
+			name: "OOM killed with limits",
+			incident: &Incident{
+				Category: CategoryMemory,
+				Events: []*models.Event{
+					{
+						EventType: "oom-killed",
+						Message:   "Container was OOMKilled",
+						Metadata: models.JSONB{
+							"container_limits": map[string]interface{}{
+								"memory": "128Mi",
+							},
+						},
+					},
+				},
+			},
+			wantContains: []string{"128Mi", "memory limit"},
+		},
+		{
+			name: "crash loop with restarts",
+			incident: &Incident{
+				Category: CategoryCrash,
+				Events: []*models.Event{
+					{
+						EventType:    "crash-loop-backoff",
+						Message:      "Container crashed",
+						ResourceName: "my-pod",
+						Namespace:    stringPtr("default"),
+						Metadata:     models.JSONB{"restart_count": float64(5)},
+					},
+				},
+			},
+			wantContains: []string{"5 times", "kubectl logs"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := manager.inferRootCauseFromEvents(tt.incident)
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(strings.ToLower(result), strings.ToLower(want)) {
+					t.Errorf("inferRootCauseFromEvents() result = %q, want to contain %q", result, want)
+				}
+			}
+
+			for _, notWant := range tt.wantNotContains {
+				if strings.Contains(strings.ToLower(result), strings.ToLower(notWant)) {
+					t.Errorf("inferRootCauseFromEvents() result = %q, should not contain %q", result, notWant)
+				}
+			}
+		})
+	}
 }

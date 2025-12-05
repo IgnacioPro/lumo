@@ -263,7 +263,7 @@ func (w *EventWatcher) processEvent(k8sEvent *corev1.Event, handler eventdriven.
 	case "Failed", "BackOff":
 		if k8sEvent.InvolvedObject.Kind == "Pod" {
 			eventType = eventdriven.EventTypeImagePullBackOff
-			severity = eventdriven.SeverityHigh
+			severity = eventdriven.SeverityCritical
 		} else {
 			return
 		}

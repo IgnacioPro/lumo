@@ -233,7 +233,7 @@ func TestSlackNotifier(t *testing.T) {
 		WithField("Status", "degraded")
 
 	ctx := context.Background()
-	if err := notifier.Send(ctx, notification); err != nil {
+	if _, err := notifier.Send(ctx, notification); err != nil {
 		t.Fatalf("failed to send notification: %v", err)
 	}
 
@@ -369,7 +369,7 @@ func TestWebhookNotifier(t *testing.T) {
 	notification := NewNotification("Test Alert", "This is a test message", LevelError)
 
 	ctx := context.Background()
-	if err := notifier.Send(ctx, notification); err != nil {
+	if _, err := notifier.Send(ctx, notification); err != nil {
 		t.Fatalf("failed to send notification: %v", err)
 	}
 
@@ -628,7 +628,7 @@ func TestSlackNotifierTimeout(t *testing.T) {
 	notification := NewNotification("Test", "Message", LevelInfo)
 
 	ctx := context.Background()
-	err = notifier.Send(ctx, notification)
+	_, err = notifier.Send(ctx, notification)
 	if err == nil {
 		t.Error("expected timeout error, got nil")
 	}
@@ -656,6 +656,6 @@ func BenchmarkSlackNotifier(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = notifier.Send(context.Background(), notification)
+		_, _ = notifier.Send(context.Background(), notification)
 	}
 }

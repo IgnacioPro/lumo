@@ -48,7 +48,8 @@ func (n *IncidentNotifierImpl) NotifyIncident(ctx context.Context, incident *Inc
 
 	// Send to all configured notifiers
 	for _, notifier := range n.notifiers {
-		if err := notifier.Send(ctx, &notification); err != nil {
+		_, err := notifier.Send(ctx, &notification)
+		if err != nil {
 			n.logger.WithError(err).WithField("provider", notifier.Name()).Error("Failed to send notification")
 			lastErr = err
 		} else {
@@ -75,7 +76,7 @@ func (n *IncidentNotifierImpl) NotifyIncident(ctx context.Context, incident *Inc
 }
 
 // NotifyIncidentCreated sends "Lumo is on it" notification for critical incidents
-func (n *IncidentNotifierImpl) NotifyIncidentCreated(ctx context.Context, incident *Incident) error {
+func (n *IncidentNotifierImpl) NotifyIncidentCreated(ctx context.Context, incident *Incident) (string, error) {
 	n.logger.WithFields(logrus.Fields{
 		"incident_id": incident.ID,
 		"title":       incident.Title,
@@ -94,7 +95,8 @@ func (n *IncidentNotifierImpl) NotifyAnalysisUpdate(ctx context.Context, inciden
 	}).Info("Sending analysis update notification")
 
 	notification := n.buildUpdateNotification(incident, entry)
-	return n.sendToAll(ctx, &notification)
+	_, err := n.sendToAll(ctx, &notification)
+	return err
 }
 
 // NotifyIncidentResolved sends final notification with postmortem
@@ -105,7 +107,8 @@ func (n *IncidentNotifierImpl) NotifyIncidentResolved(ctx context.Context, incid
 	}).Info("Sending incident resolved notification")
 
 	notification := n.buildResolvedNotification(incident)
-	return n.sendToAll(ctx, &notification)
+	_, err := n.sendToAll(ctx, &notification)
+	return err
 }
 
 // NotifyProgress sends "still working on it" notification
@@ -116,29 +119,36 @@ func (n *IncidentNotifierImpl) NotifyProgress(ctx context.Context, incident *Inc
 	}).Debug("Sending progress notification")
 
 	notification := n.buildProgressNotification(incident)
-	return n.sendToAll(ctx, &notification)
+	_, err := n.sendToAll(ctx, &notification)
+	return err
 }
 
 // sendToAll sends a notification to all configured notifiers
-func (n *IncidentNotifierImpl) sendToAll(ctx context.Context, notification *notifications.Notification) error {
+func (n *IncidentNotifierImpl) sendToAll(ctx context.Context, notification *notifications.Notification) (string, error) {
 	var lastErr error
 	sentCount := 0
+	var messageID string
 
 	for _, notifier := range n.notifiers {
-		if err := notifier.Send(ctx, notification); err != nil {
+		id, err := notifier.Send(ctx, notification)
+		if err != nil {
 			n.logger.WithError(err).WithField("provider", notifier.Name()).Error("Failed to send notification")
 			lastErr = err
 		} else {
 			sentCount++
 			n.logger.WithField("provider", notifier.Name()).Debug("Notification sent successfully")
+			// Capture the first non-empty ID (prioritizing Slack if it's first or only one returning ID)
+			if id != "" && messageID == "" {
+				messageID = id
+			}
 		}
 	}
 
 	if sentCount == 0 && lastErr != nil {
-		return fmt.Errorf("all notification attempts failed: %w", lastErr)
+		return "", fmt.Errorf("all notification attempts failed: %w", lastErr)
 	}
 
-	return nil
+	return messageID, nil
 }
 
 // buildCreatedNotification builds the "Lumo is on it" notification
@@ -240,6 +250,8 @@ func (n *IncidentNotifierImpl) buildUpdateNotification(incident *Incident, entry
 		Timestamp: entry.CreatedAt,
 		Tags:      []string{"kubernetes", "incident", "update", entry.AnalysisType},
 		Fields:    fields,
+		ThreadTS:  incident.ThreadTS,
+		IsReply:   true,
 	}
 }
 
@@ -265,7 +277,7 @@ func (n *IncidentNotifierImpl) buildResolvedNotification(incident *Incident) not
 
 	// Key actions from AI analysis
 	if incident.AIAnalysis != nil && len(incident.AIAnalysis.ImmediateActions) > 0 {
-		body.WriteString("*🛠 Key Actions Taken/Recommended:*\n")
+		body.WriteString("*🛠 Recommended Actions:*\n")
 		maxActions := 3
 		if len(incident.AIAnalysis.ImmediateActions) < maxActions {
 			maxActions = len(incident.AIAnalysis.ImmediateActions)
@@ -288,6 +300,20 @@ func (n *IncidentNotifierImpl) buildResolvedNotification(incident *Incident) not
 		fields["_incident_url"] = fmt.Sprintf("%s/api/v1/incidents/%s/analysis", n.apiBaseURL, incident.ID.String())
 	}
 
+	// Convert AI analysis actions to notification actions for button display
+	var actions []notifications.RecommendedAction
+	if incident.AIAnalysis != nil {
+		for _, a := range incident.AIAnalysis.ImmediateActions {
+			actions = append(actions, notifications.RecommendedAction{
+				Title:       a.Title,
+				Description: a.Description,
+				Command:     a.Command,
+				Priority:    a.Priority,
+				Destructive: isDestructiveCommand(a.Command),
+			})
+		}
+	}
+
 	return notifications.Notification{
 		Title:      title,
 		Message:    body.String(),
@@ -296,7 +322,30 @@ func (n *IncidentNotifierImpl) buildResolvedNotification(incident *Incident) not
 		Tags:       []string{"kubernetes", "incident", "resolved", string(incident.Category)},
 		Fields:     fields,
 		Postmortem: incident.Postmortem, // Include full postmortem for threaded delivery
+		Actions:    actions,
+		ThreadTS:   incident.ThreadTS,
+		// IsReply is false because we want to update the main incident card to show "Resolved"
 	}
+}
+
+// isDestructiveCommand checks if a command could be destructive
+func isDestructiveCommand(cmd string) bool {
+	destructivePatterns := []string{
+		"delete",
+		"remove",
+		"drain",
+		"cordon",
+		"rollback",
+		"scale 0",
+		"scale=0",
+	}
+	cmdLower := strings.ToLower(cmd)
+	for _, pattern := range destructivePatterns {
+		if strings.Contains(cmdLower, pattern) {
+			return true
+		}
+	}
+	return false
 }
 
 // buildProgressNotification builds a "still working on it" notification
@@ -352,6 +401,8 @@ func (n *IncidentNotifierImpl) buildProgressNotification(incident *Incident) not
 		Timestamp: time.Now(),
 		Tags:      []string{"kubernetes", "incident", "progress"},
 		Fields:    fields,
+		ThreadTS:  incident.ThreadTS,
+		IsReply:   true,
 	}
 }
 

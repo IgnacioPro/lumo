@@ -49,12 +49,12 @@ func (e *EmailNotifier) Name() string {
 }
 
 // Send sends a notification via email.
-func (e *EmailNotifier) Send(ctx context.Context, notification *Notification) error {
+func (e *EmailNotifier) Send(ctx context.Context, notification *Notification) (string, error) {
 	// Wrap execution in circuit breaker
 	_, err := e.circuitBreaker.Execute(func() (interface{}, error) {
 		return nil, e.sendInternal(ctx, notification)
 	})
-	return err
+	return "", err
 }
 
 func (e *EmailNotifier) sendInternal(ctx context.Context, notification *Notification) error {
