@@ -34,16 +34,48 @@ func (w *NodeWatcher) Setup(factory informers.SharedInformerFactory, handler eve
 
 	_, err := w.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			node := obj.(*corev1.Node)
+			node, ok := obj.(*corev1.Node)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", obj)).Error("Unexpected object type in AddFunc")
+					return
+				}
+				node, ok = tombstone.Obj.(*corev1.Node)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", tombstone.Obj)).Error("Unexpected object type in tombstone")
+					return
+				}
+			}
 			w.checkNode(node, nil, handler)
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
-			oldNode := oldObj.(*corev1.Node)
-			newNode := newObj.(*corev1.Node)
+			oldNode, ok := oldObj.(*corev1.Node)
+			if !ok {
+				w.logger.WithField("object", fmt.Sprintf("%T", oldObj)).Error("Unexpected old object type in UpdateFunc")
+				return
+			}
+			newNode, ok := newObj.(*corev1.Node)
+			if !ok {
+				w.logger.WithField("object", fmt.Sprintf("%T", newObj)).Error("Unexpected new object type in UpdateFunc")
+				return
+			}
 			w.checkNode(newNode, oldNode, handler)
 		},
 		DeleteFunc: func(obj interface{}) {
-			node := obj.(*corev1.Node)
+			node, ok := obj.(*corev1.Node)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", obj)).Error("Unexpected object type in DeleteFunc")
+					return
+				}
+				node, ok = tombstone.Obj.(*corev1.Node)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", tombstone.Obj)).Error("Unexpected object type in tombstone")
+					return
+				}
+			}
 			w.logger.WithField("node", node.Name).Debug("Node deleted")
 		},
 	})
