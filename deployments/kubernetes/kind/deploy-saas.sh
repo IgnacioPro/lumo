@@ -28,7 +28,7 @@ SKIP_CLUSTER_SETUP="${SKIP_CLUSTER_SETUP:-false}"
 SKIP_BUILD="${SKIP_BUILD:-false}"
 SKIP_INFRASTRUCTURE="${SKIP_INFRASTRUCTURE:-false}"
 SKIP_MONITORING="${SKIP_MONITORING:-false}"
-API_PORT=8080
+API_PORT="${API_PORT:-30080}"
 
 # Test tenants - using simple arrays for bash 3.x compatibility
 TENANT_KEYS=("acme" "globex" "initech")
@@ -316,7 +316,7 @@ nodes:
             node-labels: "ingress-ready=true"
     extraPortMappings:
       - containerPort: 30080
-        hostPort: 8080
+        hostPort: ${API_PORT}
         protocol: TCP
 EOF
 
