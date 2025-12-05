@@ -139,7 +139,11 @@ func (m *Manager) Start() error {
 
 	// Wait for caches to sync
 	m.logger.Info("Waiting for informer caches to sync")
+
+	// Use a mutex to protect concurrent access to the synced map
+	var syncMu sync.Mutex
 	synced := make(map[string]bool)
+
 	for _, watcher := range m.watchers {
 		informer := watcher.GetInformer()
 		watcherName := watcher.Name()
@@ -150,10 +154,14 @@ func (m *Manager) Start() error {
 			defer m.wg.Done()
 			if !cache.WaitForCacheSync(m.stopCh, inf.HasSynced) {
 				m.logger.WithField("watcher", name).Error("Failed to sync cache")
+				syncMu.Lock()
 				synced[name] = false
+				syncMu.Unlock()
 				return
 			}
+			syncMu.Lock()
 			synced[name] = true
+			syncMu.Unlock()
 			m.logger.WithField("watcher", name).Info("Cache synced successfully")
 		}(watcherName, informer)
 	}
@@ -161,7 +169,7 @@ func (m *Manager) Start() error {
 	// Wait for all sync operations to complete
 	m.wg.Wait()
 
-	// Check if all caches synced
+	// Check if all caches synced (safe to read without lock after wg.Wait())
 	allSynced := true
 	for name, success := range synced {
 		if !success {

@@ -34,16 +34,48 @@ func (w *PVCWatcher) Setup(factory informers.SharedInformerFactory, handler even
 
 	_, err := w.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			pvc := obj.(*corev1.PersistentVolumeClaim)
+			pvc, ok := obj.(*corev1.PersistentVolumeClaim)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", obj)).Error("Unexpected object type in AddFunc")
+					return
+				}
+				pvc, ok = tombstone.Obj.(*corev1.PersistentVolumeClaim)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", tombstone.Obj)).Error("Unexpected object type in tombstone")
+					return
+				}
+			}
 			w.checkPVC(pvc, nil, handler)
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
-			oldPVC := oldObj.(*corev1.PersistentVolumeClaim)
-			newPVC := newObj.(*corev1.PersistentVolumeClaim)
+			oldPVC, ok := oldObj.(*corev1.PersistentVolumeClaim)
+			if !ok {
+				w.logger.WithField("object", fmt.Sprintf("%T", oldObj)).Error("Unexpected old object type in UpdateFunc")
+				return
+			}
+			newPVC, ok := newObj.(*corev1.PersistentVolumeClaim)
+			if !ok {
+				w.logger.WithField("object", fmt.Sprintf("%T", newObj)).Error("Unexpected new object type in UpdateFunc")
+				return
+			}
 			w.checkPVC(newPVC, oldPVC, handler)
 		},
 		DeleteFunc: func(obj interface{}) {
-			pvc := obj.(*corev1.PersistentVolumeClaim)
+			pvc, ok := obj.(*corev1.PersistentVolumeClaim)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", obj)).Error("Unexpected object type in DeleteFunc")
+					return
+				}
+				pvc, ok = tombstone.Obj.(*corev1.PersistentVolumeClaim)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", tombstone.Obj)).Error("Unexpected object type in tombstone")
+					return
+				}
+			}
 			w.logger.WithFields(logrus.Fields{
 				"pvc":       pvc.Name,
 				"namespace": pvc.Namespace,
@@ -199,11 +231,27 @@ func (w *EventWatcher) Setup(factory informers.SharedInformerFactory, handler ev
 
 	_, err := w.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			event := obj.(*corev1.Event)
+			event, ok := obj.(*corev1.Event)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", obj)).Error("Unexpected object type in AddFunc")
+					return
+				}
+				event, ok = tombstone.Obj.(*corev1.Event)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", tombstone.Obj)).Error("Unexpected object type in tombstone")
+					return
+				}
+			}
 			w.processEvent(event, handler)
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
-			event := newObj.(*corev1.Event)
+			event, ok := newObj.(*corev1.Event)
+			if !ok {
+				w.logger.WithField("object", fmt.Sprintf("%T", newObj)).Error("Unexpected new object type in UpdateFunc")
+				return
+			}
 			w.processEvent(event, handler)
 		},
 		DeleteFunc: func(obj interface{}) {

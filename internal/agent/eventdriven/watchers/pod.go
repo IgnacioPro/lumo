@@ -37,16 +37,48 @@ func (w *PodWatcher) Setup(factory informers.SharedInformerFactory, handler even
 
 	_, err := w.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			pod := obj.(*corev1.Pod)
+			pod, ok := obj.(*corev1.Pod)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", obj)).Error("Unexpected object type in AddFunc")
+					return
+				}
+				pod, ok = tombstone.Obj.(*corev1.Pod)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", tombstone.Obj)).Error("Unexpected object type in tombstone")
+					return
+				}
+			}
 			w.handlePodEvent(pod, nil, handler)
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
-			oldPod := oldObj.(*corev1.Pod)
-			newPod := newObj.(*corev1.Pod)
+			oldPod, ok := oldObj.(*corev1.Pod)
+			if !ok {
+				w.logger.WithField("object", fmt.Sprintf("%T", oldObj)).Error("Unexpected old object type in UpdateFunc")
+				return
+			}
+			newPod, ok := newObj.(*corev1.Pod)
+			if !ok {
+				w.logger.WithField("object", fmt.Sprintf("%T", newObj)).Error("Unexpected new object type in UpdateFunc")
+				return
+			}
 			w.handlePodEvent(newPod, oldPod, handler)
 		},
 		DeleteFunc: func(obj interface{}) {
-			pod := obj.(*corev1.Pod)
+			pod, ok := obj.(*corev1.Pod)
+			if !ok {
+				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", obj)).Error("Unexpected object type in DeleteFunc")
+					return
+				}
+				pod, ok = tombstone.Obj.(*corev1.Pod)
+				if !ok {
+					w.logger.WithField("object", fmt.Sprintf("%T", tombstone.Obj)).Error("Unexpected object type in tombstone")
+					return
+				}
+			}
 			w.logger.WithFields(logrus.Fields{
 				"pod":       pod.Name,
 				"namespace": pod.Namespace,
