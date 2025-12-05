@@ -217,57 +217,186 @@ func (s *SlackNotifier) sendWithBotToken(ctx context.Context, notification *Noti
 	return nil
 }
 
-// sendPostmortemThread sends the postmortem as threaded replies, splitting into multiple messages if needed
+// sendPostmortemThread sends the postmortem as threaded replies with a friendly, structured format
 func (s *SlackNotifier) sendPostmortemThread(ctx context.Context, threadTS string, postmortem string) error {
 	// Slack has a 3000 character limit per block text, but we use a safer limit
-	const maxChunkSize = 2800
-
-	// Split postmortem into chunks by sections (prefer splitting at ## headers)
-	chunks := s.splitPostmortemIntoChunks(postmortem, maxChunkSize)
+	const maxChunkSize = 2500
 
 	s.log.WithFields(logrus.Fields{
 		"thread_ts":   threadTS,
 		"total_chars": len(postmortem),
-		"num_chunks":  len(chunks),
 	}).Debug("Sending postmortem as threaded replies")
 
-	for i, chunk := range chunks {
-		var headerText string
-		if i == 0 {
-			headerText = "📋 Incident Postmortem"
-		} else {
-			headerText = fmt.Sprintf("📋 Postmortem (continued %d/%d)", i+1, len(chunks))
-		}
+	// Parse postmortem into sections for a structured layout
+	sections := s.parsePostmortemSections(postmortem)
 
-		threadMsg := &slackMessage{
-			Channel:  s.config.SlackChannel,
-			ThreadTS: threadTS,
-			Text:     headerText,
-			Blocks: []map[string]interface{}{
-				{
-					"type": "header",
-					"text": map[string]interface{}{
-						"type":  "plain_text",
-						"text":  headerText,
-						"emoji": true,
-					},
-				},
-				{
-					"type": "section",
-					"text": map[string]interface{}{
-						"type": "mrkdwn",
-						"text": chunk,
-					},
-				},
-			},
-		}
+	// Send first message with header and summary
+	blocks := []map[string]interface{}{
+		slackBlockHeader("📋 Incident Postmortem"),
+		slackBlockSection("Here's a summary of what happened and how we resolved it."),
+		slackBlockDivider(),
+	}
 
-		if _, err := s.postMessage(ctx, threadMsg); err != nil {
-			return fmt.Errorf("failed to send postmortem chunk %d: %w", i+1, err)
+	// Add summary section if available
+	if summary, ok := sections["summary"]; ok && summary != "" {
+		blocks = append(blocks, slackBlockSection(fmt.Sprintf("*📝 Summary*\n%s", truncateText(summary, 800))))
+	}
+
+	// Add root cause section if available
+	if rootCause, ok := sections["root_cause"]; ok && rootCause != "" {
+		blocks = append(blocks, slackBlockDivider())
+		blocks = append(blocks, slackBlockSection(fmt.Sprintf("*🔍 Root Cause*\n%s", truncateText(rootCause, 800))))
+	}
+
+	// Add impact section if available
+	if impact, ok := sections["impact"]; ok && impact != "" {
+		blocks = append(blocks, slackBlockDivider())
+		blocks = append(blocks, slackBlockSection(fmt.Sprintf("*💥 Impact*\n%s", truncateText(impact, 600))))
+	}
+
+	// Add resolution section if available
+	if resolution, ok := sections["resolution"]; ok && resolution != "" {
+		blocks = append(blocks, slackBlockDivider())
+		blocks = append(blocks, slackBlockSection(fmt.Sprintf("*✅ Resolution*\n%s", truncateText(resolution, 800))))
+	}
+
+	// Add lessons learned if available
+	if lessons, ok := sections["lessons"]; ok && lessons != "" {
+		blocks = append(blocks, slackBlockDivider())
+		blocks = append(blocks, slackBlockSection(fmt.Sprintf("*💡 Lessons Learned*\n%s", truncateText(lessons, 600))))
+	}
+
+	// Add footer
+	blocks = append(blocks, slackBlockContext([]map[string]interface{}{
+		slackBlockMrkdwn(":zap: *Lumo* | Generated postmortem • Review and share with your team"),
+	}))
+
+	// Send the first structured message
+	threadMsg := &slackMessage{
+		Channel:  s.config.SlackChannel,
+		ThreadTS: threadTS,
+		Text:     "📋 Incident Postmortem",
+		Blocks:   blocks,
+	}
+
+	if _, err := s.postMessage(ctx, threadMsg); err != nil {
+		return fmt.Errorf("failed to send postmortem summary: %w", err)
+	}
+
+	// If there's remaining content (timeline, detailed analysis, etc.), send as additional chunks
+	if remaining, ok := sections["remaining"]; ok && remaining != "" {
+		chunks := s.splitPostmortemIntoChunks(remaining, maxChunkSize)
+		for i, chunk := range chunks {
+			chunkBlocks := []map[string]interface{}{
+				slackBlockHeader(fmt.Sprintf("📋 Postmortem Details (%d/%d)", i+1, len(chunks))),
+				slackBlockSection(chunk),
+			}
+
+			detailMsg := &slackMessage{
+				Channel:  s.config.SlackChannel,
+				ThreadTS: threadTS,
+				Text:     fmt.Sprintf("Postmortem Details (%d/%d)", i+1, len(chunks)),
+				Blocks:   chunkBlocks,
+			}
+
+			if _, err := s.postMessage(ctx, detailMsg); err != nil {
+				return fmt.Errorf("failed to send postmortem chunk %d: %w", i+1, err)
+			}
 		}
 	}
 
 	return nil
+}
+
+// parsePostmortemSections parses a postmortem string into structured sections
+func (s *SlackNotifier) parsePostmortemSections(postmortem string) map[string]string {
+	sections := make(map[string]string)
+
+	// Common section headers to look for (case-insensitive)
+	sectionHeaders := map[string][]string{
+		"summary":    {"## Summary", "## Overview", "# Summary", "# Overview", "**Summary**", "**Overview**"},
+		"root_cause": {"## Root Cause", "## Cause", "# Root Cause", "**Root Cause**", "## What Happened"},
+		"impact":     {"## Impact", "# Impact", "**Impact**", "## Affected"},
+		"resolution": {"## Resolution", "## Fix", "# Resolution", "**Resolution**", "## How We Fixed It", "## Remediation"},
+		"lessons":    {"## Lessons", "## Lessons Learned", "# Lessons", "**Lessons Learned**", "## Action Items", "## Follow-up"},
+		"timeline":   {"## Timeline", "# Timeline", "**Timeline**", "## Events"},
+	}
+
+	lines := strings.Split(postmortem, "\n")
+	currentSection := ""
+	var currentContent strings.Builder
+	var remaining strings.Builder
+
+	for _, line := range lines {
+		trimmedLine := strings.TrimSpace(line)
+		foundSection := ""
+
+		// Check if this line starts a new section
+		for sectionKey, headers := range sectionHeaders {
+			for _, header := range headers {
+				if strings.HasPrefix(trimmedLine, header) {
+					foundSection = sectionKey
+					break
+				}
+			}
+			if foundSection != "" {
+				break
+			}
+		}
+
+		if foundSection != "" {
+			// Save the previous section's content
+			if currentSection != "" && currentContent.Len() > 0 {
+				content := strings.TrimSpace(currentContent.String())
+				if currentSection == "timeline" {
+					remaining.WriteString("## Timeline\n")
+					remaining.WriteString(content)
+					remaining.WriteString("\n\n")
+				} else {
+					sections[currentSection] = content
+				}
+			}
+			currentSection = foundSection
+			currentContent.Reset()
+		} else if currentSection != "" {
+			currentContent.WriteString(line)
+			currentContent.WriteString("\n")
+		} else {
+			// Content before any section header goes to summary
+			if trimmedLine != "" {
+				remaining.WriteString(line)
+				remaining.WriteString("\n")
+			}
+		}
+	}
+
+	// Save the last section
+	if currentSection != "" && currentContent.Len() > 0 {
+		content := strings.TrimSpace(currentContent.String())
+		if currentSection == "timeline" {
+			remaining.WriteString("## Timeline\n")
+			remaining.WriteString(content)
+		} else {
+			sections[currentSection] = content
+		}
+	}
+
+	// Store remaining content for additional messages
+	remainingStr := strings.TrimSpace(remaining.String())
+	if remainingStr != "" {
+		sections["remaining"] = remainingStr
+	}
+
+	// If no sections were found, treat the whole thing as a summary
+	if len(sections) == 0 || (len(sections) == 1 && sections["remaining"] != "") {
+		sections["summary"] = truncateText(postmortem, 1500)
+		delete(sections, "remaining")
+		if len(postmortem) > 1500 {
+			sections["remaining"] = postmortem[1500:]
+		}
+	}
+
+	return sections
 }
 
 // splitPostmortemIntoChunks splits the postmortem into chunks, preferring to split at section boundaries
