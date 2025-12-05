@@ -468,6 +468,7 @@ func (s *SlackNotifier) buildMessage(notification *Notification) *slackMessage {
 }
 
 // buildBlocks creates Block Kit blocks for rich Slack message formatting.
+// The main card is kept concise; full AI analysis goes to thread (bot mode) or is truncated (webhook).
 func (s *SlackNotifier) buildBlocks(notification *Notification) []map[string]interface{} {
 	blocks := []map[string]interface{}{}
 
@@ -528,33 +529,37 @@ func (s *SlackNotifier) buildBlocks(notification *Notification) []map[string]int
 		})
 	}
 
-	// Add fields from notification.Fields
+	// Add fields from notification.Fields (truncate values for conciseness)
 	if len(notification.Fields) > 0 {
 		fields := []map[string]interface{}{}
 		for key, value := range notification.Fields {
+			// Skip internal fields (prefixed with _)
+			if strings.HasPrefix(key, "_") {
+				continue
+			}
+			truncatedValue := truncateText(value, maxFieldValueLength)
 			fields = append(fields, map[string]interface{}{
 				"type": "mrkdwn",
-				"text": fmt.Sprintf("*%s*\n%s", key, value),
+				"text": fmt.Sprintf("*%s*\n%s", key, truncatedValue),
 			})
 		}
 
-		blocks = append(blocks, map[string]interface{}{
-			"type":   "section",
-			"fields": fields,
-		})
+		if len(fields) > 0 {
+			blocks = append(blocks, map[string]interface{}{
+				"type":   "section",
+				"fields": fields,
+			})
+		}
 	}
 
-	// AI Analysis section (if present in message)
-	if sections["ai_analysis"] != "" {
+	// AI Analysis section: show only snippet in main card, full analysis goes to thread
+	if sections["ai_snippet"] != "" {
 		blocks = append(blocks, map[string]interface{}{
 			"type": "divider",
 		})
 
-		// Build AI analysis text with truncation notice
-		aiText := fmt.Sprintf("*:robot_face: AI-Powered Analysis*\n%s", sections["ai_analysis"])
-		if sections["ai_truncated"] == "true" {
-			aiText += "\n\n_Analysis truncated for display. Click below to view full analysis._"
-		}
+		// Build AI analysis snippet with CTA to view full analysis
+		aiText := fmt.Sprintf("*:robot_face: AI Analysis Preview*\n%s", sections["ai_snippet"])
 
 		blocks = append(blocks, map[string]interface{}{
 			"type": "section",
@@ -599,28 +604,88 @@ func (s *SlackNotifier) buildBlocks(notification *Notification) []map[string]int
 	return blocks
 }
 
+// Truncation constants for concise Slack messages
+const (
+	maxDetailsLength    = 450 // Main details truncation limit
+	maxFieldValueLength = 140 // Field value truncation limit
+	maxAISnippetLength  = 300 // AI analysis snippet for main card
+	maxAISnippetLines   = 3   // Max bullet lines in AI snippet
+)
+
+// truncateText truncates text to maxLength, appending ellipsis if truncated.
+func truncateText(text string, maxLength int) string {
+	text = strings.TrimSpace(text)
+	if len(text) <= maxLength {
+		return text
+	}
+	// Find a good break point (space or newline) near maxLength
+	breakPoint := maxLength
+	for i := maxLength - 1; i > maxLength-50 && i > 0; i-- {
+		if text[i] == ' ' || text[i] == '\n' {
+			breakPoint = i
+			break
+		}
+	}
+	return strings.TrimSpace(text[:breakPoint]) + "…"
+}
+
+// extractAISnippet extracts a short snippet from AI analysis for the main card.
+// Returns the first 3 bullet-ish lines or up to maxAISnippetLength chars.
+func extractAISnippet(aiAnalysis string) string {
+	lines := strings.Split(aiAnalysis, "\n")
+	var snippetLines []string
+	var snippetLen int
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		// Check if adding this line would exceed our limits
+		if len(snippetLines) >= maxAISnippetLines || snippetLen+len(trimmed) > maxAISnippetLength {
+			break
+		}
+		snippetLines = append(snippetLines, trimmed)
+		snippetLen += len(trimmed) + 1 // +1 for newline
+	}
+
+	if len(snippetLines) == 0 {
+		return truncateText(aiAnalysis, maxAISnippetLength)
+	}
+
+	snippet := strings.Join(snippetLines, "\n")
+	// Add continuation indicator if there's more content
+	if len(snippet) < len(strings.TrimSpace(aiAnalysis)) {
+		snippet += "\n_…more in thread/analysis page_"
+	}
+	return snippet
+}
+
 // parseMessageSections splits the notification message into structured sections.
+// Returns:
+//   - "details": truncated details for main card
+//   - "ai_analysis": full AI analysis for thread
+//   - "ai_snippet": short AI snippet for main card
+//   - "ai_truncated": "true" if AI was present
 func (s *SlackNotifier) parseMessageSections(message string) map[string]string {
 	sections := make(map[string]string)
 
 	// Look for AI Analysis section marker
 	if idx := strings.Index(message, "*AI Analysis:*"); idx != -1 {
-		sections["details"] = strings.TrimSpace(message[:idx])
+		details := strings.TrimSpace(message[:idx])
+		sections["details"] = truncateText(details, maxDetailsLength)
+
 		aiAnalysis := strings.TrimSpace(message[idx+len("*AI Analysis:*"):])
 		aiAnalysis = strings.TrimPrefix(aiAnalysis, "\n")
 
-		// Truncate AI analysis if it's too long for Slack (max 3000 chars per block)
-		// We use 1500 chars to be safe and leave room for formatting
-		const maxAILength = 1500
-		if len(aiAnalysis) > maxAILength {
-			sections["ai_analysis"] = aiAnalysis[:maxAILength] + "..."
-			sections["ai_truncated"] = "true"
-		} else {
-			sections["ai_analysis"] = aiAnalysis
-			sections["ai_truncated"] = "false"
-		}
+		// Store full AI analysis for thread
+		sections["ai_analysis"] = aiAnalysis
+		// Extract snippet for main card
+		sections["ai_snippet"] = extractAISnippet(aiAnalysis)
+		sections["ai_truncated"] = "true"
 	} else {
-		sections["details"] = message
+		sections["details"] = truncateText(message, maxDetailsLength)
+		sections["ai_truncated"] = "false"
 	}
 
 	return sections
