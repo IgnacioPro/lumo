@@ -177,7 +177,8 @@ func (n *IncidentNotifierImpl) buildCreatedNotification(incident *Incident) noti
 	// Build fields
 	fields := make(map[string]string)
 	fields["Incident ID"] = incident.ID.String()
-	fields["event_id"] = incident.ID.String() // Enable dynamic updates in Slack
+	fields["incident_id"] = incident.ID.String() // Key for Slack incident notification detection
+	fields["event_id"] = incident.ID.String()    // Enable dynamic updates in Slack
 	fields["Status"] = "🔄 Analyzing"
 	if n.apiBaseURL != "" {
 		fields["_incident_url"] = fmt.Sprintf("%s/api/v1/incidents/%s", n.apiBaseURL, incident.ID.String())
@@ -227,6 +228,7 @@ func (n *IncidentNotifierImpl) buildUpdateNotification(incident *Incident, entry
 
 	fields := make(map[string]string)
 	fields["Incident ID"] = incident.ID.String()
+	fields["incident_id"] = incident.ID.String() // Key for Slack incident notification detection
 	fields["event_id"] = incident.ID.String()
 	fields["Update Type"] = typeLabel
 	if n.apiBaseURL != "" {
@@ -281,6 +283,7 @@ func (n *IncidentNotifierImpl) buildResolvedNotification(incident *Incident) not
 
 	fields := make(map[string]string)
 	fields["Incident ID"] = incident.ID.String()
+	fields["incident_id"] = incident.ID.String() // Key for Slack incident notification detection
 	fields["event_id"] = incident.ID.String()
 	fields["Status"] = "✅ Resolved"
 	fields["Duration"] = formatDuration(incident.Duration())
@@ -339,6 +342,7 @@ func (n *IncidentNotifierImpl) buildProgressNotification(incident *Incident) not
 
 	fields := make(map[string]string)
 	fields["Incident ID"] = incident.ID.String()
+	fields["incident_id"] = incident.ID.String() // Key for Slack incident notification detection
 	fields["event_id"] = incident.ID.String()
 	fields["Status"] = "🔄 Analyzing"
 	if n.apiBaseURL != "" {
@@ -458,6 +462,7 @@ func (n *IncidentNotifierImpl) buildNotification(incident *Incident) notificatio
 	// Build fields for structured display
 	fields := make(map[string]string)
 	fields["Incident ID"] = incident.ID.String()
+	fields["incident_id"] = incident.ID.String() // Key for Slack incident notification detection
 	fields["event_id"] = incident.ID.String()
 	fields["Category"] = string(incident.Category)
 	fields["Events"] = fmt.Sprintf("%d", len(incident.Events))
