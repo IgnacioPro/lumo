@@ -10,22 +10,12 @@ Thank you for your interest in contributing to Lumo! This guide will help you ge
 - [Pull Request Process](#pull-request-process)
 - [Code Style](#code-style)
 - [Testing](#testing)
+- [Publish Readiness](#publish-readiness)
 - [Documentation](#documentation)
 
 ## Code of Conduct
 
-We are committed to providing a welcoming and inclusive environment. Please be respectful and constructive in all interactions.
-
-**Expected behavior:**
-- Be respectful and inclusive
-- Provide constructive feedback
-- Focus on what's best for the community
-- Show empathy towards others
-
-**Unacceptable behavior:**
-- Harassment, discrimination, or personal attacks
-- Trolling or inflammatory comments
-- Publishing others' private information
+This project follows `CODE_OF_CONDUCT.md`. By participating, you agree to uphold that policy.
 
 ## Getting Started
 
@@ -100,6 +90,16 @@ This runs:
 - `govulncheck` - Security vulnerability scanning
 - `go test -race` - Tests with race detection
 - `go build` - Build verification
+
+## Publish Readiness
+
+Before creating a release PR, run:
+
+```bash
+./scripts/publish-audit.sh
+```
+
+This verifies required community files are present, checks for tracked local artifacts, and runs a gitleaks scan when available.
 
 ### 4. Commit Your Changes
 

@@ -52,3 +52,18 @@ build/
 tmp/
 temp/
 *.tmp
+
+# Local tooling and assistant artifacts
+.cache/
+.claude/
+.gemini-clipboard/
+.qwen/
+.ruby-lsp/
+
+# Local web build artifacts (website has its own .gitignore too)
+website/.next/
+website/node_modules/
+website/tsconfig.tsbuildinfo
+
+# Scratch manifests used during local testing (root only)
+/crashing-pod-*.yaml
