@@ -217,57 +217,186 @@ func (s *SlackNotifier) sendWithBotToken(ctx context.Context, notification *Noti
 	return nil
 }
 
-// sendPostmortemThread sends the postmortem as threaded replies, splitting into multiple messages if needed
+// sendPostmortemThread sends the postmortem as threaded replies with a friendly, structured format
 func (s *SlackNotifier) sendPostmortemThread(ctx context.Context, threadTS string, postmortem string) error {
 	// Slack has a 3000 character limit per block text, but we use a safer limit
-	const maxChunkSize = 2800
-
-	// Split postmortem into chunks by sections (prefer splitting at ## headers)
-	chunks := s.splitPostmortemIntoChunks(postmortem, maxChunkSize)
+	const maxChunkSize = 2500
 
 	s.log.WithFields(logrus.Fields{
 		"thread_ts":   threadTS,
 		"total_chars": len(postmortem),
-		"num_chunks":  len(chunks),
 	}).Debug("Sending postmortem as threaded replies")
 
-	for i, chunk := range chunks {
-		var headerText string
-		if i == 0 {
-			headerText = "📋 Incident Postmortem"
-		} else {
-			headerText = fmt.Sprintf("📋 Postmortem (continued %d/%d)", i+1, len(chunks))
-		}
+	// Parse postmortem into sections for a structured layout
+	sections := s.parsePostmortemSections(postmortem)
 
-		threadMsg := &slackMessage{
-			Channel:  s.config.SlackChannel,
-			ThreadTS: threadTS,
-			Text:     headerText,
-			Blocks: []map[string]interface{}{
-				{
-					"type": "header",
-					"text": map[string]interface{}{
-						"type":  "plain_text",
-						"text":  headerText,
-						"emoji": true,
-					},
-				},
-				{
-					"type": "section",
-					"text": map[string]interface{}{
-						"type": "mrkdwn",
-						"text": chunk,
-					},
-				},
-			},
-		}
+	// Send first message with header and summary
+	blocks := []map[string]interface{}{
+		slackBlockHeader("📋 Incident Postmortem"),
+		slackBlockSection("Here's a summary of what happened and how we resolved it."),
+		slackBlockDivider(),
+	}
 
-		if _, err := s.postMessage(ctx, threadMsg); err != nil {
-			return fmt.Errorf("failed to send postmortem chunk %d: %w", i+1, err)
+	// Add summary section if available
+	if summary, ok := sections["summary"]; ok && summary != "" {
+		blocks = append(blocks, slackBlockSection(fmt.Sprintf("*📝 Summary*\n%s", truncateText(summary, 800))))
+	}
+
+	// Add root cause section if available
+	if rootCause, ok := sections["root_cause"]; ok && rootCause != "" {
+		blocks = append(blocks, slackBlockDivider())
+		blocks = append(blocks, slackBlockSection(fmt.Sprintf("*🔍 Root Cause*\n%s", truncateText(rootCause, 800))))
+	}
+
+	// Add impact section if available
+	if impact, ok := sections["impact"]; ok && impact != "" {
+		blocks = append(blocks, slackBlockDivider())
+		blocks = append(blocks, slackBlockSection(fmt.Sprintf("*💥 Impact*\n%s", truncateText(impact, 600))))
+	}
+
+	// Add resolution section if available
+	if resolution, ok := sections["resolution"]; ok && resolution != "" {
+		blocks = append(blocks, slackBlockDivider())
+		blocks = append(blocks, slackBlockSection(fmt.Sprintf("*✅ Resolution*\n%s", truncateText(resolution, 800))))
+	}
+
+	// Add lessons learned if available
+	if lessons, ok := sections["lessons"]; ok && lessons != "" {
+		blocks = append(blocks, slackBlockDivider())
+		blocks = append(blocks, slackBlockSection(fmt.Sprintf("*💡 Lessons Learned*\n%s", truncateText(lessons, 600))))
+	}
+
+	// Add footer
+	blocks = append(blocks, slackBlockContext([]map[string]interface{}{
+		slackBlockMrkdwn(":zap: *Lumo* | Generated postmortem • Review and share with your team"),
+	}))
+
+	// Send the first structured message
+	threadMsg := &slackMessage{
+		Channel:  s.config.SlackChannel,
+		ThreadTS: threadTS,
+		Text:     "📋 Incident Postmortem",
+		Blocks:   blocks,
+	}
+
+	if _, err := s.postMessage(ctx, threadMsg); err != nil {
+		return fmt.Errorf("failed to send postmortem summary: %w", err)
+	}
+
+	// If there's remaining content (timeline, detailed analysis, etc.), send as additional chunks
+	if remaining, ok := sections["remaining"]; ok && remaining != "" {
+		chunks := s.splitPostmortemIntoChunks(remaining, maxChunkSize)
+		for i, chunk := range chunks {
+			chunkBlocks := []map[string]interface{}{
+				slackBlockHeader(fmt.Sprintf("📋 Postmortem Details (%d/%d)", i+1, len(chunks))),
+				slackBlockSection(chunk),
+			}
+
+			detailMsg := &slackMessage{
+				Channel:  s.config.SlackChannel,
+				ThreadTS: threadTS,
+				Text:     fmt.Sprintf("Postmortem Details (%d/%d)", i+1, len(chunks)),
+				Blocks:   chunkBlocks,
+			}
+
+			if _, err := s.postMessage(ctx, detailMsg); err != nil {
+				return fmt.Errorf("failed to send postmortem chunk %d: %w", i+1, err)
+			}
 		}
 	}
 
 	return nil
+}
+
+// parsePostmortemSections parses a postmortem string into structured sections
+func (s *SlackNotifier) parsePostmortemSections(postmortem string) map[string]string {
+	sections := make(map[string]string)
+
+	// Common section headers to look for (case-insensitive)
+	sectionHeaders := map[string][]string{
+		"summary":    {"## Summary", "## Overview", "# Summary", "# Overview", "**Summary**", "**Overview**"},
+		"root_cause": {"## Root Cause", "## Cause", "# Root Cause", "**Root Cause**", "## What Happened"},
+		"impact":     {"## Impact", "# Impact", "**Impact**", "## Affected"},
+		"resolution": {"## Resolution", "## Fix", "# Resolution", "**Resolution**", "## How We Fixed It", "## Remediation"},
+		"lessons":    {"## Lessons", "## Lessons Learned", "# Lessons", "**Lessons Learned**", "## Action Items", "## Follow-up"},
+		"timeline":   {"## Timeline", "# Timeline", "**Timeline**", "## Events"},
+	}
+
+	lines := strings.Split(postmortem, "\n")
+	currentSection := ""
+	var currentContent strings.Builder
+	var remaining strings.Builder
+
+	for _, line := range lines {
+		trimmedLine := strings.TrimSpace(line)
+		foundSection := ""
+
+		// Check if this line starts a new section
+		for sectionKey, headers := range sectionHeaders {
+			for _, header := range headers {
+				if strings.HasPrefix(trimmedLine, header) {
+					foundSection = sectionKey
+					break
+				}
+			}
+			if foundSection != "" {
+				break
+			}
+		}
+
+		if foundSection != "" {
+			// Save the previous section's content
+			if currentSection != "" && currentContent.Len() > 0 {
+				content := strings.TrimSpace(currentContent.String())
+				if currentSection == "timeline" {
+					remaining.WriteString("## Timeline\n")
+					remaining.WriteString(content)
+					remaining.WriteString("\n\n")
+				} else {
+					sections[currentSection] = content
+				}
+			}
+			currentSection = foundSection
+			currentContent.Reset()
+		} else if currentSection != "" {
+			currentContent.WriteString(line)
+			currentContent.WriteString("\n")
+		} else {
+			// Content before any section header goes to summary
+			if trimmedLine != "" {
+				remaining.WriteString(line)
+				remaining.WriteString("\n")
+			}
+		}
+	}
+
+	// Save the last section
+	if currentSection != "" && currentContent.Len() > 0 {
+		content := strings.TrimSpace(currentContent.String())
+		if currentSection == "timeline" {
+			remaining.WriteString("## Timeline\n")
+			remaining.WriteString(content)
+		} else {
+			sections[currentSection] = content
+		}
+	}
+
+	// Store remaining content for additional messages
+	remainingStr := strings.TrimSpace(remaining.String())
+	if remainingStr != "" {
+		sections["remaining"] = remainingStr
+	}
+
+	// If no sections were found, treat the whole thing as a summary
+	if len(sections) == 0 || (len(sections) == 1 && sections["remaining"] != "") {
+		sections["summary"] = truncateText(postmortem, 1500)
+		delete(sections, "remaining")
+		if len(postmortem) > 1500 {
+			sections["remaining"] = postmortem[1500:]
+		}
+	}
+
+	return sections
 }
 
 // splitPostmortemIntoChunks splits the postmortem into chunks, preferring to split at section boundaries
@@ -470,6 +599,11 @@ func (s *SlackNotifier) buildMessage(notification *Notification) *slackMessage {
 // buildBlocks creates Block Kit blocks for rich Slack message formatting.
 // The main card is kept concise; full AI analysis goes to thread (bot mode) or is truncated (webhook).
 func (s *SlackNotifier) buildBlocks(notification *Notification) []map[string]interface{} {
+	// Check if this is an incident notification and use the new card layout
+	if s.isIncidentNotification(notification) {
+		return s.buildIncidentBlocks(notification)
+	}
+
 	blocks := []map[string]interface{}{}
 
 	// Header block with severity emoji and title
@@ -706,4 +840,308 @@ func (s *SlackNotifier) getDashboardURL(notification *Notification) string {
 	// - Lumo web UI (when implemented)
 	// - Cloud provider console
 	return "#"
+}
+
+// ============================================================================
+// Block Kit Helpers for clean payload construction
+// ============================================================================
+
+// slackBlockMrkdwn creates a mrkdwn text object
+func slackBlockMrkdwn(text string) map[string]interface{} {
+	return map[string]interface{}{
+		"type": "mrkdwn",
+		"text": text,
+	}
+}
+
+// slackBlockPlainText creates a plain_text object
+func slackBlockPlainText(text string, emoji bool) map[string]interface{} {
+	return map[string]interface{}{
+		"type":  "plain_text",
+		"text":  text,
+		"emoji": emoji,
+	}
+}
+
+// slackBlockButton creates a button element for actions
+func slackBlockButton(text, actionID, value string, style string) map[string]interface{} {
+	btn := map[string]interface{}{
+		"type":      "button",
+		"text":      slackBlockPlainText(text, true),
+		"action_id": actionID,
+		"value":     value,
+	}
+	if style != "" {
+		btn["style"] = style
+	}
+	return btn
+}
+
+// slackBlockURLButton creates a button element with a URL
+func slackBlockURLButton(text, url, style string) map[string]interface{} {
+	btn := map[string]interface{}{
+		"type": "button",
+		"text": slackBlockPlainText(text, true),
+		"url":  url,
+	}
+	if style != "" {
+		btn["style"] = style
+	}
+	return btn
+}
+
+// slackBlockOverflow creates an overflow menu with options
+func slackBlockOverflow(actionID string, options []map[string]interface{}) map[string]interface{} {
+	return map[string]interface{}{
+		"type":      "overflow",
+		"action_id": actionID,
+		"options":   options,
+	}
+}
+
+// slackBlockOverflowOption creates an option for overflow menu
+func slackBlockOverflowOption(text, value string) map[string]interface{} {
+	return map[string]interface{}{
+		"text":  slackBlockPlainText(text, true),
+		"value": value,
+	}
+}
+
+// slackBlockHeader creates a header block
+func slackBlockHeader(text string) map[string]interface{} {
+	return map[string]interface{}{
+		"type": "header",
+		"text": slackBlockPlainText(text, true),
+	}
+}
+
+// slackBlockSection creates a section block with text
+func slackBlockSection(text string) map[string]interface{} {
+	return map[string]interface{}{
+		"type": "section",
+		"text": slackBlockMrkdwn(text),
+	}
+}
+
+// slackBlockSectionWithFields creates a section with field columns
+func slackBlockSectionWithFields(fields []map[string]interface{}) map[string]interface{} {
+	return map[string]interface{}{
+		"type":   "section",
+		"fields": fields,
+	}
+}
+
+// slackBlockContext creates a context block with elements
+func slackBlockContext(elements []map[string]interface{}) map[string]interface{} {
+	return map[string]interface{}{
+		"type":     "context",
+		"elements": elements,
+	}
+}
+
+// slackBlockDivider creates a divider block
+func slackBlockDivider() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "divider",
+	}
+}
+
+// slackBlockActions creates an actions block with elements
+func slackBlockActions(elements []map[string]interface{}) map[string]interface{} {
+	return map[string]interface{}{
+		"type":     "actions",
+		"elements": elements,
+	}
+}
+
+// ============================================================================
+// Incident Notification Helpers
+// ============================================================================
+
+// isIncidentNotification checks if this is an incident notification that should use
+// the new card layout with action buttons
+func (s *SlackNotifier) isIncidentNotification(notification *Notification) bool {
+	// Check for incident_id field which is the primary indicator
+	if _, ok := notification.Fields["incident_id"]; ok {
+		return true
+	}
+	// Also check for fix_hash as a secondary indicator
+	if _, ok := notification.Fields["fix_hash"]; ok {
+		return true
+	}
+	return false
+}
+
+// getFieldSafe retrieves a field value safely, returning empty string if not present
+func getFieldSafe(fields map[string]string, key string) string {
+	if fields == nil {
+		return ""
+	}
+	return fields[key]
+}
+
+// buildIncidentBlocks creates Block Kit blocks for incident notifications with
+// action buttons for human-in-the-loop controls
+func (s *SlackNotifier) buildIncidentBlocks(notification *Notification) []map[string]interface{} {
+	blocks := []map[string]interface{}{}
+
+	// Extract incident fields
+	incidentID := getFieldSafe(notification.Fields, "incident_id")
+	fixHash := getFieldSafe(notification.Fields, "fix_hash")
+	hypothesis := getFieldSafe(notification.Fields, "hypothesis")
+	confidence := getFieldSafe(notification.Fields, "confidence")
+	recentChange := getFieldSafe(notification.Fields, "recent_change")
+	signals := getFieldSafe(notification.Fields, "signals")
+	proposedFix := getFieldSafe(notification.Fields, "proposed_fix")
+	rollback := getFieldSafe(notification.Fields, "rollback")
+	impact := getFieldSafe(notification.Fields, "impact")
+	runbookURL := getFieldSafe(notification.Fields, "runbook_url")
+	auditURL := getFieldSafe(notification.Fields, "audit_url")
+	timeWindow := getFieldSafe(notification.Fields, "time_window")
+
+	// 1. Header block with severity emoji and title
+	blocks = append(blocks, slackBlockHeader(fmt.Sprintf("%s %s", notification.Level.Icon(), notification.Title)))
+
+	// 2. Summary section - concise and personable
+	summaryText := notification.Message
+	if len(summaryText) > maxDetailsLength {
+		summaryText = truncateText(summaryText, maxDetailsLength)
+	}
+	blocks = append(blocks, slackBlockSection(summaryText))
+
+	// 3. Context block (severity, time window, incident ID)
+	contextElements := []map[string]interface{}{
+		slackBlockMrkdwn(fmt.Sprintf("*Severity:* %s `%s`", notification.Level.Icon(), notification.Level)),
+	}
+	if timeWindow != "" {
+		contextElements = append(contextElements, slackBlockMrkdwn(fmt.Sprintf("*Window:* %s", timeWindow)))
+	} else {
+		contextElements = append(contextElements, slackBlockMrkdwn(fmt.Sprintf("*Time:* <!date^%d^{date_num} {time_secs}|%s>",
+			notification.Timestamp.Unix(),
+			notification.Timestamp.Format("2006-01-02 15:04:05"))))
+	}
+	if incidentID != "" {
+		contextElements = append(contextElements, slackBlockMrkdwn(fmt.Sprintf("*Incident:* `%s`", truncateText(incidentID, 12))))
+	}
+	blocks = append(blocks, slackBlockContext(contextElements))
+
+	// 4. Impact section (if available)
+	if impact != "" {
+		blocks = append(blocks, slackBlockDivider())
+		blocks = append(blocks, slackBlockSection(fmt.Sprintf("*💥 Impact*\n%s", truncateText(impact, maxFieldValueLength*2))))
+	}
+
+	// 5. Hypothesis with confidence (if available)
+	if hypothesis != "" {
+		blocks = append(blocks, slackBlockDivider())
+		hypothesisText := fmt.Sprintf("*🎯 Hypothesis*\n%s", truncateText(hypothesis, maxFieldValueLength*2))
+		if confidence != "" {
+			hypothesisText += fmt.Sprintf("\n_Confidence: %s_", confidence)
+		}
+		blocks = append(blocks, slackBlockSection(hypothesisText))
+	}
+
+	// 6. Recent change (if available) - important for incident correlation
+	if recentChange != "" {
+		blocks = append(blocks, slackBlockSection(fmt.Sprintf("*🔄 Recent Change*\n%s", truncateText(recentChange, maxFieldValueLength*2))))
+	}
+
+	// 7. Signals section (if available)
+	if signals != "" {
+		blocks = append(blocks, slackBlockSection(fmt.Sprintf("*📊 Signals*\n%s", truncateText(signals, maxFieldValueLength*2))))
+	}
+
+	// 8. Proposed fix with rollback (if available) - the actionable part
+	if proposedFix != "" {
+		blocks = append(blocks, slackBlockDivider())
+		fixText := fmt.Sprintf("*🔧 Proposed Fix (Dry-Run)*\n```%s```", truncateText(proposedFix, 400))
+		if rollback != "" {
+			fixText += fmt.Sprintf("\n*↩️ Rollback:* `%s`", truncateText(rollback, 100))
+		}
+		blocks = append(blocks, slackBlockSection(fixText))
+	}
+
+	// 9. Action buttons section
+	actionValue := fmt.Sprintf("%s|%s", incidentID, fixHash)
+
+	actionElements := []map[string]interface{}{}
+
+	// Approve fix button (primary)
+	if proposedFix != "" {
+		actionElements = append(actionElements, slackBlockButton(
+			"✅ Approve Fix",
+			"lumo_approve_fix",
+			actionValue,
+			"primary",
+		))
+	}
+
+	// More context button (links to runbook or audit)
+	if runbookURL != "" {
+		actionElements = append(actionElements, slackBlockURLButton(
+			"📖 Runbook",
+			runbookURL,
+			"",
+		))
+	} else if auditURL != "" {
+		actionElements = append(actionElements, slackBlockURLButton(
+			"📋 View Details",
+			auditURL,
+			"",
+		))
+	} else if s.apiBaseURL != "" && incidentID != "" {
+		// Default to incident analysis page
+		actionElements = append(actionElements, slackBlockURLButton(
+			"📋 More Context",
+			fmt.Sprintf("%s/api/v1/incidents/%s/analysis", s.apiBaseURL, incidentID),
+			"",
+		))
+	}
+
+	// Snooze overflow menu
+	snoozeOptions := []map[string]interface{}{
+		slackBlockOverflowOption("⏰ Snooze 15m", fmt.Sprintf("snooze_15|%s", actionValue)),
+		slackBlockOverflowOption("⏰ Snooze 30m", fmt.Sprintf("snooze_30|%s", actionValue)),
+		slackBlockOverflowOption("⏰ Snooze 60m", fmt.Sprintf("snooze_60|%s", actionValue)),
+	}
+	actionElements = append(actionElements, slackBlockOverflow("lumo_snooze", snoozeOptions))
+
+	// Decline button
+	actionElements = append(actionElements, slackBlockButton(
+		"❌ Decline",
+		"lumo_decline",
+		actionValue,
+		"danger",
+	))
+
+	if len(actionElements) > 0 {
+		blocks = append(blocks, slackBlockActions(actionElements))
+	}
+
+	// 10. Add visible fields from notification.Fields (skip internal keys)
+	visibleFields := []map[string]interface{}{}
+	// Define the set of known incident fields to skip (they're already shown above)
+	knownIncidentFields := map[string]bool{
+		"incident_id": true, "fix_hash": true, "hypothesis": true, "confidence": true,
+		"recent_change": true, "signals": true, "proposed_fix": true, "rollback": true,
+		"impact": true, "runbook_url": true, "audit_url": true, "time_window": true,
+		"event_id": true,
+	}
+	for key, value := range notification.Fields {
+		// Skip internal fields (prefixed with _) and known incident fields
+		if strings.HasPrefix(key, "_") || knownIncidentFields[key] {
+			continue
+		}
+		visibleFields = append(visibleFields, slackBlockMrkdwn(fmt.Sprintf("*%s*\n%s", key, truncateText(value, maxFieldValueLength))))
+	}
+	if len(visibleFields) > 0 {
+		blocks = append(blocks, slackBlockSectionWithFields(visibleFields))
+	}
+
+	// 11. Footer with branding
+	blocks = append(blocks, slackBlockContext([]map[string]interface{}{
+		slackBlockMrkdwn(":zap: *Lumo* | Intelligent SRE Automation"),
+	}))
+
+	return blocks
 }

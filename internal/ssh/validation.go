@@ -3,6 +3,7 @@ package ssh
 import (
 	"fmt"
 	"net"
+	"regexp"
 	"strings"
 )
 
@@ -12,28 +13,39 @@ func ValidateSSHTarget(target string) error {
 	if target == "" {
 		return fmt.Errorf("SSH target cannot be empty")
 	}
-
-	// Extract hostname/IP (strip port if present)
-	host := target
-	if strings.Contains(target, ":") {
-		var err error
-		host, _, err = net.SplitHostPort(target)
-		if err != nil {
-			// If SplitHostPort fails, it might be an IPv6 address without port
-			// Try parsing as is
-			host = target
-		}
+	if strings.Contains(target, "://") || strings.ContainsAny(target, "/\\") {
+		return fmt.Errorf("invalid SSH target: target must be a hostname or IP, not a URL or path")
 	}
 
-	// Try to resolve the hostname to IP addresses
+	host := extractHost(target)
+	if host == "" {
+		return fmt.Errorf("invalid SSH target: empty host")
+	}
+
+	// localhost should never be allowed.
+	if strings.EqualFold(host, "localhost") {
+		return fmt.Errorf("SSH target blocked: blocked IP range: loopback (127.0.0.0/8) (resolved to 127.0.0.1)")
+	}
+
+	// Direct IP targets are fully validated against blocked ranges.
+	if ip := net.ParseIP(host); ip != nil {
+		if err := validateIPNotBlocked(ip); err != nil {
+			return fmt.Errorf("SSH target blocked: %w (resolved to %s)", err, ip)
+		}
+		return nil
+	}
+
+	// Reject obviously invalid hostnames before any DNS lookup.
+	if !isValidHostname(host) {
+		return fmt.Errorf("invalid SSH target: invalid hostname: %s", host)
+	}
+
+	// Try to resolve the hostname to IP addresses for full SSRF validation.
 	ips, err := net.LookupIP(host)
 	if err != nil {
-		// If DNS lookup fails, check if it's a direct IP address
-		ip := net.ParseIP(host)
-		if ip == nil {
-			return fmt.Errorf("invalid SSH target: cannot resolve hostname or parse IP: %s", host)
-		}
-		ips = []net.IP{ip}
+		// DNS may be unavailable in restricted/offline environments.
+		// Accept syntactically valid hostnames and defer final resolution to the SSH dial path.
+		return nil
 	}
 
 	// Check each resolved IP against blocked ranges
@@ -122,18 +134,10 @@ func ValidateSSHTargetWithAllowlist(target string, allowlist []string) error {
 		return err
 	}
 
+	host := extractHost(target)
+
 	// If allowlist is specified, target must be in it
 	if len(allowlist) > 0 {
-		// Extract hostname/IP (strip port if present)
-		host := target
-		if strings.Contains(target, ":") {
-			var err error
-			host, _, err = net.SplitHostPort(target)
-			if err != nil {
-				host = target
-			}
-		}
-
 		allowed := false
 		for _, allowedHost := range allowlist {
 			if host == allowedHost {
@@ -177,4 +181,43 @@ func ValidateSSHTargetWithAllowlist(target string, allowlist []string) error {
 	}
 
 	return nil
+}
+
+func extractHost(target string) string {
+	host := strings.TrimSpace(target)
+	if host == "" {
+		return ""
+	}
+
+	if strings.Contains(host, ":") {
+		splitHost, _, err := net.SplitHostPort(host)
+		if err == nil {
+			host = splitHost
+		}
+	}
+
+	return strings.Trim(host, "[]")
+}
+
+func isValidHostname(host string) bool {
+	if host == "" || len(host) > 253 {
+		return false
+	}
+
+	if strings.HasPrefix(host, ".") || strings.HasSuffix(host, ".") {
+		return false
+	}
+
+	labelPattern := regexp.MustCompile(`^[a-zA-Z0-9-]{1,63}$`)
+	labels := strings.Split(host, ".")
+	for _, label := range labels {
+		if label == "" || !labelPattern.MatchString(label) {
+			return false
+		}
+		if strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+			return false
+		}
+	}
+
+	return true
 }

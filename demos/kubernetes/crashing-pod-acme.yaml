@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: crashing-pod-acme
+  namespace: tenant-acme-corp
+spec:
+  containers:
+  - name: crash
+    image: busybox
+    command: ["/bin/sh", "-c", "exit 1"]
+  restartPolicy: Always

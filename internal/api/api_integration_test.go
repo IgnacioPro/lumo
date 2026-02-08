@@ -353,7 +353,7 @@ func setupTestRouter(t *testing.T) (*http.ServeMux, string, func()) {
 	mux := http.NewServeMux()
 
 	// Create test API key
-	testAPIKey := "test-api-key-12345"
+	testAPIKey := "test-key-12345"
 
 	cleanup := func() {
 		// Cleanup resources

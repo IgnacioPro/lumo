@@ -489,6 +489,9 @@ git push origin feature/my-feature
 
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Complete contributor guide
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** - Build and test instructions
+- **[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)** - Community standards
+- **[SECURITY.md](SECURITY.md)** - Vulnerability reporting policy
+- **[SUPPORT.md](SUPPORT.md)** - Support channels and guidelines
 - **[CLAUDE.md](CLAUDE.md)** - Architecture reference
 
 ---
@@ -505,12 +508,7 @@ git push origin feature/my-feature
 
 ### Reporting Security Issues
 
-Please report security vulnerabilities to the maintainers privately via GitHub Security Advisories.
-
-### Security Audit
-
-Last audit: 2025-11-16 - All CRITICAL issues resolved
-- See [REPORTS/security-audit-2025-11-15.md](REPORTS/security-audit-2025-11-15.md)
+Please report security vulnerabilities privately according to [SECURITY.md](SECURITY.md) (GitHub Security Advisories).
 
 ---
 
@@ -546,6 +544,7 @@ AI Providers:
 - 📖 **Documentation**: [CLAUDE.md](CLAUDE.md) | [DEVELOPMENT.md](DEVELOPMENT.md)
 - 🐛 **Issues**: [GitHub Issues](https://github.com/IgnacioPro/lumo/issues)
 - 💬 **Discussions**: [GitHub Discussions](https://github.com/IgnacioPro/lumo/discussions)
+- 🛟 **Support Policy**: [SUPPORT.md](SUPPORT.md)
 - ⭐ **Star us** on GitHub if you find Lumo useful!
 
 ---

@@ -1,0 +1,13 @@
+[allowlist]
+description = "Allowlist known-safe examples and test fixtures."
+paths = [
+  '''^CLAUDE\.md$''',
+  '''^TESTING_ENVIRONMENT\.md$''',
+  '''^api/README\.md$''',
+  '''^docs/customer-onboarding\.md$''',
+  '''^docs/multi-tenant-architecture\.md$''',
+  '''^deployments/kubernetes/kind/manifests/slack-secret\.yaml$''',
+  '''^internal/api/api_integration_test\.go$''',
+  '''^internal/api/auth/jwt_test\.go$''',
+  '''^internal/ssh/auth_test\.go$'''
+]
