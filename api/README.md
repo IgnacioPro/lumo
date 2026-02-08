@@ -58,14 +58,14 @@ psql -U lumo -d lumo
 -- Create API key (example)
 INSERT INTO api_keys (key_hash, name, scopes, created_at)
 VALUES (
-  encode(digest('your-secret-key', 'sha256'), 'hex'),
+  encode(digest('example-key', 'sha256'), 'hex'),
   'dev-key',
   ARRAY['diagnostics:read', 'diagnostics:write', 'agents:read', 'agents:write'],
   NOW()
 );
 ```
 
-**Note**: The API key you use in requests is `your-secret-key`, not the hash.
+**Note**: The API key you use in requests is `example-key`, not the hash.
 
 ### 3. Make API Requests
 
@@ -75,7 +75,7 @@ curl http://localhost:8080/api/v1/health
 
 # Register an agent
 curl -X POST http://localhost:8080/api/v1/agents/register \
-  -H "X-API-Key: your-secret-key" \
+  -H "X-API-Key: example-key" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "agent-01",

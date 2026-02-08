@@ -58,7 +58,7 @@ docker exec -i lumo-postgres psql -U lumo -d lumo <<EOF
 INSERT INTO api_keys (id, name, key_hash, scopes, created_at, updated_at)
 VALUES (
   gen_random_uuid(),
-  'test-key',
+  'example-key',
   '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8',
   ARRAY['diagnostics:run', 'jobs:read', 'jobs:write', 'agents:read', 'agents:write']::varchar[],
   NOW(),
@@ -66,7 +66,7 @@ VALUES (
 );
 EOF
 ```
-*The API Key corresponding to this hash is: `test-key-123`*
+*The API Key corresponding to this hash is: `example-key`*
 
 ### Step 3.4: Run Automated API Tests
 

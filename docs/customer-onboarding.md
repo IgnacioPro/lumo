@@ -87,7 +87,7 @@ curl -X POST "$API_URL/api/v1/admin/tenants/$TENANT_ID/provision-agent" \
 ```json
 {
   "agent_id": "550e8400-e29b-41d4-a716-446655440000",
-  "agent_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "agent_token": "<agent-token>",
   "api_endpoint": "https://api.lumo.io",
   "kubernetes_manifest": "---\napiVersion: v1\nkind: Namespace\nmetadata:\n  name: lumo-system\n---\napiVersion: v1\nkind: Secret\n..."
 }
@@ -119,7 +119,7 @@ Send the customer this script with their token:
 #!/bin/bash
 # Lumo Agent Deployment Script for Acme Corporation
 
-AGENT_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+AGENT_TOKEN="<agent-token>"
 API_ENDPOINT="https://api.lumo.io"
 
 # Create namespace
@@ -212,7 +212,7 @@ curl -X PUT "$API_URL/api/v1/admin/tenants/$TENANT_ID" \
       "notifications": {
         "slack": {
           "enabled": true,
-          "webhook_url": "https://hooks.slack.com/services/..."
+          "webhook_url": "<slack-webhook-url>"
         },
         "email": {
           "enabled": true,
