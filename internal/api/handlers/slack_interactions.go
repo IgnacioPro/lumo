@@ -304,7 +304,11 @@ func (h *SlackInteractionHandler) sendSlackResponse(responseURL, text string, re
 		h.logger.WithError(err).Error("Failed to send Slack response")
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			h.logger.WithError(closeErr).Warn("Failed to close Slack response body")
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		h.logger.WithField("status", resp.StatusCode).Warn("Slack response returned non-OK status")

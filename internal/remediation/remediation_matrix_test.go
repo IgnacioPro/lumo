@@ -3,10 +3,11 @@ package remediation
 import (
 	"testing"
 
-	"github.com/ignacio/lumo/internal/notifications"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ignacio/lumo/internal/notifications"
 )
 
 func TestImageTypoDetector_TagTypos(t *testing.T) {

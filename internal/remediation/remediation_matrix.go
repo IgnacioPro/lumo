@@ -10,8 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ignacio/lumo/internal/notifications"
 	"github.com/sirupsen/logrus"
+
+	"github.com/ignacio/lumo/internal/notifications"
 )
 
 // =============================================================================
