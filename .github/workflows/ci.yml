@@ -33,7 +33,7 @@ jobs:
     name: Lint & Security
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -60,7 +60,7 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -78,7 +78,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [lint-and-security, test]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -113,7 +113,7 @@ jobs:
   #         - goos: darwin
   #           goarch: amd64
   #   steps:
-  #     - uses: actions/checkout@v4
+  #     - uses: actions/checkout@v6
 
   #     - name: Set up Go
   #       uses: actions/setup-go@v5
@@ -147,7 +147,7 @@ jobs:
   #   runs-on: ubuntu-latest
   #   if: github.event_name == 'schedule'
   #   steps:
-  #     - uses: actions/checkout@v4
+  #     - uses: actions/checkout@v6
 
   #     - name: Set up Go
   #       uses: actions/setup-go@v5
